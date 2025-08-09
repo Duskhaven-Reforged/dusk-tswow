@@ -434,9 +434,21 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
      * @param cod
      * @param items
      */
-    SendMail(senderType: uint8, from: uint64, subject: string, body: string, money? : uint32, cod? : uint32, delay? : uint32, items? : TSArray<TSItem>, itemEntries? : TSArray<TSItemEntry>);
+	SendMail(senderType: uint8, from: uint64, subject: string, body: string, money? : uint32, cod? : uint32, delay? : uint32, items? : TSArray<TSItem>, itemEntries? : TSArray<TSItemEntry>);
 
-    SendShopMail(subject: string, body: string, items? : TSArray<TSItem>, itemEntries? : TSArray<TSItemEntry>);
+    /**
+     * Sends a GM mail with items to this player
+     *
+     * This function creates mail from a GM/administrative sender and handles
+     * the special sender object creation required for GM mail with items.
+     * Similar to SendMail but for administrative purposes.
+     *
+     * @param subject The subject line of the mail
+     * @param body The main body text of the mail message
+     * @param items Optional array of TSItem objects to attach to the mail
+     * @param itemEntries Optional array of TSItemEntry objects to create and attach as items
+     */
+    SendGMMail(subject: string, body: string, items?: TSArray<TSItem>, itemEntries?: TSArray<TSItemEntry>);
 
     /**
      * Returns 'true' if the [Player] can Titan Grip, 'false' otherwise.
@@ -782,6 +794,20 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
     UnsummonPet() : void
 
     StartPetAttack(target: TSUnit) : void
+
+    /**
+     * Returns 'true' if the [Player] is in a contested or hostile zone, 'false' otherwise.
+     *
+     * @return bool isInHostileArea
+     */
+    IsInHostileArea() : bool
+
+    /**
+     * Returns 'true' if the [Player] is in a no-pvp area such as as sanctuary, 'false' otherwise.
+     *
+     * @return bool isInHostileArea
+     */
+    IsInNoPvPArea() : bool
 
     /**
      * Returns the amount of available specs the [Player] currently has
@@ -4133,7 +4159,7 @@ declare interface TSMap extends TSEntityProvider, TSWorldEntityProvider<TSMap> {
 
     /**
      * Check if 2 positions are within LoS of each other, following different checks.
-     * 
+     *
      * @param x1
      * @param y1
      * @param z1
@@ -4730,7 +4756,7 @@ declare interface TSBattlegroundScore {
     SetAVGraveyardsDefended(value: uint32): void
     SetAVTowersAssaulted(value: uint32): void
     SetAVTowersDefended(value: uint32): void
-    SetAVMinesCaptured(value: uint32): void 
+    SetAVMinesCaptured(value: uint32): void
     SetSADestroyedDemolishers(value: uint32): void
     SetSADestroyedGates(value: uint32): void
     GetPlayerGUID(): uint64
@@ -5010,6 +5036,13 @@ declare interface TSGameObject extends TSWorldObject {
      * @return uint32 displayId
      */
     GetDisplayID() : TSNumber<uint32>
+
+    /**
+     * Returns the [GameObject]'s owner's GUID.
+     *
+     * @return uint64 ownerGUID
+     */
+    GetOwnerGUID() : TSGUID
 
     /**
      * Returns the state of a [GameObject]
@@ -5845,6 +5878,8 @@ declare interface TSWorldObject extends TSObject, TSWorldEntityProvider<TSWorldO
     GetCreature(guid: TSNumber<uint32> | TSGUID): TSCreature | undefined
     GetPlayer(guid: TSNumber<uint32> | TSGUID): TSPlayer | undefined
     GetFactionTemplate(): TSFactionTemplate
+    GetMapHeight(x: TSNumber<float>, y: TSNumber<float>, z: TSNumber<float>): TSNumber<float>
+    GetFloorZ(): TSNumber<float>;
 }
 
 declare interface TSWorldObjectCollection {
@@ -6880,7 +6915,7 @@ declare interface TSUnit extends TSWorldObject {
 
     /**
      * Resets the cooldown of a specific spell
-     * @param spellId 
+     * @param spellId
      * @param update = false
      */
     ResetCooldown(spellId: uint32, update?: boolean);
@@ -6936,7 +6971,7 @@ declare interface TSUnit extends TSWorldObject {
 
     /**
      * Return angle towards point given from Unit.
-     * 
+     *
      * @param x
      * @param y
      */
@@ -7674,6 +7709,44 @@ declare interface TSUnit extends TSWorldObject {
 
     GetPPMProcChance(speed: uint32, PPM: float, spell: TSSpellInfo) : float
     SetControlled(apply: bool, unitState: uint32) : void
+
+    /**
+    * Checks if the [Unit] has the specified [MovementFlags] set.
+    *
+    *     enum MovementFlags
+    *     {
+    *         MOVEFLAG_NONE               = 0x00000000,
+    *         MOVEFLAG_FORWARD            = 0x00000001,
+    *         MOVEFLAG_BACKWARD           = 0x00000002,
+    *         MOVEFLAG_STRAFE_LEFT        = 0x00000004,
+    *         MOVEFLAG_STRAFE_RIGHT       = 0x00000008,
+    *         MOVEFLAG_TURN_LEFT          = 0x00000010,
+    *         MOVEFLAG_TURN_RIGHT         = 0x00000020,
+    *         MOVEFLAG_PITCH_UP           = 0x00000040,
+    *         MOVEFLAG_PITCH_DOWN         = 0x00000080,
+    *         MOVEFLAG_WALK_MODE          = 0x00000100,
+    *         MOVEFLAG_LEVITATING         = 0x00000400,
+    *         MOVEFLAG_FLYING             = 0x00000800,
+    *         MOVEFLAG_FALLING            = 0x00002000,
+    *         MOVEFLAG_FALLINGFAR         = 0x00004000,
+    *         MOVEFLAG_SWIMMING           = 0x00200000,
+    *         MOVEFLAG_SPLINE_ENABLED     = 0x00400000,
+    *         MOVEFLAG_CAN_FLY            = 0x00800000,
+    *         MOVEFLAG_FLYING_OLD         = 0x01000000,
+    *         MOVEFLAG_ONTRANSPORT        = 0x02000000,
+    *         MOVEFLAG_SPLINE_ELEVATION   = 0x04000000,
+    *         MOVEFLAG_ROOT               = 0x08000000,
+    *         MOVEFLAG_WATERWALKING       = 0x10000000,
+    *         MOVEFLAG_SAFE_FALL          = 0x20000000,
+    *         MOVEFLAG_HOVER              = 0x40000000,
+    *
+    *         MOVEFLAG_MASK_MOVING_FORWARD = MOVEFLAG_FORWARD | MOVEFLAG_STRAFE_LEFT | MOVEFLAG_STRAFE_RIGHT | MOVEFLAG_FALLING,
+    *     }
+    *
+    * @param uint32 flag The movement flag(s) to check (bitmask)
+    * @return bool True if any of the specified flags are set on the unit
+    */
+    HasUnitMovementFlag(flag: uint32) : bool
 }
 
 declare interface TSItemTemplate extends TSEntityProvider {
@@ -7876,7 +7949,8 @@ declare interface TSItemTemplate extends TSEntityProvider {
 }
 
 declare interface TSSpellInfo extends TSEntityProvider {
-    IsNull() : bool
+	IsNull() : bool
+    GetName(locale: uint32) : string
     GetEntry() : TSNumber<uint32>
     GetSchool() : TSNumber<uint32>
     GetBaseLevel() : TSNumber<uint32>
@@ -7948,6 +8022,12 @@ declare interface TSSpellInfo extends TSEntityProvider {
     GetMaxTicks(caster: TSWorldObject): TSNumber<uint32> 
     GetDuration(): TSNumber<int32>
     GetMaxDuration(): TSNumber<int32>
+    IsRanked(): boolean
+    GetRank(): uint8
+    GetFirstRankSpell(): TSSpellInfo
+    GetLastRankSpell(): TSSpellInfo
+    GetNextRankSpell(): TSSpellInfo
+    GetPrevRankSpell(): TSSpellInfo
 }
 
 declare class TSSpellEffectInfo {
@@ -9970,19 +10050,19 @@ declare class TSEvents {
 
 declare class TSDictionary<K,V> {
     [custom: string]: V;
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     set(key: K, value: V);
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     contains(key: K): boolean;
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     forEach(callback: (key: K, value: V)=>void);
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     keys(): TSArray<K>
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     reduce<T>(callback: (previous: T,key: K, value: V)=>T, initial: T) : T;
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     filter(callback: (key: K, value: V)=>boolean): TSDictionary<K,V>
-    // @ts-ignore
+    // @ts-expect-error - Index signature conflicts with method return types
     map<M>(callback: (key: K, value: V, self: TSDictionary<K,V>)=>M): TSDictionary<K,M>
 
     // @ts-ignore
@@ -10738,3 +10818,43 @@ declare function GetGameTime() : uint64
 declare function GetNextResetTime() : uint64
 
 declare function GetArea(area: uint32): TSArea
+
+// Regular Expression Support
+declare class TSRegExp {
+    constructor(pattern: string);
+    constructor(pattern: string, flags: string);
+
+    test(str: string): boolean;
+    exec(str: string): string;
+    source(): string;
+
+    global(): boolean;
+    ignoreCase(): boolean;
+    multiline(): boolean;
+
+    toString(): string;
+}
+
+// Support for both /pattern/ literals and new RegExp() constructor
+declare interface RegExpConstructor {
+    new(pattern: string): TSRegExp;
+    new(pattern: string, flags?: string): TSRegExp;
+    (pattern: string): TSRegExp;
+    (pattern: string, flags?: string): TSRegExp;
+}
+
+declare const RegExp: RegExpConstructor;
+
+// Utils namespace for utility functions and classes
+declare namespace utils {
+    /**
+     * RAII helper for executing code when leaving scope (similar to finally blocks)
+     *
+     * Note: In TypeScript code, this is not used directly. The transpiler
+     * automatically generates utils::finally objects for try-finally blocks.
+     */
+    class Finally {
+        constructor(finalizer: () => void);
+        dismiss(): void;
+    }
+}

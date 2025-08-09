@@ -77,6 +77,7 @@ public:
     bool HasAuraState(uint8 auraState, TSSpellInfo spell = nullptr, TSUnit caster = nullptr);
     bool IsCasting();
     bool HasUnitState(uint32 state);
+    bool HasUnitMovementFlag(uint32 flag);
     TSUnit  GetOwner();
     TSGUID GetOwnerGUID();
     TSNumber<uint32> GetMountID();

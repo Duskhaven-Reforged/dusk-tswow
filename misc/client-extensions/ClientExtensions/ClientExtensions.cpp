@@ -16,4 +16,5 @@ void ClientExtensions::initialize() {
     LOG_INFO << "Tooltip extensions applied";
     MiscFixes::Apply();
     LOG_INFO << "Misc fixes applied";
+    SpellTooltipExtensions::Apply();
 }

@@ -422,6 +422,14 @@ export class WDirectory extends WNode {
         const recurse = (cur: string) => {
             const curDir = path.join(this.path, cur);
             let halt = false;
+
+            // Skip if we can't read the directory
+            try {
+                fs.accessSync(curDir, fs.constants.R_OK);
+            } catch (err) {
+                return false;
+            }
+
             if (curDir.endsWith("modules\\.gitignore") || curDir.endsWith("modules\\.gitmodules") || curDir.endsWith("modules\\README.md"))
             {
                 halt = true;
@@ -431,7 +439,12 @@ export class WDirectory extends WNode {
             fs.readdirSync(curDir).find(x => {
                 let node = path.join(cur, x);
                 let full = path.join(this.path, node)
-                let stat = fs.statSync(full);
+                let stat = fs.lstatSync(full);
+
+                // Skip symbolic links to avoid infinite loops
+                if(stat.isSymbolicLink()) {
+                    return false;
+                }
                 if (stat.isDirectory()) {
                     if (targets == 'DIRECTORIES' || targets == 'BOTH') {
                         switch (callback(new WNode(cbPath(node)))) {

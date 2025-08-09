@@ -25,67 +25,169 @@ import { bpaths, spaths } from './CompilePaths';
 
 export namespace Scripts {
     export async function build() {
-        const makeTsConfig = (outdir: FilePath, buildDir: FilePath, include: FilePath[]) => {
-            const tsconfig = {
-                compilerOptions: {
-                    target: 'es2018',
-                    module: 'commonjs',
-                    esModuleInterop: true,
-                    declaration: true,
-                    sourceMap: true,
-                    skipLibCheck: true,
-                    experimentalDecorators: true,
-                    allowJs: true,
-                    outDir: resfp(outdir),
-                    rootDir: spaths.tswow_scripts.abs().get()
-                },
-                include:include.map(x=>resfp(x))
-            }
+        // Create a temporary directory for compilation
+        const tempDir = mpath(bpaths.abs().get(), 'temp-scripts');
+        wfs.mkDirs(tempDir);
 
-            wfs.write(
-                  mpath(buildDir,'tsconfig.json')
-                , JSON.stringify(tsconfig,null,4)
-            )
+        // Compile everything to temp directory first
+        const swcCmd = [
+            'npx',
+            'swc',
+            mpath(process.cwd(), 'tswow-scripts'),
+            '-d', tempDir,
+            '--config-file', mpath(process.cwd(), '.swcrc'),
+            '--copy-files'
+        ];
 
-            if(!isInteractive) {
-                wsys.execIn(buildDir,'tsc','inherit')
-            } else {
-                watchTsc(
-                      'node'
-                    , spaths.node_modules.typescript_js.abs().get()
-                    , buildDir,termCustom('build',wfs.basename(buildDir))
-                )
-            }
+        wsys.exec(swcCmd.join(' '), 'inherit');
+
+        // Generate declaration files with tsc after moving files
+        // This needs to happen after the files are in place to avoid circular dependencies
+
+        // Now move the compiled files to the correct locations
+        const tempScripts = mpath(tempDir, 'tswow-scripts');
+
+        // Copy each subdirectory to its target location
+        const scriptsDest = ipaths.bin.scripts.abs().get();
+
+        if (wfs.exists(mpath(tempScripts, 'runtime'))) {
+            wfs.copy(mpath(tempScripts, 'runtime'), mpath(scriptsDest, 'runtime'));
+        }
+        if (wfs.exists(mpath(tempScripts, 'util'))) {
+            wfs.copy(mpath(tempScripts, 'util'), mpath(scriptsDest, 'util'));
+        }
+        if (wfs.exists(mpath(tempScripts, 'data'))) {
+            wfs.copy(mpath(tempScripts, 'data'), mpath(scriptsDest, 'data'));
+        }
+        // Note: We'll copy wotlk after creating the wow directory
+        if (wfs.exists(mpath(tempScripts, 'typescript2cxx'))) {
+            wfs.copy(mpath(tempScripts, 'typescript2cxx'), mpath(scriptsDest, 'typescript2cxx'));
+        }
+        if (wfs.exists(mpath(tempScripts, 'test'))) {
+            wfs.copy(mpath(tempScripts, 'test'), mpath(scriptsDest, 'test'));
+        }
+        if (wfs.exists(mpath(tempScripts, 'addons'))) {
+            wfs.copy(mpath(tempScripts, 'addons'), mpath(scriptsDest, 'addons'));
         }
 
-        makeTsConfig(
-              ipaths.bin.scripts.runtime.abs()
-            , bpaths.scripts_config.runtime.abs()
-            , [spaths.tswow_scripts.runtime.abs(), spaths.tswow_scripts.util.abs()]
+        // Package.json files are already copied by SWC with --copy-files
+
+        // Create the wow directory and copy wotlk into it
+        const wowDir = mpath(scriptsDest, 'wow');
+        wfs.mkDirs(wowDir);
+
+        // Copy wotlk into wow directory
+        if (wfs.exists(mpath(tempScripts, 'wotlk'))) {
+            wfs.copy(mpath(tempScripts, 'wotlk'), mpath(wowDir, 'wotlk'));
+        }
+
+        // Create symlinks for data and util directories so module resolution works correctly
+        const dataSymlink = mpath(wowDir, 'data');
+        if (!wfs.exists(dataSymlink)) {
+            wsys.exec(`ln -sf ../data ${dataSymlink}`, 'inherit');
+        }
+
+        const utilSymlink = mpath(wowDir, 'util');
+        if (!wfs.exists(utilSymlink)) {
+            wsys.exec(`ln -sf ../util ${utilSymlink}`, 'inherit');
+        }
+
+        // Package.json files are already copied by SWC with --copy-files
+
+        // Create wow package.json
+        wfs.write(
+            mpath(wowDir, 'package.json'),
+            JSON.stringify({
+                name: "wow",
+                version: "1.0.0",
+                description: "",
+                main: "./data/index.js",
+                types: "./data/index.d.ts",
+                dependencies: JSON.parse(wfs.read(mpath(tempScripts, 'data', 'package.json'))).dependencies,
+                devDependencies: {},
+                scripts: {},
+                repository: { type: "git" },
+                author: "tswow",
+                license: "GPL-3.0-only"
+            }, null, 2)
         )
 
-        makeTsConfig(
-            ipaths.bin.scripts.wow.abs()
-          , bpaths.scripts_config.wow.abs()
-          , [spaths.tswow_scripts.data.abs(), spaths.tswow_scripts.util.abs(), spaths.tswow_scripts.wotlk.abs()]
-        )
+        // Clean up temp directory
+        wfs.remove(tempDir);
 
-        makeTsConfig(
-            ipaths.bin.scripts.typescript2cxx.abs()
-          , bpaths.scripts_config.typescript2cxx.abs()
-          , [spaths.tswow_scripts.typescript2cxx.abs(), spaths.tswow_scripts.util.abs()]
-        )
+        // Generate TypeScript declarations after everything is in place
+        termCustom('build','scripts','Generating TypeScript declarations...');
 
-        makeTsConfig(
-            ipaths.bin.scripts.addons.abs()
-          , bpaths.scripts_config.addons.abs()
-          , [spaths.tswow_scripts.addons.abs(),spaths.tswow_scripts.util.abs()]
-        )
+        try {
 
-        spaths.tswow_scripts.data.package_json
-            .copy(ipaths.bin.scripts.wow.package_json)
+            // Generate declarations for all modules
+            const unifiedDeclTsConfig = {
+                compilerOptions: {
+                    target: "es2021",
+                    module: "commonjs",
+                    declaration: true,
+                    emitDeclarationOnly: true,
+                    declarationDir: scriptsDest,
+                    strict: false,
+                    esModuleInterop: true,
+                    skipLibCheck: true,
+                    forceConsistentCasingInFileNames: true,
+                    experimentalDecorators: true,
+                    useDefineForClassFields: false,
+                    rootDir: spaths.tswow_scripts.abs().get(),
+                },
+                include: [
+                    spaths.tswow_scripts.data.abs().get() + "/**/*.ts",
+                    spaths.tswow_scripts.wotlk.abs().get() + "/**/*.ts",
+                    spaths.tswow_scripts.util.abs().get() + "/**/*.ts",
+                    spaths.tswow_scripts.runtime.abs().get() + "/**/*.ts",
+                    spaths.tswow_scripts.test.abs().get() + "/**/*.ts"
+                ],
+                exclude: [
+                    "**/node_modules",
+                    "**/build"
+                ]
+            };
 
-        spaths.tswow_scripts.wotlk.package_json
-            .copy(ipaths.bin.scripts.wow.wotlk.package_json)
+            const unifiedDeclPath = mpath(bpaths.get(), 'tsconfig.unified-decl.json');
+            wfs.write(unifiedDeclPath, JSON.stringify(unifiedDeclTsConfig, null, 2));
+            
+            try {
+                wsys.exec(`npx tsc --project ${unifiedDeclPath}`, 'pipe');
+            } catch (e) {
+                const errorStr = e.toString();
+                if (!errorStr.includes('rootDir') && !errorStr.includes('is expected to contain all source files')) {
+                    termCustom('build','scripts',`TypeScript declaration error: ${errorStr}`);
+                }
+            }
+            wfs.remove(unifiedDeclPath);
+
+            // Move wotlk declarations to the correct location
+            const wotlkDeclSrc = mpath(scriptsDest, 'wotlk');
+            const wotlkDeclDest = mpath(scriptsDest, 'wow', 'wotlk');
+            
+            if (wfs.exists(wotlkDeclSrc)) {
+                // Ensure destination exists
+                wfs.mkDirs(wotlkDeclDest);
+                
+                // Move all .d.ts files
+                wfs.iterate(wotlkDeclSrc, (filePath) => {
+                    if (filePath.endsWith('.d.ts')) {
+                        const relativePath = filePath.substring(wotlkDeclSrc.length + 1);
+                        const destPath = mpath(wotlkDeclDest, relativePath);
+                        wfs.mkDirs(wfs.dirname(destPath));
+                        wfs.move(filePath, destPath);
+                    }
+                });
+                
+                // Remove the now-empty directory structure
+                wfs.remove(wotlkDeclSrc);
+            }
+
+            termCustom('build','scripts','TypeScript declarations generated successfully');
+        } catch (e) {
+            termCustom('build','scripts','Warning: Failed to generate TypeScript declarations');
+            termCustom('build','scripts',`Error: ${e}`);
+        }
     }
 }

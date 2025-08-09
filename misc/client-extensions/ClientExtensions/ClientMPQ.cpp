@@ -2,6 +2,7 @@
 #include "CustompacketChunk.h"
 #include "ClientMacros.h"
 #include "SharedDefines.h"
+#include "windows.h"
 
 namespace ClientMPQ {
     // todo: it looks like normal GetLastError isn't working here,

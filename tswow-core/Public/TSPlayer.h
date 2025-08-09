@@ -22,6 +22,7 @@
 #include "TSUnit.h"
 #include "TSOutfit.h"
 #include "TSDBJson.h"
+#include "TSItemEntry.h"
 
 #include <sol/sol.hpp>
 
@@ -98,6 +99,8 @@ public:
 	bool CanParry();
 	void UnsummonPet();
 	void StartPetAttack(TSUnit target);
+	bool IsInHostileArea();
+	bool IsInNoPvPArea();
 	TSNumber<uint8> GetSpecsCount(uint32 entry, uint32 mapid, uint32 zone);
 	TSNumber<uint32> GetActiveSpec();
 	TSNumber<uint32> GetPhaseMaskForSpawn();
@@ -341,7 +344,7 @@ public:
 	void SendCinematicStart(uint32 CinematicSequenceId);
 	void SendMovieStart(uint32 MovieId);
 	void SendMail(uint8 senderType, uint64 from, std::string const& subject, std::string const& body, uint32 money = 0, uint32 cod = 0, uint32 delay = 0, TSArray<TSItem> items = TSArray<TSItem>(), TSArray<TSItemEntry> itemEntries = TSArray<TSItemEntry>());
-	void SendShopMail(std::string const& subject, std::string const& body, TSArray<TSItem> items = TSArray<TSItem>(), TSArray<TSItemEntry> itemEntries = TSArray<TSItemEntry>());
+	void SendGMMail(std::string const& subject, std::string const& body, TSArray<TSItem> items = TSArray<TSItem>(), TSArray<TSItemEntry> itemEntries = TSArray<TSItemEntry>());
 	bool CanBeTank();
 	bool CanBeHealer();
 	bool CanBeDPS();

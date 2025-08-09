@@ -6,6 +6,7 @@
 #include "CustomPacketRead.h"
 #include "CustomPacketWrite.h"
 #include "CustomPacketBuffer.h"
+#include <memory>
 
 #include <memory>
 
@@ -21,11 +22,11 @@ public:
 	TSPacketWrite(std::shared_ptr<CustomPacketWrite>&& write);
 	TSPacketWrite* operator->() { return this; };
 	operator bool() const { return write != nullptr; }
-	bool operator==(TSPacketWrite const& rhs) { return write == rhs.write; }
+	bool operator==(TSPacketWrite const& rhs) { return write.get() == rhs.write.get(); }
 	template <typename T>
 	TSPacketWrite* Write(T value)
 	{
-		write->Write(value);
+		if (write) write->Write(value);
 		return this;
 	}
 
@@ -45,11 +46,11 @@ public:
 	TSPacketWrite * WriteDouble(double value) { return Write(value); }
 
 	TSPacketWrite* WriteString(std::string const& str) {
-		write->WriteString(str.c_str(), totalSize_t(str.size()));
+		if (write) write->WriteString(str.c_str(), totalSize_t(str.size()));
 		return this;
 	}
 
-	totalSize_t Size() { return write->Size(); }
+	totalSize_t Size() { return write ? write->Size() : 0; }
 
 	void SendToPlayer(TSPlayer player);
 	void SendToNotInWorld(uint32 accountID);
