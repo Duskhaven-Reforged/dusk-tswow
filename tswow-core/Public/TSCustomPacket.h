@@ -17,7 +17,7 @@ class TC_GAME_API TSPacketWrite
 {
 	std::shared_ptr<CustomPacketWrite> write;
 public:
-	TSPacketWrite(std::shared_ptr<CustomPacketWrite>&& write);
+	TSPacketWrite(CustomPacketWrite* write);
 	TSPacketWrite* operator->() { return this; };
 	operator bool() const { return write != nullptr; }
 	bool operator==(TSPacketWrite const& rhs) { return write.get() == rhs.write.get(); }
