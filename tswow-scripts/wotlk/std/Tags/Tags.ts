@@ -161,9 +161,9 @@ finish('tags',()=>{
     }
     ipaths.coredata.tags.remove();
     Object.entries(tags).forEach(([key,value])=>{
-        const tagFile = ipaths.coredata.tags.tagfile(key);
-        console.log(`[TAGS] Writing tag file: ${tagFile.get()}`);
-        tagFile.writeJson(value)
+        ipaths.coredata.tags.tagfile(key).writeJson(value)
+        if (BuildArgs.DEBUG)
+            console.log(`[TAGS] Writing tag file: ${ipaths.coredata.tags.tagfile(key).get()}`);
     });
     if (BuildArgs.DEBUG) {
         console.log('[TAGS] Tag file generation complete');
