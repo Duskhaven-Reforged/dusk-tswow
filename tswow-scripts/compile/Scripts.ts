@@ -18,6 +18,7 @@ import { watchTsc } from '../util/CompileTS';
 import { mpath, wfs } from '../util/FileSystem';
 import { FilePath, resfp } from '../util/FileTree';
 import { ipaths } from '../util/Paths';
+import { isWindows } from '../util/Platform';
 import { wsys } from '../util/System';
 import { termCustom } from '../util/TerminalCategories';
 import { isInteractive } from './BuildConfig';
@@ -82,14 +83,29 @@ export namespace Scripts {
         }
 
         // Create symlinks for data and util directories so module resolution works correctly
+        const path = require('path');
         const dataSymlink = mpath(wowDir, 'data');
         if (!wfs.exists(dataSymlink)) {
-            wsys.exec(`ln -sf ../data ${dataSymlink}`, 'inherit');
+            if (isWindows()) {
+                const absLink = path.resolve(dataSymlink);
+                const absTarget = path.resolve(path.dirname(dataSymlink), '../data');
+                wsys.exec(`if exist "${absLink}" rmdir "${absLink}"`, 'inherit');
+                wsys.exec(`mklink /J "${absLink}" "${absTarget}"`, 'inherit');
+            } else {
+                wsys.exec(`ln -sf ../data ${dataSymlink}`, 'inherit');
+            }
         }
 
         const utilSymlink = mpath(wowDir, 'util');
         if (!wfs.exists(utilSymlink)) {
-            wsys.exec(`ln -sf ../util ${utilSymlink}`, 'inherit');
+            if (isWindows()) {
+                const absLink = path.resolve(utilSymlink);
+                const absTarget = path.resolve(path.dirname(utilSymlink), '../util');
+                wsys.exec(`if exist "${absLink}" rmdir "${absLink}"`, 'inherit');
+                wsys.exec(`mklink /J "${absLink}" "${absTarget}"`, 'inherit');
+            } else {
+                wsys.exec(`ln -sf ../util ${utilSymlink}`, 'inherit');
+            }
         }
 
         // Package.json files are already copied by SWC with --copy-files
