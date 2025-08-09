@@ -212,7 +212,7 @@ export class Databases {
     get world_source() { return SqlConnection.world_src; }
     get world_dest() { return SqlConnection.world_dst; }
     get auth() { return SqlConnection.auth; }
-    get characters() { return SqlConnection.characters; }
+    get characters() { return SqlConnection.char; }
 
     connect(config: any) {
         let con = new Connection(config);

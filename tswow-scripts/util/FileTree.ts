@@ -442,7 +442,7 @@ export class WDirectory extends WNode {
                 let stat = fs.lstatSync(full);
 
                 // Skip symbolic links to avoid infinite loops
-                if(stat.isSymbolicLink()) {
+                if (stat.isSymbolicLink()) {
                     return false;
                 }
                 if (stat.isDirectory()) {

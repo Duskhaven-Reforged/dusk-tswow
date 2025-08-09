@@ -262,6 +262,9 @@ export class SqlConnection {
     static auth = (() => {
         return new Connection(NodeConfig.DatabaseSettings('auth'));
     })();
+    static char = (() => {
+        return new Connection(NodeConfig.DatabaseSettings('characters'));
+    })();
     //static characters = new Connection(getDefaultSettings('characters'));
     static world_dst = (() => {
         return new Connection(NodeConfig.DatabaseSettings('world',datasetName));
@@ -269,16 +272,12 @@ export class SqlConnection {
     static world_src = (() => {
         return new Connection(NodeConfig.DatabaseSettings('world_source',datasetName));
     })();
-    static auth = new Connection(NodeConfig.DatabaseSettings('auth'));
-    static characters = new Connection(NodeConfig.DatabaseSettings('characters', 'default.realm'));
-    static world_dst = new Connection(NodeConfig.DatabaseSettings('world',datasetName));
-    static world_src = new Connection(NodeConfig.DatabaseSettings('world_source',datasetName))
 
     private static query_cache: {[table: string]: {[query: string]: boolean}} = {}
 
     protected static endConnection() {
         Connection.end(this.auth);
-        Connection.end(this.characters);
+        Connection.end(this.char);
         Connection.end(this.world_src);
         Connection.end(this.world_dst);
         this.additional.forEach(x=>Connection.end(x));
@@ -287,12 +286,10 @@ export class SqlConnection {
 
     static connect() {
         this.endConnection();
-        [this.auth,this.world_dst,this.world_src]
+        [this.auth,this.char,this.world_dst,this.world_src]
             .forEach((x)=>{
                 Connection.connect(x);
             });
-        [this.auth,this.world_dst,this.world_src,this.characters]
-            .forEach((x)=>Connection.connect(x));
     }
 
     static getRows<C, Q, T extends SqlRow<C, Q>>(table: SqlTable<C, Q, T>, where: Q, first: boolean) {
@@ -322,6 +319,6 @@ export class SqlConnection {
     }
 
     static allDbs() {
-        return this.additional.concat([this.world_src,this.world_dst,this.auth,this.characters]);
+        return this.additional.concat([this.world_src,this.char,this.world_dst,this.auth]);
     }
 }

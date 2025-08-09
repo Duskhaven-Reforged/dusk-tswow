@@ -273,8 +273,7 @@ export namespace mysql {
                 wsys.exec(
                     `${ipaths.bin.mysql.mysqld_exe.get()}`
                     + ` --initialize`
-                  //  + ` --log_syslog=0`
-                    + ` --verbose`
+                    + ` --log_syslog=0`
                     + ` --datadir=${ipaths.coredata.database.abs()}`);
             } catch(error) {
                 term.error('mysql',`Failed to start MySQL: ${error.message}`)
@@ -322,12 +321,12 @@ export namespace mysql {
             + ` IDENTIFIED BY '${pass}';`
             + `\nGRANT ALL ON *.* TO '${user}'@'localhost';`
             + `\nALTER USER '${user}'@'localhost' IDENTIFIED BY '${pass}';`);
-            //+ "`\nSET @@GLOBAL.wait_timeout=2147483"
+            + "`\nSET @@GLOBAL.wait_timeout=2147483"
         await disconnect();
         mysqlprocess.start(ipaths.bin.mysql.mysqld_exe.get(),
             [
                 `--port=${NodeConfig.DatabaseHostedPort}`,
-               // '--log_syslog=0',
+                '--log_syslog=0',
                 '--console',
                 '--wait-timeout=2147483',
                 '--wait_timeout=2147483',

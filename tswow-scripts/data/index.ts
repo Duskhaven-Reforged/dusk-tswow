@@ -240,14 +240,6 @@ async function main() {
     process.exit(0)
 }
 
-function syncApplyStage(setups: any) {
-    return deasync((callback: (err: any, result?: any) => void) => {
-        applyStage(setups)
-            .then(result => callback(null, result)) // Pass result properly
-            .catch(err => callback(err)); // Handle errors
-    })();
-}
-
 /**
  * Step 1 of script loading.
  * - Runs CONCURRENTLY with global scopes.
