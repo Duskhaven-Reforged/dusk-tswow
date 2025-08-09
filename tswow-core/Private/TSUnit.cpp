@@ -2767,11 +2767,6 @@ TSArray<TSUnit> TSUnit::SelectTargetsNearTarget(TSUnit target, TSArray<TSUnit> e
     return out;
 }
 
-bool TSUnit::HasUnitMovementFlag(uint32 flag)
-{
-    return unit->HasUnitMovementFlag(flag);
-}
-
 void TSUnit::SetStatFlatModifier(uint8 unitMod, uint8 modifierType, float val) {
     unit->SetStatFlatModifier(UnitMods(unitMod), UnitModifierFlatType(modifierType), val);
 }

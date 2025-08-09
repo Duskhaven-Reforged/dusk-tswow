@@ -259,8 +259,6 @@ public:
 
     bool HasAuraWithMechanic(uint32);
 
-    bool HasUnitMovementFlag(uint32 flag);
-
     TSNumber<float> GetFlatModifierValue(uint8 unitMod, uint8 modifierType) const;
     TSNumber<float> GetPctModifierValue(uint8 unitMod, uint8 modifierType) const;
     void SetStatFlatModifier(uint8 unitMod, uint8 modifierType, float val);
