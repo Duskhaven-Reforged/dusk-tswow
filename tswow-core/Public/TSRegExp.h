@@ -37,7 +37,7 @@ private:
                 case 's':
                     // Dotall mode - . matches newlines
                     // Note: This is C++17, but we're using C++20
-                    options |= std::regex_constants::multiline;
+                    //options |= std::regex_constants::multiline;
                     break;
             }
         }
