@@ -51,22 +51,6 @@ void TSPacketWrite::SendToNotInWorld(uint32 accountID)
 	}
 }
 
-void TSPacketWrite::SendToNotInWorld(uint32 accountID)
-{
-
-	if (WorldSession* session = sWorld->FindSession(accountID))
-	{
-		auto& arr = write->buildMessages();
-		for (auto& chunk : arr)
-		{
-			WorldPacket packet(SERVER_TO_CLIENT_OPCODE, chunk.FullSize());
-			packet.append((uint8_t*)chunk.Data(), chunk.FullSize());
-			session->SendPacket(&packet);
-		}
-        //
-	}
-}
-
 void TSPacketWrite::BroadcastMap(TSMap map, uint32_t teamOnly)
 {
 	if (!write)

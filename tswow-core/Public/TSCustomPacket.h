@@ -8,8 +8,6 @@
 #include "CustomPacketBuffer.h"
 #include <memory>
 
-#include <memory>
-
 class TSWorldObject;
 class TSPlayer;
 class TSMap;
