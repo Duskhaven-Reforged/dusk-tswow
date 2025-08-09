@@ -526,7 +526,8 @@ struct WoWTime {
     int32_t flags;
 };
 
-struct ZoneLightData {
+struct ZoneLightData
+{
     int32_t mapID;
     int32_t lightID;
     void* pointData;
@@ -535,6 +536,16 @@ struct ZoneLightData {
     float minY;
     float maxX;
     float maxY;
+};
+
+struct OcclusionVolumeData
+{
+    int32_t mapID;
+    int32_t flags;
+    C3Vector min;
+    C3Vector max;
+    void* pointData;
+    int32_t pointNum;
 };
 
 // client functions

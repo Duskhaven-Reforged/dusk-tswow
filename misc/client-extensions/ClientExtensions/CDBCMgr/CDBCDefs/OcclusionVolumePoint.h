@@ -35,9 +35,21 @@ class OcclusionVolumePoint : public CDBC
     {
         GlobalCDBCMap.addCDBC(this->fileName);
         CDBC::LoadDB(this->fileName);
+        OcclusionVolumePoint::setupStringsAndTable();
         CDBCMgr::addCDBCLuaHandler(this->fileName, [this](lua_State* L, int row) { return this->handleLua(L, row); });
         GlobalCDBCMap.setIndexRange(this->fileName, this->minIndex, this->maxIndex);
         return this;
+    };
+
+    void OcclusionVolumePoint::setupStringsAndTable()
+    {
+        OcclusionVolumePointRow* row = static_cast<OcclusionVolumePointRow*>(this->rows);
+        uintptr_t stringTable   = reinterpret_cast<uintptr_t>(this->stringTable);
+        for (uint32_t i = 0; i < this->numRows; i++)
+        {
+            GlobalCDBCMap.addRow(this->fileName, row->ID, *row);
+            ++row;
+        }
     };
 
     int handleLua(lua_State* L, int row)

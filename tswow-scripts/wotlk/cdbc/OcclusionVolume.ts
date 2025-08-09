@@ -88,7 +88,7 @@ export class OcclusionVolumeCDBCFile extends CDBCFile<
     OcclusionVolumeCreator,
     OcclusionVolumeQuery,
     OcclusionVolumeRow> {
-    protected defaultRow = [0, "Default", 0, 0];
+    protected defaultRow = [0, "Default", 999, 0];
 
     constructor() {
         super('OcclusionVolume', (t, b, o) => new OcclusionVolumeRow(t, b, o))
