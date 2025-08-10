@@ -14,15 +14,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+import { symlinkSync, unlinkSync, existsSync } from 'fs';
 import { watchTsc } from '../util/CompileTS';
 import { mpath, wfs } from '../util/FileSystem';
 import { FilePath, resfp } from '../util/FileTree';
 import { ipaths } from '../util/Paths';
 import { isWindows } from '../util/Platform';
 import { wsys } from '../util/System';
-import { termCustom } from '../util/TerminalCategories';
+import { term } from '../util/Terminal';
 import { isInteractive } from './BuildConfig';
 import { bpaths, spaths } from './CompilePaths';
+import { NodeExecutable } from '../runtime/Node';
 
 export namespace Scripts {
     export async function build() {
@@ -73,69 +75,109 @@ export namespace Scripts {
 
         // Package.json files are already copied by SWC with --copy-files
 
-        // Create the wow directory and copy wotlk into it
-        const wowDir = mpath(scriptsDest, 'wow');
-        wfs.mkDirs(wowDir);
+        //1. Create the wow directory in node_modules (where it's expected by the runtime)
+        const wowNodeModulesDir = ipaths.node_modules.wow.abs().get();
+        wfs.mkDirs(wowNodeModulesDir);
 
-        // Copy wotlk into wow directory
+        // 2. bin/scripts/wow (where npm install expects to find it as a local package)
+        const wowBinDir = mpath(scriptsDest, 'wow');
+        wfs.mkDirs(wowBinDir);
+
+        // Copy wotlk into both wow directory
         if (wfs.exists(mpath(tempScripts, 'wotlk'))) {
-            wfs.copy(mpath(tempScripts, 'wotlk'), mpath(wowDir, 'wotlk'));
+            wfs.copy(mpath(tempScripts, 'wotlk'), mpath(wowNodeModulesDir, 'wotlk'));
+            wfs.copy(mpath(tempScripts, 'wotlk'), mpath(wowBinDir, 'wotlk'));
         }
 
         // Create symlinks for data and util directories so module resolution works correctly
-        const path = require('path');
-        const dataSymlink = mpath(wowDir, 'data');
-        if (!wfs.exists(dataSymlink)) {
-            if (isWindows()) {
-                const absLink = path.resolve(dataSymlink);
-                const absTarget = path.resolve(path.dirname(dataSymlink), '../data');
-                wsys.exec(`if exist "${absLink}" rmdir "${absLink}"`, 'inherit');
-                wsys.exec(`mklink /J "${absLink}" "${absTarget}"`, 'inherit');
-            } else {
-                wsys.exec(`ln -sf ../data ${dataSymlink}`, 'inherit');
-            }
-        }
+          // Create symlinks for data and util directories so module resolution works correctly
+        const createSymlink = (target: string, link: string, name: string) => {
+            try {
+                // Remove existing symlink if it exists
+                if (existsSync(link)) {
+                    try {
+                        unlinkSync(link);
+                    } catch (e) {
+                        // If unlink fails, it might be a directory junction on Windows
+                        // Try to remove it as a directory
+                        if (isWindows() && wfs.exists(link)) {
+                            wfs.remove(link);
+                        }
+                    }
+                }
 
-        const utilSymlink = mpath(wowDir, 'util');
-        if (!wfs.exists(utilSymlink)) {
-            if (isWindows()) {
-                const absLink = path.resolve(utilSymlink);
-                const absTarget = path.resolve(path.dirname(utilSymlink), '../util');
-                wsys.exec(`if exist "${absLink}" rmdir "${absLink}"`, 'inherit');
-                wsys.exec(`mklink /J "${absLink}" "${absTarget}"`, 'inherit');
-            } else {
-                wsys.exec(`ln -sf ../util ${utilSymlink}`, 'inherit');
+                // Create new symlink
+                // On Windows, use 'junction' for directories (doesn't require admin)
+                // On Unix, use 'dir' for directory symlinks
+                symlinkSync(target, link, isWindows() ? 'junction' : 'dir');
+                term.log('build', `Created ${name} symlink: ${link} -> ${target}`);
+            } catch (err: any) {
+                // If symlink already exists and points to the right place, that's fine
+                if (err.code === 'EEXIST') {
+                    term.log('build', `${name} symlink already exists: ${link}`);
+                } else {
+                    term.error('build', `Failed to create ${name} symlink: ${err.message}`);
+                    throw err;
+                }
             }
-        }
+        };
+
+         // Create symlinks for both wow directories
+
+        // For node_modules/wow (absolute paths to ensure they work from install directory)
+        const nodeModulesDataTarget = mpath(scriptsDest, 'data');
+        const nodeModulesDataSymlink = mpath(wowNodeModulesDir, 'data');
+        createSymlink(nodeModulesDataTarget, nodeModulesDataSymlink, 'node_modules data');
+
+        const nodeModulesUtilTarget = mpath(scriptsDest, 'util');
+        const nodeModulesUtilSymlink = mpath(wowNodeModulesDir, 'util');
+        createSymlink(nodeModulesUtilTarget, nodeModulesUtilSymlink, 'node_modules util');
+
+        // For bin/scripts/wow (relative paths from bin/scripts/wow to bin/scripts)
+        const binDataTarget = '../data';
+        const binDataSymlink = mpath(wowBinDir, 'data');
+        createSymlink(binDataTarget, binDataSymlink, 'bin data');
+
+        const binUtilTarget = '../util';
+        const binUtilSymlink = mpath(wowBinDir, 'util');
+        createSymlink(binUtilTarget, binUtilSymlink, 'bin util');
 
         // Package.json files are already copied by SWC with --copy-files
 
-        // Create wow package.json
+          // Create wow package.json for both directories
+        const wowPackageJson = {
+            name: "wow",
+            version: "1.0.0",
+            description: "",
+            main: "./data/index.js",
+            types: "./data/index.d.ts",
+            dependencies: JSON.parse(wfs.read(mpath(tempScripts, 'data', 'package.json'))).dependencies,
+            devDependencies: {},
+            scripts: {},
+            repository: { type: "git" },
+            author: "tswow",
+            license: "GPL-3.0-only"
+        };
+
+        // Create package.json for node_modules/wow
         wfs.write(
-            mpath(wowDir, 'package.json'),
-            JSON.stringify({
-                name: "wow",
-                version: "1.0.0",
-                description: "",
-                main: "./data/index.js",
-                types: "./data/index.d.ts",
-                dependencies: JSON.parse(wfs.read(mpath(tempScripts, 'data', 'package.json'))).dependencies,
-                devDependencies: {},
-                scripts: {},
-                repository: { type: "git" },
-                author: "tswow",
-                license: "GPL-3.0-only"
-            }, null, 2)
-        )
+            mpath(wowNodeModulesDir, 'package.json'),
+            JSON.stringify(wowPackageJson, null, 2)
+        );
+
+        // Create package.json for bin/scripts/wow
+        wfs.write(
+            mpath(wowBinDir, 'package.json'),
+            JSON.stringify(wowPackageJson, null, 2)
+        );
 
         // Clean up temp directory
         wfs.remove(tempDir);
 
         // Generate TypeScript declarations after everything is in place
-        termCustom('build','scripts','Generating TypeScript declarations...');
+        term.log('build','Generating TypeScript declarations...');
 
         try {
-
             // Generate declarations for all modules
             const unifiedDeclTsConfig = {
                 compilerOptions: {
@@ -169,12 +211,12 @@ export namespace Scripts {
             wfs.write(unifiedDeclPath, JSON.stringify(unifiedDeclTsConfig, null, 2));
             
             try {
-                wsys.exec(`npx tsc --project ${unifiedDeclPath}`, 'pipe');
+                wsys.exec(`"${NodeExecutable}" "${mpath(bpaths.get(), 'node_modules', 'typescript', 'lib', 'tsc.js')}" --project "${unifiedDeclPath}"`, 'pipe');
             } catch (e) {
                 const errorStr = e.toString();
-                if (!errorStr.includes('rootDir') && !errorStr.includes('is expected to contain all source files')) {
-                    termCustom('build','scripts',`TypeScript declaration error: ${errorStr}`);
-                }
+                term.error('build', `TypeScript declaration error: ${errorStr}`);
+                // Previously filtered out 'rootDir' and 'is expected to contain all source files' errors
+                // but hiding errors is bad practice - we should fix them instead
             }
             wfs.remove(unifiedDeclPath);
 
@@ -200,10 +242,10 @@ export namespace Scripts {
                 wfs.remove(wotlkDeclSrc);
             }
 
-            termCustom('build','scripts','TypeScript declarations generated successfully');
+            term.log('build','TypeScript declarations generated successfully');
         } catch (e) {
-            termCustom('build','scripts','Warning: Failed to generate TypeScript declarations');
-            termCustom('build','scripts',`Error: ${e}`);
+            term.log('build','Warning: Failed to generate TypeScript declarations');
+            term.log('build',`Error: ${e}`);
         }
     }
 }
