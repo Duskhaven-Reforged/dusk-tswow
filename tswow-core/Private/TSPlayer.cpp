@@ -732,6 +732,16 @@ void TSPlayer::StartPetAttack(TSUnit target) {
         player->GetPet()->BeginAttacking(target.unit);
 }
 
+bool TSPlayer::IsInHostileArea()
+{
+    return player->pvpInfo.IsInHostileArea;
+}
+
+bool TSPlayer::IsInNoPvPArea()
+{
+    return player->pvpInfo.IsInNoPvPArea;
+}
+
 /*int TSPlayer::HasReceivedQuestReward(lua_State* L, Player* player)
 {
     return player->IsQuestRewarded(entry);
@@ -3872,7 +3882,7 @@ void TSPlayer::SendMail(uint8 senderType, uint64 from, std::string const& subjec
     CharacterDatabase.CommitTransaction(trans);
 }
 
-void TSPlayer::SendShopMail(std::string const& subject, std::string const& body, TSArray<TSItem> items, TSArray<TSItemEntry> itemEntries) {
+void TSPlayer::SendGMMail(std::string const& subject, std::string const& body, TSArray<TSItem> items, TSArray<TSItemEntry> itemEntries) {
     MailSender sender(MAIL_NORMAL, 0, MAIL_STATIONERY_GM);
     MailDraft draft(subject,body);
     CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();

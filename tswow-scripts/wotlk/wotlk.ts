@@ -20,6 +20,7 @@ import { DBC as _DBC, DBCLoader } from "./DBCFiles";
 import { CDBC as _CDBC, CDBCLoader } from "./CDBCFiles";
 import { LUAXML as _LUAXML } from "./luaxml/LUAXML";
 import { SQL as _SQL } from "./SQLFiles";
+import { AccessRequirement, AccessRequirementRegistry } from "./std/AccessRequirement/AccessRequirement";
 import { AchievementRegistry } from "./std/Achievement/Achievement";
 import { AchievementCategoryRegistry } from "./std/Achievement/AchievementCategory";
 import { AreaRegistry } from "./std/Area/Area";
@@ -123,6 +124,7 @@ export const std = {
     Languages : LanguageRegistry,
     Quests : QuestRegistry,
     Titles: TitleRegistry,
+    AccessRequirement: AccessRequirementRegistry,
     Achievements: AchievementRegistry,
     Loot: Loot,
     Items: ItemTemplateRegistry,

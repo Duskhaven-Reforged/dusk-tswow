@@ -77,6 +77,7 @@ public:
     bool HasAuraState(uint8 auraState, TSSpellInfo spell = nullptr, TSUnit caster = nullptr);
     bool IsCasting();
     bool HasUnitState(uint32 state);
+    bool HasUnitMovementFlag(uint32 flag);
     TSUnit  GetOwner();
     TSGUID GetOwnerGUID();
     TSNumber<uint32> GetMountID();
@@ -257,8 +258,6 @@ public:
     TSArray<TSUnit> SelectTargetsNearTarget(TSUnit target, TSArray<TSUnit> exclude, float dist, uint32 amount);
 
     bool HasAuraWithMechanic(uint32);
-
-    bool HasUnitMovementFlag(uint32 flag);
 
     TSNumber<float> GetFlatModifierValue(uint8 unitMod, uint8 modifierType) const;
     TSNumber<float> GetPctModifierValue(uint8 unitMod, uint8 modifierType) const;

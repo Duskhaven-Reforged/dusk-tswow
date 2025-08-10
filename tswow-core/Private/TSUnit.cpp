@@ -573,6 +573,16 @@ bool TSUnit::HasUnitState(uint32 state)
 #endif
 }
 
+/**
+* Checks if the [Unit] has the specified [MovementFlags] set.
+* @param [flag] The movement flag(s) to check (bitmask)
+* @return bool True if any of the specified flags are set on the unit
+*/
+bool TSUnit::HasUnitMovementFlag(uint32 flag)
+{
+    return unit->HasUnitMovementFlag(flag);
+}
+
 /*int TSUnit::IsVisible(lua_State* L, Unit* unit)
 {
     return unit->IsVisible();
@@ -2755,11 +2765,6 @@ TSArray<TSUnit> TSUnit::SelectTargetsNearTarget(TSUnit target, TSArray<TSUnit> e
     }
 
     return out;
-}
-
-bool TSUnit::HasUnitMovementFlag(uint32 flag)
-{
-    return unit->HasUnitMovementFlag(flag);
 }
 
 void TSUnit::SetStatFlatModifier(uint8 unitMod, uint8 modifierType, float val) {

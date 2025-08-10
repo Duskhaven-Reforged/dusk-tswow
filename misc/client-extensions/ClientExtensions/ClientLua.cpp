@@ -2,6 +2,7 @@
 #include "Logger.h"
 #include "ClientDetours.h"
 #include "SharedDefines.h"
+#include "SharedDefines.h"
 #include "FSRoot.h"
 
 #include <vector>
@@ -34,8 +35,9 @@ namespace
 namespace ClientLua {
     lua_State* State(){ return *_state; }
 
-    void RegisterLua(std::string const& lua, std::string const& filename, size_t line) {
-        LUA_FILES.push_back({filename+":"+std::to_string(line), lua});
+    void RegisterLua(std::string const& lua, std::string const& filename, size_t line)
+    {
+        LUA_FILES.push_back({filename+":"+std::to_string(line),lua});
     }
 
     int AddFunction(char const* name, lua_CFunction fn, std::string const& file, size_t line) {

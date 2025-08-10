@@ -175,6 +175,8 @@ public:
     void DoDelayed(std::function<void(TSWorldObject, TSMainThreadContext)> callback);
 
     TSNumber<uint32> GetAreaIdFromPosition();
+    TSNumber<float> GetMapHeight(TSNumber<float> x, TSNumber<float> y, TSNumber<float> z);
+    TSNumber<float> GetFloorZ();
 private:
     friend class TSLua;
     void LDoDelayed(sol::protected_function callback);

@@ -11,6 +11,7 @@ public:
     TSNumber<float> o;
     TSPosition* operator->() { return this;}
 
+	std::string stringify(int indention = 0) { return "TSPosition"; };
     TSPosition(uint32 in_map,float in_x, float in_y, float in_z, float in_o)
     : map(in_map) , x(in_x) , y(in_y) , z(in_z) , o(in_o) 
     {}

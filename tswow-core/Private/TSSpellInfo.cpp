@@ -30,7 +30,13 @@ TSSpellInfo::TSSpellInfo()
     , info(nullptr)
 {}
 
-TSNumber<uint32> TSSpellInfo::GetEntry()  {
+std::string TSSpellInfo::GetName(uint32 locale)
+{
+    return info->SpellName[locale];
+}
+
+TSNumber<uint32> TSSpellInfo::GetEntry()
+{
     return info->Id;
 }
 
@@ -501,4 +507,33 @@ TSNumber<uint32> GetTalentCost(uint32 entry)
 
 TSNumber<uint32> TSSpellInfo::GetMaxTicks(TSUnit caster) {
     return info->GetMaxTicks(caster.unit);
+}
+bool TSSpellInfo::IsRanked()
+{
+    return info->IsRanked();
+}
+
+uint8 TSSpellInfo::GetRank()
+{
+    return info->GetRank();
+}
+
+TSSpellInfo TSSpellInfo::GetFirstRankSpell()
+{
+    return info->GetFirstRankSpell();
+}
+
+TSSpellInfo TSSpellInfo::GetLastRankSpell()
+{
+    return info->GetLastRankSpell();
+}
+
+TSSpellInfo TSSpellInfo::GetNextRankSpell()
+{
+    return info->GetNextRankSpell();
+}
+
+TSSpellInfo TSSpellInfo::GetPrevRankSpell()
+{
+    return info->GetPrevRankSpell();
 }
