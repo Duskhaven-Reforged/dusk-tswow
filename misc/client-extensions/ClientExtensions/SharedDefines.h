@@ -546,6 +546,18 @@ struct ZoneLightData {
     float maxY;
 };
 
+struct TSLink
+{
+    TSLink* m_prevlink;
+    void* m_next;
+};
+
+struct TSList
+{
+    ptrdiff_t m_linkoffset;
+    TSLink m_terminator;
+};
+
 // client functions
 namespace CGChat {
     CLIENT_FUNCTION(AddChatMessage, 0x509DD0, __cdecl, bool, (char*, uint32_t, uint32_t, uint32_t, uint32_t*, uint32_t, char*, uint64_t, uint32_t, uint64_t, uint32_t, uint32_t, uint32_t*))
@@ -568,6 +580,7 @@ namespace CGUnit_C {
 
 namespace CGWorldFrame {
     CLIENT_FUNCTION(TranslateToMapCoords, 0x544140, __cdecl, bool, (C3Vector*, uint32_t, float*, float*, uint32_t, bool, uint32_t))
+    CLIENT_FUNCTION(Intersect, 0x0077F310, __cdecl, char, (C3Vector*, C3Vector*, C3Vector*, float*, int, int))
 }
 
 namespace ClientDB {

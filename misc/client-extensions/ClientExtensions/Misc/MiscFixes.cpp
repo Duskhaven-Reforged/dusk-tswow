@@ -1,9 +1,113 @@
 #include "MiscFixes.h"
+#include "ClientDetours.h"
 #include "Logger.h"
 
 void MiscFixes::Apply() {
     UpdateObjectVtable();
     UpdateWoWTimeFunctions();
+    CameraCollisionFade();
+}
+
+// Heavily inspired, and partially copied, from
+// https://github.com/someweirdhuman/awesome_wotlk/pull/25
+void MiscFixes::CameraCollisionFade() {
+    uintptr_t fnAddress = reinterpret_cast<uintptr_t>(&CGWorldFrame_Intersect);
+
+    Util::OverwriteUInt32AtAddress(0x006060FF, fnAddress - 0x00606103);
+
+    int VectorIntersectDoodadDefs__Result = ClientDetours::Add("VectorIntersectDoodadDefs", &VectorIntersectDoodadDefs, VectorIntersectDoodadDefsDetour, __FILE__, __LINE__);
+    int World__GetFacets__Result = ClientDetours::Add("World__GetFacets", &World__GetFacets, World__GetFacetsDetour, __FILE__, __LINE__);
+}
+
+char __cdecl MiscFixes::CGWorldFrame_Intersect(C3Vector* start, C3Vector* end, C3Vector* hitPoint, float* distance, uint32_t flag, uint32_t buffer)
+{
+    void* buf = std::malloc(2048);
+    if (buf)
+    {
+        std::memset(buf, 0, 2048);
+        if (CGWorldFrame::Intersect(start, end, hitPoint, distance, flag + 1, reinterpret_cast<uintptr_t>(buf)))
+        {
+            const uint32_t type  = *reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(buf) + 0);
+            const uint32_t count = *reinterpret_cast<const uint32_t*>(reinterpret_cast<const uint8_t*>(buf) + 4);
+
+            if (type == 1 && count > 0)
+            {
+                void* modelPtr = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(buf) + 12 + 80);
+                if (modelPtr)
+                {
+                    g_models_current.insert(modelPtr);
+                    g_models_being_faded.insert(modelPtr);
+
+                    if (g_models_original_alphas.find(modelPtr) == g_models_original_alphas.end())
+                    {
+                        g_models_original_alphas[modelPtr] = *reinterpret_cast<float*>(static_cast<char*>(modelPtr) + 0x17C);
+                    }
+
+                    float* alphaPtr = reinterpret_cast<float*>(static_cast<char*>(modelPtr) + 0x17C);
+                    *alphaPtr += (0.6f - *alphaPtr) * 0.25f;
+                }
+                return 0;
+            }
+        }
+        if (g_models_cleanup_timer > 2)
+        {
+            for (auto it = g_models_being_faded.begin(); it != g_models_being_faded.end();)
+            {
+                void* modelPtr = *it;
+
+                if (!(g_models_current.find(modelPtr) != g_models_current.end()))
+                {
+                    float* alphaPtr     = reinterpret_cast<float*>(static_cast<char*>(modelPtr) + 0x17C);
+                    float originalAlpha = g_models_original_alphas[modelPtr];
+
+                    *alphaPtr += (originalAlpha - *alphaPtr) * 0.25f;
+
+                    if (std::fabs(*alphaPtr - originalAlpha) < 0.01f)
+                    {
+                        *alphaPtr = originalAlpha;
+                        g_models_original_alphas.erase(modelPtr);
+                        it = g_models_being_faded.erase(it);
+                        continue;
+                    }
+                }
+                ++it;
+            }
+            g_models_current.clear();
+            g_models_cleanup_timer = 0;
+        }
+        g_models_cleanup_timer++;
+        std::free(buf);
+    }
+
+    // Remove M2 camera collisions for object fading
+    return CGWorldFrame::Intersect(start, end, hitPoint, distance, flag & ~1u, buffer);
+}
+
+void __cdecl MiscFixes::VectorIntersectDoodadDefsDetour(TSList* a1, unsigned int a2)
+{
+    auto next = a1->m_terminator.m_next;
+    while ((reinterpret_cast<uintptr_t>(next) & 1) == 0 && next)
+    {
+        auto v5       = *reinterpret_cast<uint32_t*>((uintptr_t)next + 4);
+        auto modelPtr = *reinterpret_cast<void**>(v5 + 0x34);
+
+        if (modelPtr)
+        {
+            if (g_models_current.find(modelPtr) != g_models_current.end())
+            {
+                *reinterpret_cast<uint32_t*>(v5 + 0x2C) = *(uint32_t*)0x00CE04C4;
+            }
+        }
+
+        next = *reinterpret_cast<DWORD**>((uintptr_t)next + a1->m_linkoffset + 4);
+    }
+
+    VectorIntersectDoodadDefs(a1, a2);
+}
+
+int __cdecl MiscFixes::World__GetFacetsDetour(int a1, int a2, int a3, int a4) {
+    // Remove M2 camera collisions for object fading
+    return World__GetFacets(a1, a2, a3 & ~1u, a4);
 }
 
 void MiscFixes::UpdateObjectVtable() {
