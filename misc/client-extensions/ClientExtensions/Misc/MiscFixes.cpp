@@ -11,7 +11,6 @@ void MiscFixes::Apply() {
 // Heavily inspired, and partially copied, from
 // https://github.com/someweirdhuman/awesome_wotlk/pull/25
 void MiscFixes::CameraCollisionFade() {
-    g_models_alpha_cvar = CVar_C::Register("modelFadeAlpha", "Alpha value for objects in camera LOS", 1, "0.6", ModelsAlpha_CVarCallback, 5, 0, 0, 0);
     const uintptr_t fnAddress = reinterpret_cast<uintptr_t>(&CGWorldFrame_Intersect);
     Util::OverwriteUInt32AtAddress(0x006060FF, fnAddress - 0x00606103);
 }

@@ -25,6 +25,7 @@ public:
     static constexpr size_t MODEL_ALPHA_OFFSET = 0x17C;
     static constexpr size_t MODEL_PTR_OFFSET = 0x34;
     static constexpr size_t ALPHA_FLAG_OFFSET = 0x2C;
+    static char ModelsAlpha_CVarCallback(CVar* cvar, const char*, const char* value, const char*);
 
 private:
     static void Apply();
@@ -39,7 +40,6 @@ private:
     static void UnpackWoWTime(uint32_t packedTime, int32_t* minute, int32_t* hour, int32_t* weekDay, int32_t* monthDay, int32_t* month, int32_t* year, int32_t* flags);
 
     static char __cdecl CGWorldFrame_Intersect(C3Vector* start, C3Vector* end, C3Vector* hitPoint, float* distance, uint32_t flag, uint32_t buffer);
-    static char ModelsAlpha_CVarCallback(CVar* cvar, const char*, const char* value, const char*);
 
     friend class ClientExtensions;
 
