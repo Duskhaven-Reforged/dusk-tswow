@@ -47,6 +47,7 @@ class TC_GAME_API TSAuraEffect : public TSEntityProvider {
     TSNumber<int32> GetMiscValue();
     TSNumber<uint32> GetAuraType();
     TSNumber<int32> GetAmount();
+    TSNumber<uint32> GetTriggerSpell();
     void SetAmount(int32 amount);
     TSNumber<int32> GetPeriodicTimer();
     void SetPeriodicTimer(int32 periodicTimer);

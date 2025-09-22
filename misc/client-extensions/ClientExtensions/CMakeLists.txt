@@ -19,6 +19,7 @@ target_include_directories(detours PUBLIC ${detours_SOURCE_DIR})
 
 # ClientExtensions
 file(GLOB_RECURSE CLIENT_EXTENSIONS_SOURCES CONFIGURE_DEPENDS "*.cpp" "*.h" "*.lua")
+list(FILTER CLIENT_EXTENSIONS_SOURCES EXCLUDE REGEX ".*/client_header_builder*")
 
 add_library(ClientExtensions SHARED ${CLIENT_EXTENSIONS_SOURCES})
 set_property(TARGET ClientExtensions PROPERTY CXX_STANDARD 17)

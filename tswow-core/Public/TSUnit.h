@@ -276,6 +276,8 @@ public:
     void SetControlled(bool apply, uint32 unitState);
 
     bool HasDispellableAuraOfType(uint32 DispelMask);
+
+    void EnergizeBySpell(TSUnit who, uint32 spellId, int32 amount, uint8 powerType);
 private:
     TSLua::Array<TSUnit> LGetControlled();
     friend class TSLua;

@@ -111,6 +111,13 @@ declare const QuestInfoRequiredMoneyText: WoWAPI.fontString
 declare const QuestInfoGroupSize: WoWAPI.fontString
 declare const QuestInfoDescriptionHeader: WoWAPI.Frame
 
+declare function GetCVar(cvar: string): any
+declare function SetCVar(cvar: string, value: any): void
+declare function GetCVarDefault(cvar: string): any
+declare function BlizzardOptionsPanel_Slider_Enable(frame: WoWAPI.Slider): void
+declare function BlizzardOptionsPanel_RegisterControl(slider: WoWAPI.Frame, parentFrame: WoWAPI.Frame): void
+declare function InterfaceOptionsPanel_OnLoad(frame: WoWAPI.Frame): void
+
 declare class ChargeData {
     SpellId: uint32
     Charges: uint8

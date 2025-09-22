@@ -68,6 +68,11 @@ TSNumber<int32> TSAuraEffect::GetMiscValueB()
     return aura->GetMiscValueB();
 }
 
+TSNumber<uint32> TSAuraEffect::GetTriggerSpell()
+{
+    return aura->GetTriggerSpell();
+}
+
 TSNumber<int32> TSAuraEffect::GetMiscValue()
 {
     return aura->GetMiscValue();

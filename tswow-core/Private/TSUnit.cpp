@@ -2792,3 +2792,8 @@ void TSUnit::SetControlled(bool apply, uint32 unitState) {
 bool TSUnit::HasDispellableAuraOfType(uint32 DispelMask) {
     return unit->HasDispellableAuraOfType(DispelMask);
 }
+
+void TSUnit::EnergizeBySpell(TSUnit who, uint32 spellId, int32 amount, uint8 powerType)
+{
+    return unit->EnergizeBySpell(who.unit, spellId, amount, Powers(powerType));
+}

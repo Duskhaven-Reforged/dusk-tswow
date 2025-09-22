@@ -223,7 +223,9 @@ struct PlayerFields {
     int32_t crThorns;       // crArmorPenetration
     uint32_t padding0x1120[56];
     uint32_t glyphslots[6];
-    uint32_t glyphs[3];
+    float speed;
+    float leech;
+    float avoidance;
     int32_t weaponBonusAP[3];
     uint32_t glyphsEnabled; // can reuse, glyphs are disabled
     int32_t petSpellPower;

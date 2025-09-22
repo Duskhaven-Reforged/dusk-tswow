@@ -3536,6 +3536,7 @@ declare interface TSAuraEffect extends TSEntityProvider {
     ResetPeriodic(): void;
     ResetTicks(): void;
     IsPeriodic(): boolean;
+    GetTriggerSpell(): TSNumber<uint32>
 }
 
 declare interface TSAuraApplication extends TSEntityProvider {
@@ -5265,6 +5266,8 @@ declare interface TSSpell extends TSEntityProvider {
      * Finishes the [Spell].
      */
     Finish() : void
+
+    IsTriggered() : bool
 }
 
 declare interface TSPlayerSpell {
@@ -7675,6 +7678,8 @@ declare interface TSUnit extends TSWorldObject {
 
     GetPPMProcChance(speed: uint32, PPM: float, spell: TSSpellInfo) : float
     SetControlled(apply: bool, unitState: uint32) : void
+
+    EnergizeBySpell(who: TSUnit, spell: uint32, amount: int32, powerType: uint8) : void
 }
 
 declare interface TSItemTemplate extends TSEntityProvider {
@@ -10554,6 +10559,8 @@ declare class TSSpellDamageInfo {
     GetHitInfo(): TSNumber<uint32>
     GetCleanDamage(): TSNumber<uint32>
     GetFullBlock(): bool;
+    GetDamageType(): TSNumber<uint8>
+    GetAttackType(): TSNumber<uint8>
 }
 
 declare interface TSHealInfo {
