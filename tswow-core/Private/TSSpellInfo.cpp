@@ -63,11 +63,6 @@ TSNumber<uint32> TSSpellInfo::GetAttributes()
     return info->Attributes;
 }
 
-TSNumber<uint32> TSSpellInfo::GetAttributesCu()
-{
-    return info->AttributesCu;
-}
-
 TSNumber<uint32> TSSpellInfo::GetAttributesEx()
 {
     return info->AttributesEx;
@@ -101,6 +96,26 @@ TSNumber<uint32> TSSpellInfo::GetAttributesEx6()
 TSNumber<uint32> TSSpellInfo::GetAttributesEx7()
 {
     return info->AttributesEx7;
+}
+
+TSNumber<uint32> TSSpellInfo::GetAttributesCu0()
+{
+    return info->AttributesCu0;
+}
+
+TSNumber<uint32> TSSpellInfo::GetAttributesCu1()
+{
+    return info->AttributesCu1;
+}
+
+TSNumber<uint32> TSSpellInfo::GetAttributesCu2()
+{
+    return info->AttributesCu2;
+}
+
+TSNumber<uint32> TSSpellInfo::GetAttributesCu3()
+{
+    return info->AttributesCu3;
 }
 
 TSNumber<uint32> TSSpellInfo::GetAuraInterruptFlags()

@@ -71,7 +71,6 @@ public:
     TSNumber<uint32> GetActiveIconID();
     TSNumber<uint32> GetAreaGroupID();
     TSNumber<uint32> GetAttributes();
-    TSNumber<uint32> GetAttributesCu();
     TSNumber<uint32> GetAttributesEx();
     TSNumber<uint32> GetAttributesEx2();
     TSNumber<uint32> GetAttributesEx3();
@@ -79,6 +78,12 @@ public:
     TSNumber<uint32> GetAttributesEx5();
     TSNumber<uint32> GetAttributesEx6();
     TSNumber<uint32> GetAttributesEx7();
+
+    TSNumber<uint32> GetAttributesCu0();
+    TSNumber<uint32> GetAttributesCu1();
+    TSNumber<uint32> GetAttributesCu2();
+    TSNumber<uint32> GetAttributesCu3();
+
     TSNumber<uint32> GetAuraInterruptFlags();
     TSNumber<uint32> GetCasterAuraSpell();
     TSNumber<uint32> GetCasterAuraState();

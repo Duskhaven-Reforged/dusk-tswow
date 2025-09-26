@@ -1035,20 +1035,6 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
     GetReputation(faction : uint32) : TSNumber<int32>
 
     /**
-     * Returns [Unit] target combo points are on
-     *
-     * @return [Unit] target
-     */
-    GetComboTarget() : TSUnit | undefined
-
-    /**
-     * Returns [Player]'s combo points
-     *
-     * @return uint8 comboPoints
-     */
-    GetComboPoints() : TSNumber<uint8>;
-
-    /**
      * Returns the amount of time the [Player] has spent ingame
      *
      * @return uint32 inGameTime
@@ -1812,19 +1798,6 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
      * @param bool learnLowRank = true
      */
     RemoveSpell(entry : uint32,disabled : bool,learn_low_rank : bool) : void
-
-    /**
-     * Clears the [Player]s combo points
-     */
-    ClearComboPoints() : void
-
-    /**
-     * Adds combo points to the [Player]
-     *
-     * @param [Unit] target
-     * @param int8 count
-     */
-    AddComboPoints(target : TSUnit,count : int8) : void
 
     /**
      * Gives [Quest] monster talked to credit

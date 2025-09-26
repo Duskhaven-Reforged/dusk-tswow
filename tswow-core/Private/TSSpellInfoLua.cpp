@@ -32,8 +32,8 @@ void TSLua::load_spell_info_methods(sol::state& state)
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetDmgClass);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetActiveIconID);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAreaGroupID);
+
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributes);
-    LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesCu);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesEx);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesEx2);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesEx3);
@@ -41,6 +41,12 @@ void TSLua::load_spell_info_methods(sol::state& state)
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesEx5);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesEx6);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesEx7);
+
+    LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesCu0);
+    LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesCu1);
+    LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesCu2);
+    LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAttributesCu3);
+
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetAuraInterruptFlags);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetCasterAuraSpell);
     LUA_FIELD(ts_spellinfo, TSSpellInfo, GetCasterAuraState);

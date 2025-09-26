@@ -136,8 +136,6 @@ public:
 	TSNumber<uint32> GetFreeInventorySpace();
 	std::string GetGuildName();
 	TSNumber<int32> GetReputation(uint32 faction);
-	TSUnit GetComboTarget();
-	TSNumber<uint8> GetComboPoints();
 	TSNumber<uint32> GetInGameTime();
 	TSNumber<uint32> GetQuestStatus(uint32 entry);
 	bool GetQuestRewardStatus(uint32 questId);
@@ -244,8 +242,6 @@ public:
 	TSNumber<uint32> ResetTalentsCost();
 	void ResetTalents(bool no_cost);
 	void RemoveSpell(uint32 entry, bool disabled, bool learn_low_rank);
-	void ClearComboPoints();
-	void AddComboPoints(TSUnit target, int8 count);
 	void TalkedToCreature(uint32 entry, TSCreature creature);
 	void KilledMonsterCredit(uint32 entry);
 	void GroupEventHappens(uint32 questId, TSWorldObject obj);

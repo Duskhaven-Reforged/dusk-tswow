@@ -93,7 +93,7 @@ export class SpellEffectScalarsCDBCFile extends CDBCFile<
     SpellEffectScalarsCreator,
     SpellEffectScalarsQuery,
     SpellEffectScalarsRow> {
-    protected defaultRow = [1, 2, 0, 0.0, 0.0];
+    protected defaultRow = [1, 2, 0.0, 0.0, 0.0];
 
     constructor() {
         super('SpellEffectScalars',(t,b,o)=> new SpellEffectScalarsRow(t,b,o))

@@ -1,8 +1,8 @@
 #include "SpellTooltipExtensions.h"
+#include "SpellAttrDefines.h"
 #include "Character/CharacterExtensions.h"
 #include "CDBCMgr/CDBCMgr.h"
 #include "CDBCMgr/CDBCDefs/SpellAdditionalCostData.h"
-#include "CDBCMgr/CDBCDefs/SpellAdditionalAttributes.h"
 #include "CDBCMgr/CDBCDefs/SpellEffectScalars.h"
 #include "windows.h"
 #include "Logger.h"
@@ -262,7 +262,7 @@ void TooltipExtensions::SetPowerCostTooltip(char* dest, SpellRow* spell, uint32_
     bool hasPowerCost = (powerCost != 0 || powerCostPerSec != 0);
     char buffer[128];
 
-    if (!customAttributesRow || !(customAttributesRow->customAttr0 & SPELL_ATTR0_CU_DO_NOT_DISPLAY_POWER_COST)) {
+    if (!customAttributesRow || !(customAttributesRow->customAttr2 & SPELL_ATTR2_CU_DO_NOT_DISPLAY_POWER_COST)) {
         if (powerCost && !powerCostPerSec) {
             if (powerDisplayRow) {
                 SStr::Copy(buffer, FrameScript::GetText(powerDisplayRow->m_globalStringBaseTag, -1, 0), 128);
@@ -323,12 +323,9 @@ void TooltipExtensions::SetSpellCooldownTooltip(char* dest, SpellRow* spell, uin
 
     char buffer[128];
     SpellAdditionalAttributesRow* customAttributesRow = GlobalCDBCMap.getRow<SpellAdditionalAttributesRow>("SpellAdditionalAttributes", spell->m_ID);
-    bool treatAsInstant = customAttributesRow && (customAttributesRow->customAttr0 & SPELL_ATTR0_CU_TREAT_AS_INSTANT);
-
-    double castTime = SpellRec_C::GetCastTime(spell, a6, a8, 1);
-
-    if (castTime <= 250 && (customAttributesRow && (customAttributesRow->customAttr0 & SPELL_ATTR0_CU_LOW_TIME_TREAT_AS_INSTANT)))
-        treatAsInstant = true;
+    double castTime     = SpellRec_C::GetCastTime(spell, a6, a8, 1);
+    bool treatAsInstant = castTime <= 250 ? HasAttribute(spell, SPELL_ATTR2_CU_LOW_TIME_TREAT_AS_INSTANT) :
+                                                HasAttribute(spell, SPELL_ATTR2_CU_TREAT_AS_INSTANT);
 
     if (castTime && !treatAsInstant) {
         bool isLongCast = castTime >= MILLISECONDS_IN_MINUTE;

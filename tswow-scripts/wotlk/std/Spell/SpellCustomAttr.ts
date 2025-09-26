@@ -8,8 +8,10 @@ import { Spell } from "./Spell";
 export class SpellCustomAttrSQL extends MaybeSQLEntity<Spell,spell_custom_attrRow> {
     protected createSQL(): spell_custom_attrRow {
         return SQL.spell_custom_attr.add(this.owner.ID)
-            .attributes.set(0)
-            .attributesEx.set(0)
+            .attributes0.set(0)
+            .attributes1.set(0)
+            .attributes2.set(0)
+            .attributes3.set(0)
     }
     protected findSQL(): spell_custom_attrRow {
         return SQL.spell_custom_attr.query({entry:this.owner.ID});
@@ -18,8 +20,10 @@ export class SpellCustomAttrSQL extends MaybeSQLEntity<Spell,spell_custom_attrRo
         return sql.entry.get() === this.owner.ID;
     }
 
-    get Attribute() { return this.wrapSQL(0, (sql)=>sql.attributes); }
-    get AttributeEx() { return this.wrapSQL(0, (sql)=>sql.attributesEx); }
+    get Attribute0() { return this.wrapSQL(0, (sql)=>sql.attributes0); }
+    get Attribute1() { return this.wrapSQL(0, (sql)=>sql.attributes1); }
+    get Attribute2() { return this.wrapSQL(0, (sql)=>sql.attributes2); }
+    get Attribute3() { return this.wrapSQL(0, (sql)=>sql.attributes3); }
 }
 
 export class SpellCustomAttr extends MaskCell<Spell> {
@@ -37,8 +41,10 @@ export class SpellCustomAttr extends MaskCell<Spell> {
 
     protected cells() {
         return [
-            this.sql.Attribute,
-            this.sql.AttributeEx,
+            this.sql.Attribute0,
+            this.sql.Attribute1,
+            this.sql.Attribute2,
+            this.sql.Attribute3,
         ]
     }
 
@@ -118,8 +124,8 @@ export class SpellCustomAttr extends MaskCell<Spell> {
     get IS_TALENT()                     { return this.bit(23); }
     get DONT_RESTART_P_TIMER()          { return this.bit(25); }
     get USE_RANGED_NO_AMMO()            { return this.bit(26); }
+    get BYPASS_MECHANIC_IMMUNITY()      { return this.bit(31); }
 
-    get CANNOT_BE_SAVED()               { return this.bit(31); }
     get REQUIRES_COMBAT()               { return this.bit(32); }
     get NO_ATTACK_BLOCK()               { return this.bit(33); }
     get SCALE_DAMAGE_EFFECTS_ONLY()     { return this.bit(34); }
@@ -135,10 +141,30 @@ export class SpellCustomAttr extends MaskCell<Spell> {
     get REAPPLY_NO_REFRESH_DURATION()   { return this.bit(44); }
     get SPECIAL_DELAY_CALCULATION()     { return this.bit(45); }
     get CAST_TIME_UNAFFECTED_BY_HASTE() { return this.bit(46); }
-    get LOW_CAST_TIME_DONT_INTERRUPT()  { return this.bit(47); }
+    get LOW_CAST_TIME_OK()              { return this.bit(47); }
     get STACKS_DONT_ADDUP()             { return this.bit(48); }
     get PANDEMIC_TIMER()                { return this.bit(49); }
     get MISSILE_SPEED_IS_DELAY_IN_SEC() { return this.bit(50); }
     get ALLOW_DEFENSE_WHILE_CASTING()   { return this.bit(51); }
     get DROP_STACK_ON_EXPIRE()          { return this.bit(52); }
+    get COMBODAMAGE()                   { return this.bit(53); }
+    get COMBODURATION()                 { return this.bit(54); }
+    get UNUSED56()                      { return this.bit(55); }
+    get UNUSED57()                      { return this.bit(56); }
+    get UNUSED58()                      { return this.bit(57); }
+    get UNUSED59()                      { return this.bit(58); }
+    get UNUSED60()                      { return this.bit(59); }
+    get UNUSED61()                      { return this.bit(60); }
+    get UNUSED62()                      { return this.bit(61); }
+    get UNUSED63()                      { return this.bit(62); }
+
+    get TREAT_AS_INSTANT()              { return this.bit(64); }
+    get FORCE_HIDE_CASTBAR()            { return this.bit(65); }
+    get DO_NOT_DISPLAY_POWER_COST()     { return this.bit(66); }
+    get SUPPRESS_LEARN_MSG()            { return this.bit(67); }
+    get SUPPRESS_UNLEARN_MSG()          { return this.bit(68); }
+    get INVERT_CASTBAR()                { return this.bit(69); }
+    get LOW_TIME_TREAT_AS_INSTANT()     { return this.bit(70); }
+    get LOW_TIME_FORCE_HIDE_CASTBAR()   { return this.bit(71); }
+    get LOW_CAST_TIME_DONT_INTERRUPT()  { return this.bit(72); }
 }

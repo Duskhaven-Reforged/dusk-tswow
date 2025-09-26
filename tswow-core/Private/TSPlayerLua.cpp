@@ -108,8 +108,6 @@ void TSLua::load_player_methods(sol::state& state)
     LUA_FIELD(ts_player, TSPlayer, GetGuildRank);
     LUA_FIELD(ts_player, TSPlayer, GetFreeTalentPoints);
     LUA_FIELD(ts_player, TSPlayer, GetReputation);
-    LUA_FIELD(ts_player, TSPlayer, GetComboTarget);
-    LUA_FIELD(ts_player, TSPlayer, GetComboPoints);
     LUA_FIELD(ts_player, TSPlayer, GetInGameTime);
     LUA_FIELD(ts_player, TSPlayer, GetQuestStatus);
     LUA_FIELD(ts_player, TSPlayer, GetQuestRewardStatus);
@@ -210,8 +208,6 @@ void TSLua::load_player_methods(sol::state& state)
     LUA_FIELD(ts_player, TSPlayer, ResetTalentsCost);
     LUA_FIELD(ts_player, TSPlayer, ResetTalents);
     LUA_FIELD(ts_player, TSPlayer, RemoveSpell);
-    LUA_FIELD(ts_player, TSPlayer, ClearComboPoints);
-    LUA_FIELD(ts_player, TSPlayer, AddComboPoints);
     LUA_FIELD(ts_player, TSPlayer, TalkedToCreature);
     LUA_FIELD(ts_player, TSPlayer, KilledMonsterCredit);
     LUA_FIELD(ts_player, TSPlayer, GroupEventHappens);

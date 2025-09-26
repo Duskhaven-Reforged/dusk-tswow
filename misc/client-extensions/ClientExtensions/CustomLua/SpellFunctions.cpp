@@ -1,7 +1,7 @@
 #include "ClientLua.h"
 #include "SharedDefines.h"
+#include "SpellAttrDefines.h"
 #include "CDBCMgr/CDBCMgr.h"
-#include "CDBCMgr/CDBCDefs/SpellAdditionalAttributes.h"
 #include "Logger.h"
 
 LUA_FUNCTION(GetSpellDescription, (lua_State* L)) {
@@ -56,6 +56,21 @@ LUA_FUNCTION(GetSpellIconById, (lua_State* L)) {
     return 1;
 }
 
+LUA_FUNCTION(SpellRequiresComboPoints, (lua_State* L)) {
+    if (ClientLua::IsNumber(L, 1)) {
+        uint32_t spellId = ClientLua::GetNumber(L, 1);
+        SpellRow row;
+
+        if (ClientDB::GetLocalizedRow((void*)0xAD49D0, spellId, &row)) {
+            ClientLua::PushBoolean(L, HasAttribute(&row, SPELL_ATTR1_CU_COMBODAMAGE) || HasAttribute(&row, SPELL_ATTR1_CU_COMBODURATION));
+            return 1;
+        }
+    }
+
+    ClientLua::PushBoolean(L, false);
+    return 1;
+}
+
 LUA_FUNCTION(UnitCustomCastingData, (lua_State* L)) {
     if (!ClientLua::IsString(L, 1))
         ClientLua::DisplayError(L, "Usage: UnitCustomCastingData(\"unit\")", "");
@@ -84,13 +99,13 @@ LUA_FUNCTION(UnitCustomCastingData, (lua_State* L)) {
     double castTime = SpellRec_C::GetCastTime(&buffer, 0, 0, 1);
     SpellAdditionalAttributesRow* customAttributesRow = GlobalCDBCMap.getRow<SpellAdditionalAttributesRow>("SpellAdditionalAttributes", buffer.m_ID);
 
-    if (customAttributesRow && (customAttributesRow->customAttr0 & SPELL_ATTR0_CU_FORCE_HIDE_CASTBAR))
+    if (customAttributesRow && (customAttributesRow->customAttr2 & SPELL_ATTR2_CU_FORCE_HIDE_CASTBAR))
         hideCastbar = true;
 
-    if (castTime <= 250 && (customAttributesRow && (customAttributesRow->customAttr0 & SPELL_ATTR0_CU_LOW_TIME_FORCE_HIDE_CASTBAR)))
+    if (castTime <= 250 && (customAttributesRow && (customAttributesRow->customAttr2 & SPELL_ATTR2_CU_LOW_TIME_FORCE_HIDE_CASTBAR)))
         hideCastbar = true;
 
-    if (customAttributesRow && (customAttributesRow->customAttr0 & SPELL_ATTR0_CU_INVERT_CASTBAR))
+    if (customAttributesRow && (customAttributesRow->customAttr2 & SPELL_ATTR2_CU_INVERT_CASTBAR))
         invertCastbar = true;
 
     ClientLua::PushNumber(L, spellId);

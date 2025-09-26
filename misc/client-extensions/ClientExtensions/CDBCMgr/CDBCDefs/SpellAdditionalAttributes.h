@@ -5,11 +5,17 @@
 struct SpellAdditionalAttributesRow {
     int spellID;
     uint32_t customAttr0;
+    uint32_t customAttr1;
+    uint32_t customAttr2;
+    uint32_t customAttr3;
 
     int handleLuaPush(lua_State* L) {
         ClientLua::PushNumber(L, spellID);
         ClientLua::PushNumber(L, customAttr0);
-        return 2;
+        ClientLua::PushNumber(L, customAttr1);
+        ClientLua::PushNumber(L, customAttr2);
+        ClientLua::PushNumber(L, customAttr3);
+        return 5;
     }
 };
 

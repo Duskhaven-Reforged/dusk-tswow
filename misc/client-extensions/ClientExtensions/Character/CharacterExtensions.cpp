@@ -1,7 +1,7 @@
 #include "CharacterExtensions.h"
 #include "CDBCMgr/CDBCMgr.h"
 #include "CDBCMgr/CDBCDefs/LFGRoles.h"
-#include "CDBCMgr/CDBCDefs/SpellAdditionalAttributes.h"
+#include "SpellAttrDefines.h"
 #include "Logger.h"
 
 void CharacterExtensions::Apply() {
@@ -102,7 +102,7 @@ void CharacterExtensions::OnSpellLearnEx(SpellRow* spellRow, uint32_t* a5) {
     char buffer[512];
     SpellAdditionalAttributesRow* customAttributesRow = GlobalCDBCMap.getRow<SpellAdditionalAttributesRow>("SpellAdditionalAttributes", spellRow->m_ID);
 
-    if (customAttributesRow && ((customAttributesRow->customAttr0 & SPELL_ATTR0_CU_SUPPRESS_LEARN_MSG) != 0))
+    if (HasAttribute(spellRow, SPELL_ATTR2_CU_SUPPRESS_LEARN_MSG))
         displayMsg = false;
     else
         displayMsg = (*a5 != 0);
@@ -127,7 +127,7 @@ void CharacterExtensions::OnSpellUnlearnEx(SpellRow* spellRow, uint32_t* a3) {
     char buffer[512];
     SpellAdditionalAttributesRow* customAttributesRow = GlobalCDBCMap.getRow<SpellAdditionalAttributesRow>("SpellAdditionalAttributes", spellRow->m_ID);
 
-    if (customAttributesRow && ((customAttributesRow->customAttr0 & SPELL_ATTR0_CU_SUPPRESS_UNLEARN_MSG) != 0))
+    if (customAttributesRow && ((customAttributesRow->customAttr2 & SPELL_ATTR2_CU_SUPPRESS_UNLEARN_MSG) != 0))
         displayMsg = false;
     else
         displayMsg = (*a3 == 0);

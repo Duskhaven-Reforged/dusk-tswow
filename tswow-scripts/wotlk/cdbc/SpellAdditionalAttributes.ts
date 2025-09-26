@@ -40,6 +40,9 @@ export class SpellAdditionalAttributesRow extends DBCRow<SpellAdditionalAttribut
      * Resource name, this is what's showing in spell tooltip in cost row
      */
     get CustomAttribute0() { return new DBCUIntCell(this,this.buffer,this.offset+4) }
+    get CustomAttribute1() { return new DBCUIntCell(this,this.buffer,this.offset+8) }
+    get CustomAttribute2() { return new DBCUIntCell(this,this.buffer,this.offset+12) }
+    get CustomAttribute3() { return new DBCUIntCell(this,this.buffer,this.offset+16) }
 
     /**
      * Creates a clone of this row with new primary keys.
@@ -56,6 +59,9 @@ export class SpellAdditionalAttributesRow extends DBCRow<SpellAdditionalAttribut
  */
 export type SpellAdditionalAttributesCreator = {
     CustomAttribute0?: uint
+    CustomAttribute1?: uint
+    CustomAttribute2?: uint
+    CustomAttribute3?: uint
 }
 
 /**
@@ -64,6 +70,9 @@ export type SpellAdditionalAttributesCreator = {
 export type SpellAdditionalAttributesQuery = {
     SpellID? : Relation<int>
     CustomAttribute0? : Relation<uint>
+    CustomAttribute1? : Relation<uint>
+    CustomAttribute2? : Relation<uint>
+    CustomAttribute3? : Relation<uint>
 }
 
 /**
@@ -75,7 +84,7 @@ export class SpellAdditionalAttributesCDBCFile extends CDBCFile<
     SpellAdditionalAttributesCreator,
     SpellAdditionalAttributesQuery,
     SpellAdditionalAttributesRow> {
-    protected defaultRow = [2, 4294967295];
+    protected defaultRow = [2, 4294967295, 4294967295, 4294967295, 4294967295];
 
     constructor() {
         super('SpellAdditionalAttributes',(t,b,o)=> new SpellAdditionalAttributesRow(t,b,o))

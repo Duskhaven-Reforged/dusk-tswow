@@ -1162,30 +1162,6 @@ TSNumber<int32> TSPlayer::GetReputation(uint32 faction)
 }
 
 /**
- * Returns [Unit] target combo points are on
- *
- * @return [Unit] target
- */
-TSUnit  TSPlayer::GetComboTarget()
-{
-#if defined TRINITY
-     return TSUnit(ObjectAccessor::GetUnit(*player,player->GetComboTarget()->GetGUID()));
-#else
-     return TSUnit(player->GetMap()->GetUnit(player->GetComboTargetGuid()));
-#endif
-}
-
-/**
- * Returns [Player]'s combo points
- *
- * @return uint8 comboPoints
- */
-TSNumber<uint8> TSPlayer::GetComboPoints()
-{
-    return player->GetComboPoints();
-}
-
-/**
  * Returns the amount of time the [Player] has spent ingame
  *
  * @return uint32 inGameTime
@@ -2556,27 +2532,6 @@ void TSPlayer::RemoveSpell(uint32 entry,bool disabled,bool learn_low_rank)
 #else
     player->removeSpell(entry, disabled, learn_low_rank);
 #endif
-}
-
-/**
- * Clears the [Player]s combo points
- */
-void TSPlayer::ClearComboPoints()
-{
-    player->ClearComboPoints();
-}
-
-/**
- * Adds combo points to the [Player]
- *
- * @param [Unit] target
- * @param int8 count
- */
-void TSPlayer::AddComboPoints(TSUnit _target,int8 count)
-{
-    auto target = _target.unit;
-
-    player->AddComboPoints(target, count);
 }
 
 /**
