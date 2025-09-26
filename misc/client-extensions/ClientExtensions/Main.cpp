@@ -8,7 +8,7 @@
 #include "ClientExtensions.h"
 #include "scripts.generated.h"
 #include "Clientlua.h"
-
+#include "FrameXMLExtensions.h"
 class Main
 {
 public:
@@ -31,6 +31,8 @@ public:
         LOG_INFO << "Client extensions initialized";
         ClientDetours::Apply();
         LOG_INFO << "Client detours applied";
+        FrameXMLExtensions::Apply();
+        LOG_INFO << "FrameXMLExtensions applied";
     }
 };
 
