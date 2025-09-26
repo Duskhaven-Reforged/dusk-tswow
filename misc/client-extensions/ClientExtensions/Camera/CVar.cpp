@@ -19,8 +19,6 @@ CLIENT_DETOUR(InitializeCVars, 0x00768340, __cdecl, void, (char* file))
 {
     InitializeCVars(file);
 
-    Spells::g_spell_min_clip_distance_percentage_cvar = CVar_C::Register(
-        "spellMinClipDistancePercentage", "Sets the minimum distance the clipping needs to be to activate", 1, "0.0",
-        Spells::SpellMinClipDistancePercentage_CVarCallback, 5, 0, 0, 0);
+    Spells::g_spell_min_clip_distance_percentage_cvar = CVar_C::Register("spellMinClipDistancePercentage", "Sets the minimum distance the clipping needs to be to activate", 1, "0.0", Spells::SpellMinClipDistancePercentage_CVarCallback, 5, 0, 0, 0);
     MiscFixes::g_models_alpha_cvar = CVar_C::Register("modelFadeAlpha", "Alpha value for objects in camera LOS", 1, "0.1", MiscFixes::ModelsAlpha_CVarCallback, 5, 0, 0, 0);
 }
