@@ -22,12 +22,12 @@ void CharacterExtensions::ChangeLFGRoleFunctionPointers() {
 
 void CharacterExtensions::SpellLearnExtension() {
     uint8_t patchBytes[] = {
-        0x8D, 0x4D, 0x0C, 0x8D, 0x85, 0x28, 0xFD, 0xFF, 0xFF, 0x51, 0x50, 0xE8, 0x00, 0x00, 0x00, 0x00,
-        0xEB, 0x5B
+        0x8D, 0x4D, 0x10, 0x51, 0x8D, 0x4D, 0x0C, 0x8D, 0x85, 0x28, 0xFD, 0xFF, 0xFF, 0x51, 0x50, 0xE8,
+        0x00, 0x00, 0x00, 0x00, 0xEB, 0x57
     };
 
     Util::OverwriteBytesAtAddress(0x5427E9, patchBytes, sizeof(patchBytes));
-    Util::OverwriteUInt32AtAddress(0x5427F5, Util::CalculateAddress(reinterpret_cast<uint32_t>(&OnSpellLearnEx), 0x5427F9));
+    Util::OverwriteUInt32AtAddress(0x5427F9, Util::CalculateAddress(reinterpret_cast<uint32_t>(&OnSpellLearnEx), 0x5427FD));
 }
 
 void CharacterExtensions::SpellUnlearnExtension() {
@@ -97,12 +97,12 @@ int CharacterExtensions::Lua_SetLFGRole(lua_State* L) {
     return 0;
 }
 
-void CharacterExtensions::OnSpellLearnEx(SpellRow* spellRow, uint32_t* a5) {
+void CharacterExtensions::OnSpellLearnEx(SpellRow* spellRow, uint32_t* a5, int* a3) {
     bool displayMsg;
     char buffer[512];
     SpellAdditionalAttributesRow* customAttributesRow = GlobalCDBCMap.getRow<SpellAdditionalAttributesRow>("SpellAdditionalAttributes", spellRow->m_ID);
 
-    if (HasAttribute(spellRow, SPELL_ATTR2_CU_SUPPRESS_LEARN_MSG))
+    if (a3 > 0)
         displayMsg = false;
     else
         displayMsg = (*a5 != 0);

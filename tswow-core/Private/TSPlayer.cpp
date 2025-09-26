@@ -2518,23 +2518,6 @@ void TSPlayer::ResetTalents(bool no_cost)
 }
 
 /**
- * Removes the [Spell] from the [Player]
- *
- * @param uint32 entry : entry of a [Spell]
- * @param bool disabled = false
- * @param bool learnLowRank = true
- */
-void TSPlayer::RemoveSpell(uint32 entry,bool disabled,bool learn_low_rank)
-{
-
-#ifdef TRINITY
-    player->RemoveSpell(entry, disabled, learn_low_rank);
-#else
-    player->removeSpell(entry, disabled, learn_low_rank);
-#endif
-}
-
-/**
  * Gives [Quest] monster talked to credit
  *
  * @param uint32 entry : entry of a [Creature]
@@ -3389,14 +3372,35 @@ void TSPlayer::ModifyMoney(int32 amt)
  * Teaches the [Player] the [Spell] specified by entry ID
  *
  * @param uint32 spellId
+ * @param bool dependent
+ * @param uint32 fromskill = 0
+ * @param bool announce = true
  */
-void TSPlayer::LearnSpell(uint32 id)
+void TSPlayer::LearnSpell(uint32 id, bool dependent, uint32 fromSkill /*= 0*/, bool announce /*= true*/)
 {
 
 #ifdef TRINITY
-    player->LearnSpell(id, false);
+    player->LearnSpell(id, dependent, fromSkill, announce);
 #else
-    player->learnSpell(id, false);
+    player->learnSpell(id, dependent, fromSkill, announce);
+#endif
+}
+
+/**
+ * Removes the [Spell] from the [Player]
+ *
+ * @param uint32 entry : entry of a [Spell]
+ * @param bool disabled = false
+ * @param bool learnLowRank = true
+ * @param bool announce = true
+ */
+void TSPlayer::RemoveSpell(uint32 entry, bool disabled, bool learn_low_rank, bool announce)
+{
+
+#ifdef TRINITY
+    player->RemoveSpell(entry, disabled, learn_low_rank, announce);
+#else
+    player->removeSpell(entry, disabled, learn_low_rank, announce);
 #endif
 }
 

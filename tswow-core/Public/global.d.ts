@@ -1791,15 +1791,6 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
     ResetTalents(no_cost : bool) : void
 
     /**
-     * Removes the [Spell] from the [Player]
-     *
-     * @param uint32 entry : entry of a [Spell]
-     * @param bool disabled = false
-     * @param bool learnLowRank = true
-     */
-    RemoveSpell(entry : uint32,disabled : bool,learn_low_rank : bool) : void
-
-    /**
      * Gives [Quest] monster talked to credit
      *
      * @param uint32 entry : entry of a [Creature]
@@ -2112,7 +2103,16 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
      *
      * @param uint32 spellId
      */
-    LearnSpell(id : uint32) : void
+    LearnSpell(id : uint32, dependent: bool, fromskill: uint32, announce: bool) : void
+
+    /**
+     * Removes the [Spell] from the [Player]
+     *
+     * @param uint32 entry : entry of a [Spell]
+     * @param bool disabled = false
+     * @param bool learnLowRank = true
+     */
+    RemoveSpell(id : uint32, disabled : bool, learn_low_rank : bool, announce: bool) : void
 
     /**
      * Learn the [Player] the talent specified by talent_id and talentRank

@@ -241,7 +241,6 @@ public:
 	void RemoveFromGroup();
 	TSNumber<uint32> ResetTalentsCost();
 	void ResetTalents(bool no_cost);
-	void RemoveSpell(uint32 entry, bool disabled, bool learn_low_rank);
 	void TalkedToCreature(uint32 entry, TSCreature creature);
 	void KilledMonsterCredit(uint32 entry);
 	void GroupEventHappens(uint32 questId, TSWorldObject obj);
@@ -287,7 +286,8 @@ public:
 	void SendAddonMessage(std::string const& prefix, std::string const& message, uint8 channel, TSPlayer receiver);
 	void KickPlayer();
 	void ModifyMoney(int32 amt);
-	void LearnSpell(uint32 id);
+	void LearnSpell(uint32 id, bool dependent = false, uint32 fromSkill = 0, bool announce = true);
+	void RemoveSpell(uint32 id, bool disabled = false, bool learn_low_rank = true, bool announce = true);
 	void LearnTalent(uint32 id, uint32 rank);
 	void LearnClassSpells(bool trainer, bool quests, bool limitQuestsByLevel = false);
 	void ResurrectPlayer(float percent, bool sickness);
