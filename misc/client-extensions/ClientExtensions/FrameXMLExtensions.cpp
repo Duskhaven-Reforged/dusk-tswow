@@ -19,14 +19,10 @@ void FrameXMLExtensions::Apply() {
 }
 
 void FrameXMLExtensions::EmitEvent(const char* str) {
-    LOG_DEBUG << "pre-id";
     int id = FrameXMLExtensions::GetEventIdByName(str);
-    LOG_DEBUG << id;
-
     ClientLua::PushString(ClientLua::State(), str);
     FireEvent_inner(id, ClientLua::State(), 1);
     ClientLua::SetTop(ClientLua::State(), -2);
-    LOG_DEBUG << "post-submit";
 }
 
 LUA_FUNCTION(EmitFrameEventByName, (lua_State* L)) {
@@ -39,9 +35,7 @@ int FrameXMLExtensions::GetEventIdByName(const char* eventName)
     EventList* eventList = GetEventList();
     if (eventList->size == 0)
         return -1;
-    LOG_DEBUG << eventList->size;
 
-    uint32_t hash = RCString_C::hash(eventName);
     for (size_t i = 0; i < eventList->size; i++) {
         Event* event = eventList->buf[i];
         if(event && event->name)
@@ -50,12 +44,6 @@ int FrameXMLExtensions::GetEventIdByName(const char* eventName)
             return i;
     }
     return -1;
-}
-
-namespace RCString_C {
-    inline uint32_t __stdcall hash(const char* str) {
-        return ((decltype(&hash))0x0076F640)(str);
-    }
 }
 
 CLIENT_DETOUR(FrameScript_FillEvents, 0x0081B5F0, __cdecl, void, (const char** list, size_t count)) {
