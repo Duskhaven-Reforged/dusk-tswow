@@ -35,6 +35,7 @@ class TSWorldObject;
 class TSWorldPacket;
 class TSPlayer;
 class TSCustomCache;
+class TSDynObj;
 
 class Area;
 class Weather;
@@ -59,3 +60,4 @@ class Vehicle;
 class WorldObject;
 class WorldPacket;
 class Channel;
+class DynamicObject;

@@ -191,7 +191,7 @@ export class Spell extends MainEntityID<SpellRow> {
 
     get ShapeshiftMask() { return new IncludeExcludeMask(this,
         new MaskCell64(this,this.row.ShapeshiftMask),
-        new MaskCell64(this,this.row.ShapeshiftMask),
+        new MaskCell64(this,this.row.ShapeshiftExclude),
     )}
 
     get Levels() { return new SpellLevels(this); }

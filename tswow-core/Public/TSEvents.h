@@ -382,6 +382,7 @@ struct TSEvents
         EVENT(OnCustomScriptedCritMod, TSPlayer Caster, TSUnit Against, TSSpellInfo SpellInfo, TSMutableNumber<float> CritChance)
         EVENT(OnCustomScriptedHealMod, TSPlayer caster, TSUnit Against, TSSpellInfo SpellInfo, TSMutableNumber<float> DoneTotalMod)
         EVENT(OnPowerSpent, TSPlayer Caster, TSNumber<uint8> PowerType, TSNumber<int32> PowerCost)
+        EVENT(OnComboPointsSpent, TSPlayer Caster, TSNumber<int32> Cost)
         EVENT(OnEnchantTriggered, TSPlayer player, TSUnit target, TSItem item, TSSpellInfo spellInfo)
         EVENT(OnCustomScriptedCritDamageMod, TSPlayer Caster, TSUnit Against, TSSpellInfo SpellInfo, TSMutableNumber<float> CritDamMod)
         EVENT(OnCustomScriptedCritHealingMod, TSPlayer Caster, TSUnit Against, TSSpellInfo SpellInfo, TSMutableNumber<float> CritDamMod)
@@ -625,6 +626,7 @@ struct TSEvents
         ID_EVENT(OnAfterCast, TSSpell, TSMutable<bool,bool> cancelDefault)
         ID_EVENT(OnAfterHit, TSSpell, TSMutable<bool,bool> cancelDefault)
         ID_EVENT(OnBeforeCast, TSSpell, TSMutable<bool,bool> cancelDefault)
+        ID_EVENT(OnPrepared, TSSpell, bool)
         ID_EVENT(OnBeforeHit, TSSpell, TSNumber<uint32>, TSMutable<bool,bool> cancelDefault)
         ID_EVENT(OnDestinationTargetSelect, TSSpell, TSSpellDestination, TSNumber<uint32> index, TSSpellImplicitTargetInfo, TSMutable<bool,bool> cancelDefault)
         ID_EVENT(OnObjectAreaTargetSelect, TSSpell, TSWorldObjectCollection, TSNumber<uint32> index, TSSpellImplicitTargetInfo, TSMutable<bool,bool> cancelDefault)
@@ -638,13 +640,16 @@ struct TSEvents
         ID_EVENT(OnSuccessfulInterrupt, TSUnit caster, TSUnit who, TSSpell spell)
         ID_EVENT(OnCalcSpellDuration, TSSpellInfo Info, TSPlayer Player, TSMutableNumber<int32> Dur)
         ID_EVENT(OnJumpStart, TSSpellInfo, TSUnit, TSMutableNumber<float>, TSMutableNumber<float>, TSNumber<float>, TSNumber<float>, TSNumber<float>, TSNumber<float>)
-        ID_EVENT(OnPersistentAARemoved, TSUnit, TSSpellDestination)
         ID_EVENT(OnCastCancelled, TSUnit, TSUnit, TSSpell, TSNumber<int32>, TSNumber<int32>)
         ID_EVENT(OnSpellCastFinished, TSSpell, TSUnit, TSNumber<uint32>)
         ID_EVENT(CanMoveWhileChanneling, TSSpell, TSUnit, TSMutable<bool, bool>)
         ID_EVENT(OnCheckGCDCategory, TSSpell, TSMutableNumber<uint32>)
         ID_EVENT(OnEnergizeBySpell, TSUnit, TSSpellInfo, TSNumber<uint8>, TSMutableNumber<int32>)
         ID_EVENT(OnCooldownFinished, TSUnit, TSSpellInfo, TSNumber<uint32>, TSNumber<uint32>)
+
+        /* Dynamic Objects (Persistent Area Auras)*/
+        ID_EVENT(OnDynObjectRemove, TSUnit, TSSpellDestination)
+        ID_EVENT(OnPAARemoved, TSUnit, TSUnit, TSDynObj)
     } Spell;
 
     struct CreatureEvents : public TSMappedEventsRegistry

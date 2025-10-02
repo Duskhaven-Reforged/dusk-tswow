@@ -6103,6 +6103,11 @@ declare class TSObject extends TSEntityProvider {
     ToItem(): TSItem | undefined
 }
 
+
+declare interface TSUnit extends TSWorldObject {
+    IsNull() : bool
+}
+
 declare interface TSUnit extends TSWorldObject {
     IsNull() : bool
     GetResistance(school: uint32): TSNumber<uint32>
@@ -8374,6 +8379,7 @@ declare namespace _hidden {
         OnCustomScriptedCritHealingMod(callback: (Caster: TSPlayer, Against: TSUnit, SpellInfo: TSSpellInfo, CritDamageMod: TSMutableNumber<float>) => void);
         
         OnPowerSpent(callback: (Caster: TSPlayer, PowerType: TSNumber<uint8>, PowerCost: TSNumber<int32>) => void);
+        OnComboPointsSpent(callback: (Caster: TSPlayer, PowerCost: TSNumber<int32>) => void);
         OnEnchantTriggered(callback: (Caster: TSPlayer, On: TSUnit, Item: TSItem, Spell: TSSpellInfo) => void);
 
         OnUpdateSpellHealing(callback: (player: TSPlayer, healingPower: TSMutableNumber<int32>) => void)
@@ -8706,6 +8712,9 @@ declare namespace _hidden {
         OnBeforeCast(callback: (spell: TSSpell, cancel: TSMutable<boolean,boolean> )=>void)
         OnBeforeCast(id: EventID, callback: (spell: TSSpell, cancel: TSMutable<boolean,boolean> )=>void)
 
+        OnPrepared(callback: (spell: TSSpell, stealthed: bool)=>void)
+        OnPrepared(id: EventID, callback: (spell: TSSpell, stealthed: bool)=>void)
+
         OnBeforeHit(callback: (spell: TSSpell, miss: SpellMissInfo, cancel: TSMutable<boolean,boolean> )=>void)
         OnBeforeHit(id: EventID, callback: (spell: TSSpell, miss: SpellMissInfo, cancel: TSMutable<boolean,boolean> )=>void)
 
@@ -8729,9 +8738,6 @@ declare namespace _hidden {
 
         OnHeal(callback: (Me: TSUnit, Target: TSUnit, Amount: TSMutableNumber<uint32>) => void) : T;
         OnHeal(id: EventID, callback: (Me: TSUnit, Target: TSUnit, Amount: TSMutableNumber<uint32>) => void) : T;
-
-        OnPersistentAARemoved(callback: (Caster: TSUnit, Dest: TSSpellDestination) => void) : T;
-        OnPersistentAARemoved(id: EventID, callback: (Caster: TSUnit, Dest: TSSpellDestination) => void) : T;
 
         OnJumpStart(callback: (info: TSSpellInfo, caster: TSUnit, speedXY: TSMutableNumber<float>, SpeedZ: TSMutableNumber<float>, Dist: TSNumber<float>, PosX: TSNumber<float>, PosY: TSNumber<float>, PosZ: TSNumber<float>) => void) : T;
         OnJumpStart(id: EventID, callback: (info: TSSpellInfo, caster: TSUnit, speedXY: TSMutableNumber<float>, SpeedZ: TSMutableNumber<float>, Dist: TSNumber<float>, PosX: TSNumber<float>, PosY: TSNumber<float>, PosZ: TSNumber<float>) => void) : T;
@@ -8765,6 +8771,11 @@ declare namespace _hidden {
     
         OnCooldownFinished(callback: (who: TSUnit, spell: TSSpellInfo, categoryID: TSNumber<uint32>, itemID: TSNumber<uint32>) => void) : T;
         OnCooldownFinished(id: EventID, callback: (who: TSUnit, spell: TSSpellInfo, categoryID: TSNumber<uint32>, itemID: TSNumber<uint32>) => void) : T;
+    
+        OnDynObjectRemove(callback: (Caster: TSUnit, Dest: TSSpellDestination) => void) : T;
+        OnDynObjectRemove(id: EventID, callback: (Caster: TSUnit, Dest: TSSpellDestination) => void) : T;
+        OnPAARemoved(callback: (from: TSUnit, caster: TSUnit, PAA: TSDynObj) => void) : T;
+        OnPAARemoved(id: EventID, callback: (from: TSUnit, caster: TSUnit, PAA: TSDynObj) => void) : T;
     }
 
     export class Creature<T> {

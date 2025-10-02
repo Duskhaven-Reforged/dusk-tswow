@@ -165,6 +165,7 @@ void TSLua::load_events(sol::state& state)
     LUA_HANDLE(player_events, PlayerEvents, OnLossOfControl);
     LUA_HANDLE(player_events, PlayerEvents, OnControlRegained);
     LUA_HANDLE(player_events, PlayerEvents, IsCriticalBlock);
+    LUA_HANDLE(player_events, PlayerEvents, OnComboPointsSpent);
 
     auto account_events = state.new_usertype<TSEvents::AccountEvents>("AccountEvents");
     LUA_HANDLE(account_events, AccountEvents, OnAccountLogin);
@@ -278,7 +279,6 @@ void TSLua::load_events(sol::state& state)
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnObjectTargetSelect);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnOnResistAbsorbCalculate);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnHeal);
-    LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnPersistentAARemoved);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnCustomMechanicMaskDamage);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnSuccessfulInterrupt);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnCalcSpellDuration);
@@ -289,12 +289,16 @@ void TSLua::load_events(sol::state& state)
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, CanMoveWhileChanneling);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnCheckGCDCategory);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnEnergizeBySpell);
+    LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnPrepared);
 
     LUA_HANDLE(spell_events, SpellEvents, OnLearn);
     LUA_HANDLE(spell_events, SpellEvents, OnUnlearn);
     LUA_HANDLE(spell_events, SpellEvents, OnAuraRemoved);
     LUA_HANDLE(spell_events, SpellEvents, OnSuccessfulDispel);
     LUA_HANDLE(spell_events, SpellEvents, OnCooldownFinished);
+
+    LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnDynObjectRemove);
+    LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnPAARemoved);
 
     auto creature_events = state.new_usertype<TSEvents::CreatureEvents>("CreatureEvents");
     LUA_MAPPED_HANDLE(creature_events, CreatureEvents, OnMoveInLOS);
