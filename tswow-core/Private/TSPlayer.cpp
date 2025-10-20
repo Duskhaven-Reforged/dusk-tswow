@@ -1131,16 +1131,6 @@ TSNumber<uint32> TSPlayer::GetGuildRank()
 }
 
 /**
- * Returns the [Player]s free talent point amount
- *
- * @return uint32 freeTalentPointAmt
- */
-TSNumber<uint32> TSPlayer::GetFreeTalentPoints()
-{
-    return player->GetFreeTalentPoints();
-}
-
-/**
  * Returns the name of the [Player]s current [Guild]
  *
  * @return string guildName
@@ -1670,20 +1660,6 @@ void TSPlayer::SetGuildRank(uint8 rank)
 
 
     player->SetRank(rank);
-}
-
-/**
- * Sets the [Player]s free talent points to the amount specified for the current spec
- *
- * @param uint32 talentPointAmt
- */
-void TSPlayer::SetFreeTalentPoints(uint32 points)
-{
-
-    player->SetFreeTalentPoints(points);
-#if (!defined(TBC) && !defined(CLASSIC))
-    player->SendTalentsInfoData(false);
-#endif
 }
 
 /**
@@ -4263,4 +4239,9 @@ void TSPlayer::SetRuneCooldown(uint8 index, uint32 cooldown, bool casted)
 void TSPlayer::ResyncRunes()
 {
     player->ResyncRunes();
+}
+
+bool TSPlayer::IsMaxLevel() const
+{
+    return player->IsMaxLevel();
 }

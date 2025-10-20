@@ -438,6 +438,7 @@ struct TSEvents
         EVENT(OnControlRegained, TSPlayer)
 
         EVENT(IsCriticalBlock, TSPlayer, TSMutable<bool,bool>, bool)
+        EVENT(CompletedQuestAtMaxLevel, TSQuest quest, TSPlayer player)
     } Player;
 
     struct AccountEvents

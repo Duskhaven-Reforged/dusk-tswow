@@ -1013,13 +1013,6 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
     GetGuildRank() : TSNumber<uint32>
 
     /**
-     * Returns the [Player]s free talent point amount
-     *
-     * @return uint32 freeTalentPointAmt
-     */
-    GetFreeTalentPoints() : TSNumber<uint32>
-
-    /**
      * Returns the name of the [Player]s current [Guild]
      *
      * @return string guildName
@@ -1369,13 +1362,6 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
      * @param uint8 rank
      */
     SetGuildRank(rank : uint8) : void
-
-    /**
-     * Sets the [Player]s free talent points to the amount specified for the current spec
-     *
-     * @param uint32 talentPointAmt
-     */
-    SetFreeTalentPoints(points : uint32) : void
 
     /**
      * Sets the [Player]s reputation amount for the faction specified
@@ -2313,6 +2299,7 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
     ConvertRune(index: uint8, runeType: uint8): void;
     SetRuneCooldown(index: uint8, cooldown: uint32, casted: bool): void;
     ResyncRunes(): void;
+    IsMaxlevel(): bool;
 }
 
 declare interface TSCorpse extends TSWorldObject {
@@ -8429,6 +8416,8 @@ declare namespace _hidden {
         OnControlRegained(callback: (who: TSPLayer) => void)
 
         IsCriticalBlock(callback: (Player: TSPlayer, IsCritical: TSMutable<boolean,boolean>, IsSpell: boolean) => void)
+
+        CompletedQuestAtMaxLevel(callback: (Quest: TSQuest, Player: TSPlayer) => void);
     }
 
     export class Account<T> {

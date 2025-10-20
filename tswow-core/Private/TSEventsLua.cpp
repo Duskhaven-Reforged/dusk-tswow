@@ -166,6 +166,7 @@ void TSLua::load_events(sol::state& state)
     LUA_HANDLE(player_events, PlayerEvents, OnControlRegained);
     LUA_HANDLE(player_events, PlayerEvents, IsCriticalBlock);
     LUA_HANDLE(player_events, PlayerEvents, OnComboPointsSpent);
+    LUA_HANDLE(player_events, PlayerEvents, CompletedQuestAtMaxLevel);
 
     auto account_events = state.new_usertype<TSEvents::AccountEvents>("AccountEvents");
     LUA_HANDLE(account_events, AccountEvents, OnAccountLogin);

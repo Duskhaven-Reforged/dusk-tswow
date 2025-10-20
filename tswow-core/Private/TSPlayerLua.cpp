@@ -106,7 +106,6 @@ void TSLua::load_player_methods(sol::state& state)
     LUA_FIELD(ts_player, TSPlayer, GetRatingMultiplier);
     LUA_FIELD(ts_player, TSPlayer, GetDifficulty);
     LUA_FIELD(ts_player, TSPlayer, GetGuildRank);
-    LUA_FIELD(ts_player, TSPlayer, GetFreeTalentPoints);
     LUA_FIELD(ts_player, TSPlayer, GetReputation);
     LUA_FIELD(ts_player, TSPlayer, GetInGameTime);
     LUA_FIELD(ts_player, TSPlayer, GetQuestStatus);
@@ -148,7 +147,6 @@ void TSLua::load_player_methods(sol::state& state)
     LUA_FIELD(ts_player, TSPlayer, SetFactionForRace);
     LUA_FIELD(ts_player, TSPlayer, SetSkill);
     LUA_FIELD(ts_player, TSPlayer, SetGuildRank);
-    LUA_FIELD(ts_player, TSPlayer, SetFreeTalentPoints);
     LUA_FIELD(ts_player, TSPlayer, SetReputation);
     LUA_FIELD(ts_player, TSPlayer, SetQuestStatus);
     LUA_FIELD(ts_player, TSPlayer, SetRestBonus);

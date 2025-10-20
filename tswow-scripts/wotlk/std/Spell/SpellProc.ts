@@ -55,7 +55,6 @@ export enum SpellAttributesMask {
     USE_STACKS_FOR_CHARGES   = 0x10,
     REDUCE_PROC60            = 0x80,
     CANT_PROC_FROM_ITEM_CAST = 0x100,
-
 }
 
 export enum SpellHitMask {

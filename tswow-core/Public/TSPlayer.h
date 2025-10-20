@@ -129,7 +129,6 @@ public:
 	TSNumber<float> GetRatingMultiplier(uint32 cr);
 	TSNumber<int32> GetDifficulty(bool isRaid);
 	TSNumber<uint32> GetGuildRank();
-	TSNumber<uint32> GetFreeTalentPoints();
 	TSNumber<uint32> GetTalentPointsInTree(uint32 tabId);
 	TSNumber<uint32> GetQuestRewardTempTalentPoints();
 	TSNumber<uint32> GetQuestRewardPermTalentPoints();
@@ -180,7 +179,6 @@ public:
 	void SetFactionForRace(uint8 race);
 	void SetSkill(uint16 id, uint16 step, uint16 currVal, uint16 maxVal);
 	void SetGuildRank(uint8 rank);
-	void SetFreeTalentPoints(uint32 points);
 	void SetReputation(uint32 faction, int32 value);
 	void SetQuestStatus(uint32 entry, uint32 status);
 	void SetRestBonus(float bonus);
@@ -380,6 +378,7 @@ public:
 	void SetRuneCooldown(uint8 index, uint32 cooldown, bool casted);
 	void ResyncRunes();
 
+	bool IsMaxLevel() const;
 private:
 		TSLua::Dictionary<TSNumber<uint32>, TSPlayerSpell> LGetSpellMap();
 		TSItem LGetItemByGUID0(TSGUID guid);

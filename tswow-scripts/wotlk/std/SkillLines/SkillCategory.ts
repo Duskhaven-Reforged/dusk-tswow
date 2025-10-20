@@ -8,4 +8,5 @@ export enum SkillCategory {
     LANGUAGE   = 10,
     PROFESSION = 11,
     GENERIC    = 12,
+    GATHERING  = 13,
 }
