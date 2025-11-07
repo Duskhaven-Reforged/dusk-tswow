@@ -468,12 +468,9 @@ export class ItemTemplate extends MainEntityID<item_templateRow> {
     fixDPS() : ItemTemplate {
         if (this.IsWeapon()) {
             let iLvl = this.ItemLevel.get()
-            let DPS = this.Is2hWeapon() ? iLvl*.85 : this.Class.getSubclass() == 19 ? iLvl * 1.3 : iLvl * .66
-            if (iLvl > 51 ) {
-                DPS = 44.85*(1.30**((iLvl-52)/30))
-                if (this.Quality.get() < 2)
-                    DPS /= 2
-            }
+            let DPS = this.Is2hWeapon() ? .85*iLvl : this.Class.getSubclass() == 19 ? iLvl : iLvl * .56
+            if (this.Quality.get() < 2)
+                DPS /= 2
 
 
             if (this.MainStat == Stat.INTELLECT) {
@@ -508,8 +505,8 @@ export class ItemTemplate extends MainEntityID<item_templateRow> {
         const SecondaryMod = isJewelry ? 1.75 : isTrinket ? .666 : .7
         
         // What the item should look like at ilvl 52
-        const BudgetForIlvl = SlotMod * (iLvl > 51 ? 32*(1.24**((iLvl-52)/30))/.7 : 130*(1.24**(iLvl/30)-1));
-        const SecondaryBudget = SlotMod * (iLvl > 51 ? 59*(1.15**((iLvl-52)/30))/.7 : 130*(1.15**(iLvl/30)-1));
+        const BudgetForIlvl = SlotMod * (iLvl > 65 ? 32*(1.24**((iLvl-52)/30))/.7 : .625*iLvl-1.15);
+        const SecondaryBudget = SlotMod * (iLvl > 65 ? 54*(1.15**((iLvl-52)/30))/.7 : 2*iLvl);
 
         const Q = this.Quality.get()
         let QualMod = 1.0
@@ -572,7 +569,6 @@ export class ItemTemplate extends MainEntityID<item_templateRow> {
                     return 9/16
                 case (ItemInventoryType.OFFHAND):
                 case (ItemInventoryType.SHIELD):
-                case ItemInventoryType.MAINHAND:
                 case (ItemInventoryType.THROWN): 
                     return 1/2
                 case (ItemInventoryType.RANGED): 

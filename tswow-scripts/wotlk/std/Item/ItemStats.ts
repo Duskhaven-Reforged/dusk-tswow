@@ -82,7 +82,7 @@ export enum Stat
     CRIT_TAKEN_RATING        = 34,
     RESILIENCE_RATING        = 35,
     HASTE_RATING             = 36,
-    EXPERTISE_RATING         = 37,
+    MASTERY_RATING           = 37,
     ATTACK_POWER             = 38,
     RANGED_ATTACK_POWER      = 39,
     //FERAL_ATTACK_POWER       = 40, not in 3.3
@@ -203,7 +203,7 @@ export class ItemStats extends ArraySystem<ItemStat,ItemTemplate> {
 
     addHasteRating(value: number) { return this.add(Stat.HASTE_RATING, value)}
 
-    addExpertiseRating(value: number) { return this.add(Stat.EXPERTISE_RATING, value)}
+    addMasteryRating(value: number) { return this.add(Stat.MASTERY_RATING, value)}
 
     addAttackPower(value: number) { return this.add(Stat.ATTACK_POWER, value)}
 
