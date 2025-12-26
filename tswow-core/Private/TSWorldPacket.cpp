@@ -39,11 +39,10 @@ TSWorldPacket::TSWorldPacket(uint16 opcode, uint32 res)
 
 TSWorldPacket::~TSWorldPacket()
 {
-    if(this->owner)
+    if(this->owner && this->packet != nullptr)
     {
-        // TODO: why does this segfault? I'm just leaving it like this
-        // because that looks like what eluna is doing.
-        //delete this->packet;
+        delete this->packet;
+        this->packet = nullptr;
     }
 }
 

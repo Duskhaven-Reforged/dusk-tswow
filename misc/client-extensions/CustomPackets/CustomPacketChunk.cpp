@@ -1,11 +1,18 @@
 #include "CustomPacketChunk.h"
 
 #include <string>
+#include <cstring>
 
 CustomPacketChunk::CustomPacketChunk(CustomPacketChunk const& other)
     : m_size(other.m_size)
-    , m_chunk(other.m_chunk)
-{}
+    , m_chunk(nullptr)
+{
+    if (other.m_chunk != nullptr && other.m_size > 0)
+    {
+        m_chunk = new char[other.FullSize()];
+        memcpy(m_chunk, other.m_chunk, other.FullSize());
+    }
+}
 
 CustomPacketChunk::CustomPacketChunk(chunkSize_t size, char* chunk)
     : m_size(size)

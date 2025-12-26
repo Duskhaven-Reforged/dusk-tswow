@@ -3,6 +3,7 @@ import { loc_constructor } from "../../../data/primitives";
 import { SkillLineRow } from "../../dbc/SkillLine";
 import { DBC } from "../../DBCFiles";
 import { SQL } from "../../SQLFiles";
+import { ItemTemplate, ItemTemplateRegistry } from "../Item/ItemTemplate";
 import { MainEntity } from "../Misc/Entity";
 import { Ids } from "../Misc/Ids";
 import { SelfRef } from "../Refs/Ref";
@@ -166,6 +167,115 @@ export class Profession extends MainEntity<SkillLineRow> {
             , reqSkillValue
             , index == 0 ? [] : [this.Ranks.get(resolveProfessionRank(index)-1).ProfessionSpell().ID]
             )
+        return this;
+    }
+
+    /**
+     * Calculate trivial skill levels based on item level (placeholder implementation)
+     * @param itemLevel The item level of the crafted item
+     * @returns Object with yellow and gray skill levels
+     */
+    static calculateTrivialLevels(itemLevel: number): {yellow: number, gray: number} {
+        if (itemLevel <= 20) {
+            return { yellow: 25, gray: 50 };
+        } else if (itemLevel <= 40) {
+            return { yellow: 75, gray: 150 };
+        } else if (itemLevel <= 60) {
+            return { yellow: 150, gray: 300 };
+        } else if (itemLevel <= 80) {
+            return { yellow: 225, gray: 450 };
+        } else {
+            return { yellow: 300, gray: 600 };
+        }
+    }
+
+    /**
+     * Helper function to easily add a recipe to a profession
+     * @param mod Mod identifier for the recipe spell
+     * @param id Unique identifier for the recipe spell
+     * @param outputItem The ItemTemplate of the item created by this recipe
+     * @param reagents Array of reagent tuples: [ItemTemplate | number, count]
+     * @param options Optional configuration for the recipe
+     * @returns this for method chaining
+     */
+    addRecipe(
+        mod: string,
+        id: string,
+        outputItem: ItemTemplate,
+        reagents: Array<[ItemTemplate | number, number]>,
+        options?: {
+            outputCount?: number,
+            castTime?: number,
+            trivialYellow?: number,
+            trivialGray?: number,
+            spellFocus?: number,
+            totems?: [number, number],
+            learnOnRank?: ProfessionTier
+        }
+    ): this {
+        // Calculate cast time from reagent count (1.5s per reagent entry)
+        const reagentCount = reagents.length;
+        const calculatedCastTime = reagentCount * 1500;
+        const castTime = options?.castTime ?? calculatedCastTime;
+
+        // Get item level and calculate trivial levels
+        const itemLevel = outputItem.ItemLevel.get();
+        const trivialLevels = Profession.calculateTrivialLevels(itemLevel);
+        const yellow = options?.trivialYellow ?? trivialLevels.yellow;
+        const gray = options?.trivialGray ?? trivialLevels.gray;
+
+        // Default output count is 1
+        const outputCount = options?.outputCount ?? 1;
+
+        this.Recipes.addMod(mod, id, (R) => {
+            // Set output item
+            R.OutputItem.set(outputItem.ID);
+            
+            // Set output count
+            // Note: ShiftedNumberCell handles conversion based on DieSides value
+            // If DieSides > 0, it stores as (count - 1), otherwise stores as-is
+            // For count > 1, we set DieSides to 1 to enable the shifted behavior
+            if (outputCount > 1) {
+                R.AsSpell().Effects.mod(0, eff => eff.PointsDieSides.set(1));
+                R.OutputCount.set(outputCount - 1);
+            } else {
+                // For count = 1, we can leave DieSides at 0 and set BasePoints to 1
+                // or set DieSides to 1 and BasePoints to 0. We'll use the latter for consistency.
+                R.AsSpell().Effects.mod(0, eff => eff.PointsDieSides.set(1));
+                R.OutputCount.set(0);
+            }
+            
+            // Add reagents
+            for (const [item, count] of reagents) {
+                const itemId = typeof item === 'number' ? item : item.ID;
+                R.Reagents.add(itemId, count);
+            }
+            
+            // Set cast time
+            R.CastTime.setSimple(castTime, 0, castTime);
+            
+            // Set trivial skill levels
+            R.Ranks.set(yellow, gray);
+            
+            // Optional: Set spell focus
+            if (options?.spellFocus !== undefined) {
+                R.SpellFocus.set(options.spellFocus);
+            }
+            
+            // Optional: Set totems
+            if (options?.totems !== undefined) {
+                R.Totems.set(0, options.totems[0]);
+                if (options.totems[1] !== undefined && options.totems[1] !== 0) {
+                    R.Totems.set(1, options.totems[1]);
+                }
+            }
+            
+            // Optional: Auto-learn at profession rank
+            if (options?.learnOnRank !== undefined) {
+                R.LearnOnRank(options.learnOnRank);
+            }
+        });
+
         return this;
     }
 }
