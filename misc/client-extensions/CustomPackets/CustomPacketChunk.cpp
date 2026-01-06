@@ -9,8 +9,8 @@ CustomPacketChunk::CustomPacketChunk(CustomPacketChunk const& other)
 {
     if (other.m_chunk != nullptr && other.m_size > 0)
     {
-        m_chunk = new char[other.FullSize()];
-        memcpy(m_chunk, other.m_chunk, other.FullSize());
+        m_chunk = new char[const_cast<CustomPacketChunk&>(other).FullSize()];
+        memcpy(m_chunk, other.m_chunk, const_cast<CustomPacketChunk&>(other).FullSize());
     }
 }
 
