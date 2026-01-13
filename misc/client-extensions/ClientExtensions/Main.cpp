@@ -34,8 +34,6 @@ public:
         LOG_INFO << "Client detours applied";
         FrameXMLExtensions::Apply();
         LOG_INFO << "FrameXMLExtensions applied";
-        IPCTest::attemptConnect();
-        LOG_INFO << "IPCTest applied";
     }
 };
 
