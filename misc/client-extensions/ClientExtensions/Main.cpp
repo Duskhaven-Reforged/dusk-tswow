@@ -9,6 +9,7 @@
 #include "scripts.generated.h"
 #include "Clientlua.h"
 #include "FrameXMLExtensions.h"
+#include "IPC/IPCTest.h"
 class Main
 {
 public:
@@ -33,6 +34,8 @@ public:
         LOG_INFO << "Client detours applied";
         FrameXMLExtensions::Apply();
         LOG_INFO << "FrameXMLExtensions applied";
+        IPCTest::attemptConnect();
+        LOG_INFO << "IPCTest applied";
     }
 };
 
