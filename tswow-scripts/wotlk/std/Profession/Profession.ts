@@ -196,6 +196,9 @@ export class Profession extends MainEntity<SkillLineRow> {
      * @param outputItem The ItemTemplate of the item created by this recipe
      * @param reagents Array of reagent tuples: [ItemTemplate | number, count]
      * @param options Optional configuration for the recipe
+     * @param options.trainer Optional trainer to automatically add this recipe to (requires reqSkillRank)
+     * @param options.learnOnRank Profession tier to auto-learn this recipe at. Note: Use 'Apprentice' or 0 for rank 1, 'Journeyman' or 1 for rank 2, etc.
+     * @param options.reqSkillRank Optional skill rank requirement for trainer. If trainer is provided, recipe will be automatically added to trainer.
      * @returns this for method chaining
      */
     addRecipe(
@@ -210,7 +213,12 @@ export class Profession extends MainEntity<SkillLineRow> {
             trivialGray?: number,
             spellFocus?: number,
             totems?: [number, number],
-            learnOnRank?: ProfessionTier
+            learnOnRank?: ProfessionTier,
+            trainer?: TrainerBase,
+            trainerRequiredRank?: number,
+            reqSkillRank?: number,
+            trainerCost?: number,
+            trainerReqLevel?: number
         }
     ): this {
         // Calculate cast time from reagent count (1.5s per reagent entry)
@@ -227,7 +235,10 @@ export class Profession extends MainEntity<SkillLineRow> {
         // Default output count is 1
         const outputCount = options?.outputCount ?? 1;
 
+        let recipeSpellId: number | undefined = undefined;
+
         this.Recipes.addMod(mod, id, (R) => {
+            recipeSpellId = R.ID;
             // Set output item
             R.OutputItem.set(outputItem.ID);
             
@@ -264,9 +275,9 @@ export class Profession extends MainEntity<SkillLineRow> {
             
             // Optional: Set totems
             if (options?.totems !== undefined) {
-                R.Totems.set(0, options.totems[0]);
+                R.Totems.setIndex(0, options.totems[0]);
                 if (options.totems[1] !== undefined && options.totems[1] !== 0) {
-                    R.Totems.set(1, options.totems[1]);
+                    R.Totems.setIndex(1, options.totems[1]);
                 }
             }
             
@@ -276,6 +287,62 @@ export class Profession extends MainEntity<SkillLineRow> {
             }
         });
 
+        // Automatically add recipe to trainer if both trainer and reqSkillRank are provided
+        if (options?.trainer && options?.reqSkillRank !== undefined && recipeSpellId !== undefined) {
+            const reqSkillRank = options.reqSkillRank;
+            const cost = options.trainerCost ?? 0;
+            const reqLevel = options.trainerReqLevel ?? 0;
+            
+            // Add to the specified trainer
+            this.addRecipeToTrainer(
+                options.trainer,
+                recipeSpellId,
+                reqSkillRank,
+                cost,
+                reqLevel,
+                this.ID,
+                reqSkillRank
+            );
+            
+            // Note: To ensure higher-rank trainers show lower-rank spells (cumulative inclusion),
+            // call propagateSpellsToHigherRankTrainers() after all recipes have been added.
+            // This is typically done at the end of recipe files (e.g., alchemy.ts).
+        }
+
+        // Note: If trainer is not provided, use trainer.Spells.add() with the required values,
+        // or use the addRecipeToTrainer helper method to add the recipe to a trainer later.
+
+        return this;
+    }
+
+    /**
+     * Add a recipe to a trainer with the specified required skill rank
+     * This helper method uses the trainerRequiredRank value from addRecipe options
+     * @param trainer The trainer to add the recipe to
+     * @param recipeSpellId The spell ID of the recipe (obtained from SpellRegistry after creating the recipe)
+     * @param requiredRank The required skill rank to learn this recipe
+     * @param cost The cost to learn the recipe (default: 0)
+     * @param reqLevel The required character level (default: 0)
+     * @param reqSkillLine The required skill line (default: this profession's skill line)
+     * @param reqSkillRank The required skill rank value (default: requiredRank parameter)
+     */
+    addRecipeToTrainer(
+        trainer: TrainerBase,
+        recipeSpellId: number,
+        requiredRank: number,
+        cost: number = 0,
+        reqLevel: number = 0,
+        reqSkillLine?: number,
+        reqSkillRank?: number
+    ): this {
+        trainer.Spells.add(
+            recipeSpellId,
+            cost,
+            reqLevel,
+            this.ID,
+            reqSkillRank ?? requiredRank,
+            []
+        );
         return this;
     }
 }
