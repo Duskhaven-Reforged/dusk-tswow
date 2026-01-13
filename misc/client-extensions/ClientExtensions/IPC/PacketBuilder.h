@@ -60,6 +60,25 @@ static inline uint32_t read_u32_le(const uint8_t* p)
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
+static inline uint64_t read_u64_le(const uint8_t* p)
+{
+    return (uint64_t)p[0] | ((uint64_t)p[1] << 8) | ((uint64_t)p[2] << 16) | ((uint64_t)p[3] << 24) |
+           ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) | ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
+}
+
+static inline bool read_bool(const uint8_t* p)
+{
+    // IPC rule: 0 = false, anything else = true
+    return p[0] != 0;
+}
+
+static inline float read_f32_le(const uint8_t* p)
+{
+    uint32_t raw = read_u32_le(p);
+    float value;
+    std::memcpy(&value, &raw, sizeof(float));
+    return value;
+}
 
 // ---------------------------
 // Packet Builder
@@ -207,6 +226,30 @@ class PacketReader
     {
         require(4);
         uint32_t v = read_u32_le(data_ + cursor_);
+        cursor_ += 4;
+        return v;
+    }
+    
+    uint64_t readUInt64()
+    {
+        require(8);
+        uint64_t v = read_u64_le(data_ + cursor_);
+        cursor_ += 8;
+        return v;
+    }
+
+    bool readBool()
+    {
+        require(1);
+        bool v = read_bool(data_ + cursor_);
+        cursor_ += 1;
+        return v;
+    }
+
+    float readFloat()
+    {
+        require(4);
+        float v = read_f32_le(data_ + cursor_);
         cursor_ += 4;
         return v;
     }
