@@ -54,7 +54,10 @@ async function compile(type: string, compileArgs: string[]) {
     const mysql = isWindows() ? await MySQL.find() : 'mysql';
     term.log('build',`Found MySQL at ${mysql}`);
     const boost = isWindows() ? await Boost.install() : 'boost';
-    await NodeJS.install();
+    if (!isType('client-extensions'))
+    {
+        await NodeJS.install();
+    }
     if (isWindows()) { await SevenZipInstall.install(); }
     if (isWindows()) { await IMInstall.install() }
 
