@@ -287,7 +287,13 @@ export class Profession extends MainEntity<SkillLineRow> {
             }
         });
 
-        // Automatically add recipe to trainer if both trainer and reqSkillRank are provided
+        // Automatically add recipe to trainer if reqSkillRank is provided
+        // IMPORTANT: The trainer option should match the correct trainer rank based on reqSkillRank:
+        // - reqSkillRank 1-75: Use Journeyman trainer (teaches Apprentice recipes)
+        // - reqSkillRank 76-150: Use Expert trainer (teaches Journeyman recipes)
+        // - reqSkillRank 151-225: Use Artisan trainer (teaches Expert recipes)
+        // - reqSkillRank 226-300: Use Artisan trainer (teaches Artisan recipes)
+        // The trainer option is still required but should be set to the correct rank.
         if (options?.trainer && options?.reqSkillRank !== undefined && recipeSpellId !== undefined) {
             const reqSkillRank = options.reqSkillRank;
             const cost = options.trainerCost ?? 0;
@@ -303,10 +309,6 @@ export class Profession extends MainEntity<SkillLineRow> {
                 this.ID,
                 reqSkillRank
             );
-            
-            // Note: To ensure higher-rank trainers show lower-rank spells (cumulative inclusion),
-            // call propagateSpellsToHigherRankTrainers() after all recipes have been added.
-            // This is typically done at the end of recipe files (e.g., alchemy.ts).
         }
 
         // Note: If trainer is not provided, use trainer.Spells.add() with the required values,
