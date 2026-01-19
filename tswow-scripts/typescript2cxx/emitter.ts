@@ -1695,20 +1695,161 @@ export class Emitter {
         let fileStr = "<unknown>";
         let lineStr = "<unknown>";
         let charStr = "<unknown>";
+        let nodeText = "";
+        let contextInfo = "";
+        let sourceFile: ts.SourceFile | null = null;
 
+        // Try multiple methods to get source file information
         try {
-            const file = node.getSourceFile().fileName;
-            fileStr = file;
-            const { line, character} = node
-                .getSourceFile()
-                .getLineAndCharacterOfPosition(node.pos);
-            lineStr = `${line}`;
-            charStr = `${character}`;
-        } catch( err ) {}
-        throw new Error(
-              `TypeScript Error:`
-            + ` ${message}\n    `
-            + `(in source file ${fileStr}:${lineStr}:${charStr})`);
+            // Method 1: Try to get source file directly from node
+            if (node && typeof node.getSourceFile === 'function') {
+                sourceFile = node.getSourceFile();
+            }
+        } catch (err) {}
+
+        // Method 2: If that failed, try to walk up the parent tree
+        if (!sourceFile && node) {
+            let current: ts.Node | undefined = node;
+            for (let i = 0; i < 10 && current; i++) {
+                try {
+                    if (current && typeof current.getSourceFile === 'function') {
+                        sourceFile = current.getSourceFile();
+                        if (sourceFile) break;
+                    }
+                    current = current.parent;
+                } catch (err) {
+                    break;
+                }
+            }
+        }
+
+        // Method 3: Use current processing file as fallback
+        if (!sourceFile && this.sourceFileName) {
+            // Try to find the source file in the scope
+            for (let i = this.scope.length - 1; i >= 0; i--) {
+                try {
+                    const scopeNode = this.scope[i];
+                    if (scopeNode && typeof scopeNode.getSourceFile === 'function') {
+                        sourceFile = scopeNode.getSourceFile();
+                        if (sourceFile) break;
+                    }
+                } catch (err) {}
+            }
+        }
+
+        // Now process the source file information
+        if (sourceFile) {
+            fileStr = sourceFile.fileName;
+            // Try to make path relative if we have a root folder
+            if (this.rootFolder && fileStr.startsWith(this.rootFolder)) {
+                fileStr = path.relative(this.rootFolder, fileStr);
+            }
+            
+            // Get line and character position
+            if (node && node.pos >= 0) {
+                try {
+                    const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.pos);
+                    lineStr = `${line + 1}`; // Convert to 1-based line number
+                    charStr = `${character + 1}`; // Convert to 1-based column number
+                } catch (err) {}
+            }
+            
+            // Get the actual code text from the node
+            if (node) {
+                try {
+                    nodeText = node.getText(sourceFile);
+                    // Limit text length to avoid huge error messages
+                    if (nodeText.length > 200) {
+                        nodeText = nodeText.substring(0, 197) + "...";
+                    }
+                    // Clean up newlines for display
+                    nodeText = nodeText.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+                } catch (err) {
+                    // If we can't get text, try to get a snippet from the source
+                    if (node.pos >= 0 && node.end >= 0) {
+                        try {
+                            const start = Math.max(0, node.pos - 50);
+                            const end = Math.min(sourceFile.text.length, node.end + 50);
+                            nodeText = sourceFile.text.substring(start, end)
+                                .replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+                            if (nodeText.length > 200) {
+                                nodeText = nodeText.substring(0, 197) + "...";
+                            }
+                        } catch (err2) {}
+                    }
+                }
+            }
+        } else if (this.sourceFileName) {
+            // Fallback to current processing file
+            fileStr = this.sourceFileName;
+            if (this.rootFolder && fileStr.startsWith(this.rootFolder)) {
+                fileStr = path.relative(this.rootFolder, fileStr);
+            }
+        }
+
+        // Try to get context from scope
+        if (this.scope.length > 0) {
+            const scopeContext: string[] = [];
+            for (let i = this.scope.length - 1; i >= 0 && scopeContext.length < 3; i--) {
+                const scopeNode = this.scope[i];
+                try {
+                    const sourceFile = scopeNode.getSourceFile ? scopeNode.getSourceFile() : null;
+                    if (scopeNode.kind === ts.SyntaxKind.SourceFile) {
+                        scopeContext.push("file");
+                    } else if (scopeNode.kind === ts.SyntaxKind.FunctionDeclaration || 
+                               scopeNode.kind === ts.SyntaxKind.MethodDeclaration) {
+                        const funcNode = scopeNode as ts.FunctionDeclaration | ts.MethodDeclaration;
+                        if (funcNode.name) {
+                            try {
+                                const nameText = sourceFile ? funcNode.name.getText(sourceFile) : funcNode.name.getText();
+                                scopeContext.push(`function ${nameText}`);
+                            } catch (err) {
+                                scopeContext.push("function");
+                            }
+                        } else {
+                            scopeContext.push("anonymous function");
+                        }
+                    } else if (scopeNode.kind === ts.SyntaxKind.ClassDeclaration) {
+                        const classNode = scopeNode as ts.ClassDeclaration;
+                        if (classNode.name) {
+                            try {
+                                const nameText = sourceFile ? classNode.name.getText(sourceFile) : classNode.name.getText();
+                                scopeContext.push(`class ${nameText}`);
+                            } catch (err) {
+                                scopeContext.push("class");
+                            }
+                        }
+                    }
+                } catch (err) {
+                    // Skip if we can't get context
+                }
+            }
+            if (scopeContext.length > 0) {
+                contextInfo = ` (in ${scopeContext.reverse().join(" -> ")})`;
+            }
+        }
+
+        // Build error message with all available information
+        let errorMsg = `TypeScript Error: ${message}`;
+        errorMsg += `\n    Location: ${fileStr}:${lineStr}:${charStr}`;
+        
+        if (contextInfo) {
+            errorMsg += contextInfo;
+        }
+        
+        if (nodeText) {
+            errorMsg += `\n    Code: ${nodeText}`;
+        }
+
+        // Include node kind for additional debugging
+        try {
+            const nodeKindName = ts.SyntaxKind[node.kind];
+            if (nodeKindName && nodeKindName !== "Unknown") {
+                errorMsg += `\n    Node type: ${nodeKindName}`;
+            }
+        } catch (err) {}
+
+        throw new Error(errorMsg);
     }
 
     processVariableDeclarationList(declarationList: ts.VariableDeclarationList, forwardDeclaration?: boolean): boolean {
@@ -2250,10 +2391,33 @@ export class Emitter {
                 */
 
                 if(!auto) {
+                    // Try to find a better node with source file info
+                    let errorNode: ts.Node = type;
+                    let hasSourceFile = false;
+                    try {
+                        if (errorNode && typeof errorNode.getSourceFile === 'function') {
+                            hasSourceFile = !!errorNode.getSourceFile();
+                        }
+                    } catch (err) {}
+                    
+                    if (!hasSourceFile) {
+                        // Look in scope for a node with source file info
+                        for (let i = this.scope.length - 1; i >= 0; i--) {
+                            const scopeNode = this.scope[i];
+                            try {
+                                if (scopeNode && typeof scopeNode.getSourceFile === 'function') {
+                                    if (scopeNode.getSourceFile()) {
+                                        errorNode = scopeNode;
+                                        break;
+                                    }
+                                }
+                            } catch (err) {}
+                        }
+                    }
                     this.error(
                         `Failed to write union type `
                       + `because 'auto' keyword is forbidden here.`
-                    , type);
+                    , errorNode);
                 }
                 this.writer.writeString('auto');
 
@@ -2283,10 +2447,33 @@ export class Emitter {
                 break;
             default:
                 if(!auto) {
+                    // Try to find a better node with source file info
+                    let errorNode: ts.Node = type;
+                    let hasSourceFile = false;
+                    try {
+                        if (errorNode && typeof errorNode.getSourceFile === 'function') {
+                            hasSourceFile = !!errorNode.getSourceFile();
+                        }
+                    } catch (err) {}
+                    
+                    if (!hasSourceFile) {
+                        // Look in scope for a node with source file info
+                        for (let i = this.scope.length - 1; i >= 0; i--) {
+                            const scopeNode = this.scope[i];
+                            try {
+                                if (scopeNode && typeof scopeNode.getSourceFile === 'function') {
+                                    if (scopeNode.getSourceFile()) {
+                                        errorNode = scopeNode;
+                                        break;
+                                    }
+                                }
+                            } catch (err) {}
+                        }
+                    }
                     this.error(
                         `Failed to write union type `
                       + `because 'auto' keyword is forbidden here.`
-                    , type);
+                    , errorNode);
                 }
                 break;
         }
