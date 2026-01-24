@@ -28,6 +28,8 @@
 #include "TSItemTemplate.h"
 #include <algorithm>
 #include <unordered_map>
+#include <sstream>
+#include <iomanip>
 
 std::unordered_map<opcode_t, bool> notInWorldCustomOpcodeMap;
 
@@ -91,6 +93,46 @@ TSNumber<uint32> GetCurrTime()
 
 void KickAll() {
     sWorld->KickAll();
+}
+
+bool IsNumber(std::string const& value) {
+    if (value.empty()) {
+        return false;
+    }
+    
+    std::size_t pos = 0;
+    // Check for optional sign
+    if (value[0] == '+' || value[0] == '-') {
+        pos = 1;
+        if (value.length() == 1) {
+            return false; // Just a sign, not a number
+        }
+    }
+    
+    // Check if all remaining characters are digits or a single decimal point
+    bool hasDecimal = false;
+    bool hasDigit = false;
+    
+    for (std::size_t i = pos; i < value.length(); ++i) {
+        if (value[i] == '.') {
+            if (hasDecimal) {
+                return false; // Multiple decimal points
+            }
+            hasDecimal = true;
+        } else if (value[i] >= '0' && value[i] <= '9') {
+            hasDigit = true;
+        } else {
+            return false; // Invalid character
+        }
+    }
+    
+    return hasDigit; // Must have at least one digit
+}
+
+std::string ToFixed(double value, uint32_t digits) {
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(digits) << value;
+    return oss.str();
 }
 
 TSNumber<uint64> GetUnixTime()

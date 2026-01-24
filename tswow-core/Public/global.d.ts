@@ -1845,7 +1845,7 @@ declare interface TSPlayer extends TSUnit, TSDBJsonProvider {
      * @param [Player] receiver : is the [Player] that will receive the whisper, if TrinityCore
      * @param uint64 guid : is the GUID of a [Player] that will receive the whisper, not TrinityCore
      */
-    Whisper(text : string,lang : uint32,receiver : TSPlayer,guid : uint64 | TSGUID) : void
+    Whisper(text : string,lang : uint32,receiver : TSPlayer,guid?: uint64 | TSGUID) : void
 
     /**
      * Sends a text emote from the [Player]
@@ -10254,6 +10254,8 @@ declare function GetLuaGarbageCur(): TSNumber<uint64>
 declare function GetLuaGarbageTotal(): TSNumber<uint64>
 declare function RegisterPacketForNotInWorld(opcode:number,isActive:bool): void;
 declare function KickAll(): void
+declare function IsNumber(value: string): boolean
+declare function ToFixed(value: number, digits?: number): string
 
 /**
  * @param entry - The id to be used for the new item template.
