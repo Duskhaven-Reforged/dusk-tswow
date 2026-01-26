@@ -313,6 +313,7 @@ declare class TSPosition {
     z: TSNumber<float>
     o: TSNumber<float>
     map: TSNumber<uint32>
+    constructor(map: uint32, x: float, y: float, z: float, o: float)
 }
 declare function CreatePosition(map: uint32, x: float, y: float, z: float, o: float): TSPosition
 
@@ -2697,6 +2698,8 @@ declare interface TSCreature extends TSUnit {
     SetMainhand(mainhand: uint32): void
     SetOffhand(offhand: uint32): void
     SetRanged(ranged: uint32): void
+    SetVirtualItem(slot: uint32, itemId: uint32): void
+    SetCombatMovement(allowMovement: bool): void
 
     /**
      * Returns `true` if the [Creature] is set to not give reputation when killed,
@@ -7489,6 +7492,16 @@ declare interface TSUnit extends TSWorldObject {
      * @param bool delayed = true : skips if the spell is delayed
      */
     InterruptSpell(spellType : int,delayed : bool) : void
+    /**
+     * Interrupts [Unit]'s spell state, casting, etc. with full control over interruption parameters.
+     *
+     * @param int32 spellType : type of spell to interrupt
+     * @param bool withDelayed : whether to interrupt delayed spells
+     * @param bool withInstant : whether to interrupt instant spells
+     * @param int result : spell cast result code
+     * @param int resultOther : additional result code
+     */
+    InterruptSpell(spellType : int,withDelayed : bool,withInstant : bool,result : int,resultOther : int) : void
 
     /**
      * Adds the [Aura] of the given spell entry on the given target from the [Unit].

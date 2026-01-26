@@ -216,6 +216,7 @@ public:
     void ClearInCombat();
     void StopSpellCast(uint32 spellId);
     void InterruptSpell(int spellType, bool delayed);
+    void InterruptSpell(int spellType, bool withDelayed, bool withInstant, int result, int resultOther);
     TSAura AddAura(uint32 spell, TSUnit target);
     void RemoveAura(uint32 spellId);
     void RemoveAllAuras();

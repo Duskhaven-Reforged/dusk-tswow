@@ -3,6 +3,7 @@ import * as path from "path";
 import { finish } from "../../../data/index";
 import { AllModules, BuildArgs, dataset } from "../../../data/Settings";
 import { FileChangeModule } from "../../../util/FileChanges";
+import { modulePathToName } from "../../../util/Paths";
 import { DBC } from "../../DBCFiles";
 import { registeredAreas } from "../Area/Area";
 import { TSImages } from "../Images/Image";
@@ -12,8 +13,11 @@ import { MapRegistry } from "./Maps";
 
 finish('build-maps',()=>{
     if(!BuildArgs.WRITE_CLIENT) return;
-    let wdtMods: {[key: string]: /*module: */string} = {}
-    AllModules.forEach((mod)=>{
+    const wdtDefsByMap: {
+        [map: string]: { moduleOut: string; moduleName: string; moduleIndex: number; wdtPath: string }[]
+    } = {}
+
+    AllModules.forEach((mod, moduleIndex)=>{
         // workaround to allow noggit workspaces in asset directories
         let mapsdir = mod.join('assets','world','maps')
         if(!mapsdir.exists()) {
@@ -25,20 +29,45 @@ finish('build-maps',()=>{
             copyMapDBCs(mod.get())
             mapdir.toDirectory().iterate('FLAT','FILES','FULL',node=>{
                 if(node.endsWith('.wdt')) {
-                    if(wdtMods[mapname] !== undefined) {
-                        throw new Error(
-                              `Map ${mapname} has wdt defined in`
-                            + ` multiple modules, please only place the wdt in`
-                            + ` one module.`
-                        )
-                    }
-                    wdtMods[mapname] = mod.abs().get()
+                    const moduleOut = mod.abs().get()
+                    const moduleName = modulePathToName(moduleOut)
+                    const def = { moduleOut, moduleName, moduleIndex, wdtPath: node.get() }
+
+                    if(wdtDefsByMap[mapname] === undefined) wdtDefsByMap[mapname] = []
+                    wdtDefsByMap[mapname].push(def)
                 }
             });
         })
-        Object.entries(wdtMods).forEach(([map,mod])=>{
-            generateZmp(map,mod);
+    })
+
+    const duplicates = Object.entries(wdtDefsByMap)
+        .filter(([_, defs])=>defs.length > 1)
+
+    if(duplicates.length > 0) {
+        const lines: string[] = []
+        lines.push(`Found maps with WDT defined in multiple modules:`)
+        duplicates.forEach(([map, defs])=>{
+            lines.push('')
+            lines.push(`Map: ${map}`)
+            defs
+                .sort((a,b)=>a.moduleIndex - b.moduleIndex)
+                .forEach(def=>{
+                    lines.push(
+                          `  - module[${def.moduleIndex}]: ${def.moduleName}`
+                        + ` (${def.moduleOut})`
+                    )
+                    lines.push(`    wdt: ${def.wdtPath}`)
+                })
         })
+        lines.push('')
+        lines.push(`To control ordering, ensure exactly one module provides the WDT per map.`)
+        throw new Error(lines.join('\n'))
+    }
+
+    Object.entries(wdtDefsByMap).forEach(([map, defs])=>{
+        if(defs.length === 0) return;
+        // By this point we know defs.length === 1
+        generateZmp(map, defs[0].moduleOut);
     })
 });
 

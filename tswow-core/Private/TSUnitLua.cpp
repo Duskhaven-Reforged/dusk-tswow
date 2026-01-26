@@ -188,7 +188,10 @@ void TSLua::load_unit_methods(sol::state& state)
     LUA_FIELD(ts_unit, TSUnit, DeMorph);
     LUA_FIELD(ts_unit, TSUnit, ClearInCombat);
     LUA_FIELD(ts_unit, TSUnit, StopSpellCast);
-    LUA_FIELD(ts_unit, TSUnit, InterruptSpell);
+    ts_unit.set_function("InterruptSpell", sol::overload(
+        [](TSUnit& unit, int spellType, bool delayed) { return unit.InterruptSpell(spellType, delayed); },
+        [](TSUnit& unit, int spellType, bool withDelayed, bool withInstant, int result, int resultOther) { return unit.InterruptSpell(spellType, withDelayed, withInstant, result, resultOther); }
+    ));
     LUA_FIELD(ts_unit, TSUnit, AddAura);
     LUA_FIELD(ts_unit, TSUnit, RemoveAura);
     LUA_FIELD(ts_unit, TSUnit, RemoveAllAuras);

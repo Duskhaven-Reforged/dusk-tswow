@@ -116,6 +116,8 @@ void TSLua::load_creature_methods(sol::state & state)
     LUA_FIELD(ts_creature, TSCreature, EquipMainhand);
     LUA_FIELD(ts_creature, TSCreature, EquipOffhand);
     LUA_FIELD(ts_creature, TSCreature, EquipRanged);
+    LUA_FIELD(ts_creature, TSCreature, SetVirtualItem);
+    LUA_FIELD(ts_creature, TSCreature, SetCombatMovement);
     LUA_FIELD(ts_creature, TSCreature, ExtendDurationIfAble);
     LUA_FIELD_OVERLOAD_RET_1_1(ts_creature, TSCreature, GetThreat, TSUnit, bool);
 }

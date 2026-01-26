@@ -2134,10 +2134,28 @@ void TSUnit::InterruptSpell(int spellType,bool delayed)
         case 3:
             spellType = CURRENT_AUTOREPEAT_SPELL;
             break;
-        // TODO: Error on default
     }
+    unit->InterruptSpell(CurrentSpellTypes(spellType), delayed);
+}
 
-    unit->InterruptSpell((CurrentSpellTypes)spellType, delayed);
+void TSUnit::InterruptSpell(int spellType, bool withDelayed, bool withInstant, int result, int resultOther)
+{
+    switch (spellType)
+    {
+        case 0:
+            spellType = CURRENT_MELEE_SPELL;
+            break;
+        case 1:
+            spellType = CURRENT_GENERIC_SPELL;
+            break;
+        case 2:
+            spellType = CURRENT_CHANNELED_SPELL;
+            break;
+        case 3:
+            spellType = CURRENT_AUTOREPEAT_SPELL;
+            break;
+    }
+    unit->InterruptSpell(CurrentSpellTypes(spellType), withDelayed, withInstant, SpellCastResult(result), SpellCastResult(resultOther));
 }
 
 /**
