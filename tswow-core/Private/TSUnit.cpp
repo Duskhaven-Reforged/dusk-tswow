@@ -2815,3 +2815,23 @@ void TSUnit::EnergizeBySpell(TSUnit who, uint32 spellId, int32 amount, uint8 pow
 {
     return unit->EnergizeBySpell(who.unit, spellId, amount, Powers(powerType));
 }
+
+void TSUnit::SetUnitFlag(uint32 flags)
+{
+    unit->SetUnitFlag(UnitFlags(flags));
+}
+
+void TSUnit::RemoveUnitFlag(uint32 flags)
+{
+    unit->RemoveUnitFlag(UnitFlags(flags));
+}
+
+void TSUnit::SetImmuneToPC(bool apply, bool keepCombat)
+{
+    unit->SetImmuneToPC(apply, keepCombat);
+}
+
+void TSUnit::SetImmuneToNPC(bool apply, bool keepCombat)
+{
+    unit->SetImmuneToNPC(apply, keepCombat);
+}

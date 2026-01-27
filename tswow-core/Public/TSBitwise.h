@@ -20,6 +20,13 @@ namespace bitwise {
     template <typename T, typename S>
     T rshift(T value, S amount) { return value >> amount; }
     template <typename T, typename S>
-
     T lshift(T value, S amount) { return value << amount; }
+    
+    // Unsigned right shift (JavaScript >>> operator equivalent)
+    // For unsigned types, this is the same as rshift
+    // For signed types, this converts to unsigned first
+    template <typename T>
+    uint32_t rshift_nosign(T value, uint32_t amount) {
+        return static_cast<uint32_t>(value) >> amount;
+    }
 }

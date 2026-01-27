@@ -37,4 +37,7 @@ void TSLua::load_gameobject_methods(sol::state& state)
     LUA_FIELD(ts_gameobject, TSGameObject, IsAIEnabled);
     LUA_FIELD(ts_gameobject, TSGameObject, GetTemplate);
     LUA_FIELD_OVERLOAD_0_3(ts_gameobject, TSGameObject, Despawn, bool, uint32, uint32);
+    LUA_FIELD(ts_gameobject, TSGameObject, SetFlag);
+    LUA_FIELD(ts_gameobject, TSGameObject, RemoveFlag);
+    LUA_FIELD(ts_gameobject, TSGameObject, HasFlag);
 }

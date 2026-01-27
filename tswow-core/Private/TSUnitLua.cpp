@@ -241,4 +241,8 @@ void TSLua::load_unit_methods(sol::state& state)
         [](TSUnit& unit, float x, float y, float z, float o, float speedXY, float speedZ, bool forward) { return unit.JumpTo(x, y, z, o, speedXY, speedZ, forward); },
         [](TSUnit& unit, float x, float y, float z, float o, float speedXY, float speedZ) { return unit.JumpTo(x, y, z, o, speedXY, speedZ); }
     ));
+    LUA_FIELD(ts_unit, TSUnit, SetUnitFlag);
+    LUA_FIELD(ts_unit, TSUnit, RemoveUnitFlag);
+    LUA_FIELD_OVERLOAD_1_1(ts_unit, TSUnit, SetImmuneToPC, bool, bool);
+    LUA_FIELD_OVERLOAD_1_1(ts_unit, TSUnit, SetImmuneToNPC, bool, bool);
 }

@@ -279,6 +279,11 @@ public:
     bool HasDispellableAuraOfType(uint32 DispelMask);
 
     void EnergizeBySpell(TSUnit who, uint32 spellId, int32 amount, uint8 powerType);
+
+    void SetUnitFlag(uint32 flags);
+    void RemoveUnitFlag(uint32 flags);
+    void SetImmuneToPC(bool apply, bool keepCombat = false);
+    void SetImmuneToNPC(bool apply, bool keepCombat = false);
 private:
     TSLua::Array<TSUnit> LGetControlled();
     friend class TSLua;

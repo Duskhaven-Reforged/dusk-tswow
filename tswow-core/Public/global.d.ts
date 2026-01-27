@@ -122,6 +122,60 @@ declare const enum TeamId {} /** SharedDefines.h:TeamId */
 declare const enum WeatherType {} /** SharedDefines.h:WeatherType */
 declare const enum GOState {} /** SharedDefines.h:GOState */
 declare const enum LootState {} /** GameObject.h:LootState */
+declare const enum GameObjectFlags /**@realType:uint32 */ {
+    IN_USE             = 0x00000001,
+    LOCKED             = 0x00000002,
+    INTERACT_COND      = 0x00000004,
+    TRANSPORT          = 0x00000008,
+    NOT_SELECTABLE     = 0x00000010,
+    NODESPAWN          = 0x00000020,
+    AI_OBSTACLE        = 0x00000040,
+    FREEZE_ANIMATION   = 0x00000080,
+    DAMAGED            = 0x00000200,
+    DESTROYED          = 0x00000400
+} /** SharedDefines.h:GameObjectFlags */
+declare const enum EncounterState /**@realType:uint32 */ {
+    NOT_STARTED   = 0,
+    IN_PROGRESS   = 1,
+    FAIL          = 2,
+    DONE          = 3,
+    SPECIAL       = 4,
+    TO_BE_DECIDED = 5
+} /** InstanceScript.h:EncounterState */
+declare const enum UnitFlags /**@realType:uint32 */ {
+    UNIT_FLAG_SERVER_CONTROLLED     = 0x00000001,
+    UNIT_FLAG_NON_ATTACKABLE        = 0x00000002,
+    UNIT_FLAG_REMOVE_CLIENT_CONTROL = 0x00000004,
+    UNIT_FLAG_PLAYER_CONTROLLED     = 0x00000008,
+    UNIT_FLAG_RENAME                = 0x00000010,
+    UNIT_FLAG_PREPARATION           = 0x00000020,
+    UNIT_FLAG_UNK_6                 = 0x00000040,
+    UNIT_FLAG_NOT_ATTACKABLE_1      = 0x00000080,
+    UNIT_FLAG_IMMUNE_TO_PC          = 0x00000100,
+    UNIT_FLAG_IMMUNE_TO_NPC         = 0x00000200,
+    UNIT_FLAG_LOOTING               = 0x00000400,
+    UNIT_FLAG_PET_IN_COMBAT         = 0x00000800,
+    UNIT_FLAG_PVP_ENABLING          = 0x00001000,
+    UNIT_FLAG_SILENCED              = 0x00002000,
+    UNIT_FLAG_CANNOT_SWIM           = 0x00004000,
+    UNIT_FLAG_CAN_SWIM              = 0x00008000,
+    UNIT_FLAG_NON_ATTACKABLE_2      = 0x00010000,
+    UNIT_FLAG_PACIFIED              = 0x00020000,
+    UNIT_FLAG_STUNNED               = 0x00040000,
+    UNIT_FLAG_IN_COMBAT             = 0x00080000,
+    UNIT_FLAG_ON_TAXI               = 0x00100000,
+    UNIT_FLAG_DISARMED              = 0x00200000,
+    UNIT_FLAG_CONFUSED              = 0x00400000,
+    UNIT_FLAG_FLEEING               = 0x00800000,
+    UNIT_FLAG_POSSESSED             = 0x01000000,
+    UNIT_FLAG_UNINTERACTIBLE        = 0x02000000,
+    UNIT_FLAG_SKINNABLE             = 0x04000000,
+    UNIT_FLAG_MOUNT                 = 0x08000000,
+    UNIT_FLAG_UNK_28                = 0x10000000,
+    UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT = 0x20000000,
+    UNIT_FLAG_SHEATHE               = 0x40000000,
+    UNIT_FLAG_IMMUNE                = 0x80000000,
+} /** UnitDefines.h:UnitFlags */
 declare const enum TempSummonType {} /** ObjectDefines.h:TempSummonType */
 declare const enum TypeID {} /** ObjectGuid.h:TypeID */
 declare const enum CurrentSpellTypes {} /** Unit.h:CurrentSpellTypes */
@@ -5110,6 +5164,28 @@ declare interface TSGameObject extends TSWorldObject {
      * @param int32 delay = 0 : cooldown time in seconds to respawn or despawn the object. 0 means never
      */
     SetRespawnTime(respawn : int32) : void
+
+    /**
+     * Sets a GameObject flag.
+     *
+     * @param uint32 flags : GameObject flag to set (from GameObjectFlags enum)
+     */
+    SetFlag(flags : uint32) : void
+
+    /**
+     * Removes a GameObject flag.
+     *
+     * @param uint32 flags : GameObject flag to remove (from GameObjectFlags enum)
+     */
+    RemoveFlag(flags : uint32) : void
+
+    /**
+     * Checks if a GameObject flag is set.
+     *
+     * @param uint32 flags : GameObject flag to check (from GameObjectFlags enum)
+     * @return bool hasFlag
+     */
+    HasFlag(flags : uint32) : bool
 }
 
 declare interface TSSpell extends TSEntityProvider {
@@ -7043,6 +7119,36 @@ declare interface TSUnit extends TSWorldObject {
      * @param uint32 faction : new faction ID
      */
     SetFaction(factionId : uint32) : void
+
+    /**
+     * Sets a unit flag on the [Unit].
+     *
+     * @param uint32 flags : unit flag to set (from UnitFlags enum)
+     */
+    SetUnitFlag(flags : uint32) : void
+
+    /**
+     * Removes a unit flag from the [Unit].
+     *
+     * @param uint32 flags : unit flag to remove (from UnitFlags enum)
+     */
+    RemoveUnitFlag(flags : uint32) : void
+
+    /**
+     * Sets whether the [Unit] is immune to PC attacks.
+     *
+     * @param bool apply : true to make immune, false to remove immunity
+     * @param bool keepCombat : if true, keeps combat state when applying immunity
+     */
+    SetImmuneToPC(apply : bool, keepCombat? : bool) : void
+
+    /**
+     * Sets whether the [Unit] is immune to NPC attacks.
+     *
+     * @param bool apply : true to make immune, false to remove immunity
+     * @param bool keepCombat : if true, keeps combat state when applying immunity
+     */
+    SetImmuneToNPC(apply : bool, keepCombat? : bool) : void
 
     /**
      * Sets the [Unit]'s level.
