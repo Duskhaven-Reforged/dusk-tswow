@@ -1,18 +1,21 @@
-#include "windows.h"
-#include "detours.h"
 #include <vector>
-#include "ClientDetours.h"
-#include "Logger.h"
 #include "ClientArguments.h"
-#include "ClientNetwork.h"
+#include "ClientDetours.h"
 #include "ClientExtensions.h"
-#include "scripts.generated.h"
+#include "ClientNetwork.h"
 #include "Clientlua.h"
 #include "FrameXMLExtensions.h"
 #include "IPC/IPCTest.h"
+#include "Logger.h"
+#include "detours.h"
+#include "scripts.generated.h"
+#include "windows.h"
 class Main
 {
-public:
+  public:
+  
+    static inline PROCESS_INFORMATION pi = {0};
+    static inline HANDLE hJob            = NULL;
     static void startup()
     {
         LOG_INFO << "Client starting up";
@@ -25,7 +28,7 @@ public:
         LOG_INFO << "Client pointer extension applied";
         ClientNetwork::initialize();
         LOG_INFO << "Client network initialized";
-        //some people get windows crashes, idk
+        // some people get windows crashes, idk
         ClientArguments::initialize();
         LOG_INFO << "Client arguments initialized";
         ClientExtensions::initialize();
@@ -35,9 +38,46 @@ public:
         FrameXMLExtensions::Apply();
         LOG_INFO << "FrameXMLExtensions applied";
     }
+
+    static void StartDHV() {
+        STARTUPINFOA si;
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        ZeroMemory(&pi, sizeof(pi));
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+
+        // Command line construction
+        const char* executable = "./DiscordSocialSDKHost.exe";
+        const char* args       = ""; // e.g. "-debug -port 8080"
+
+        char cmd[4096];
+        if (strlen(args) > 0)
+            snprintf(cmd, sizeof(cmd), "%s %s", executable, args);
+        else
+            snprintf(cmd, sizeof(cmd), "%s", executable);
+
+        // Create a job object to ensure the child process is killed when the parent is killed
+        hJob = CreateJobObjectA(NULL, NULL);
+        if (hJob)
+        {
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {0};
+            jeli.BasicLimitInformation.LimitFlags     = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
+            if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+            {
+                LOG_INFO << "Started " << executable;
+                if (hJob)
+                {
+                    AssignProcessToJobObject(hJob, pi.hProcess);
+                }
+            }
+        }
+    }
 };
 
-extern "C" {
+extern "C"
+{
     // The function we register in the exe to load this dll
     __declspec(dllexport) void ClientExtensionsDummy() {}
 }
@@ -55,6 +95,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
             LOG_INFO << "Main Done";
             return 0;
         }, nullptr, 0, nullptr);
+        // Startup DHV
+        Main::StartDHV();
     }
     return TRUE;
 }
