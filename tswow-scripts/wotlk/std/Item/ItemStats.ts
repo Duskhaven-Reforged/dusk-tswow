@@ -128,8 +128,13 @@ export class ItemStats extends ArraySystem<ItemStat,ItemTemplate> {
         const free = this.addGet();
         free.Type.set(stat);
         free.Value.set(value);
-        // Needs to be updated with the amount of used stats
-        this.owner.row.StatsCount.set(ArrayEntry.getIndex(free)+1)
+        // Update StatsCount to be the highest used index + 1
+        // This ensures StatsCount reflects the actual range of stats being used
+        const highestIndex = ArrayEntry.getIndex(free);
+        const currentCount = this.owner.row.StatsCount.get();
+        // Set StatsCount to the maximum of current count and (highestIndex + 1)
+        // This handles the case where stats might be added out of order
+        this.owner.row.StatsCount.set(Math.max(currentCount, highestIndex + 1));
         return this.owner;
     }
 
