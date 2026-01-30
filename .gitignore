@@ -5,6 +5,5 @@ install_garbage
 log.txt
 build.conf
 build/
-/tswow-scripts/compile/*
 /misc/install-config/addons/*
 /.vs/*

@@ -26,6 +26,7 @@ import { BLPConverter } from './BLPConverter';
 import { Boost } from './Boost';
 import { isInteractive } from './BuildConfig';
 import { ClientExtensions } from './ClientExtensions';
+import { ClientExtensions64 } from './ClientExtensions64';
 import { CMake } from './Cmake';
 import { bpaths, spaths } from './CompilePaths';
 import { Config } from './Config';
@@ -73,6 +74,7 @@ async function compile(type: string, compileArgs: string[]) {
     if (isType('blpconverter')) { await BLPConverter.install(cmake); }
     if (isWindows() && isType('adtcreator')) { await ADTCreator.create(cmake); }
     if (isType('client-extensions')) { await ClientExtensions.create(cmake); }
+    if (isType('client-extensions-64')) { await ClientExtensions64.create(cmake); }
 
     if (!buildingScripts && isType('scripts')) {
         await Scripts.build();
@@ -118,6 +120,7 @@ async function main() {
             , 'release'
             , 'adtcreator'
             , 'client-extensions'
+            , 'client-extensions-64'
         ];
 
     for (const val of installedPrograms) {

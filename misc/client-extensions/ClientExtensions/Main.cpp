@@ -48,7 +48,7 @@ class Main
         si.wShowWindow = SW_HIDE;
 
         // Command line construction
-        const char* executable = "./DiscordSocialSDKHost.exe";
+        const char* executable = "./ClientExtensions64.exe";
         const char* args       = ""; // e.g. "-debug -port 8080"
 
         char cmd[4096];
