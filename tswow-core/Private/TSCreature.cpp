@@ -39,6 +39,7 @@
 #include "Pet.h"
 #if TRINITY
 #include "CreatureOutfit.h"
+#include "ScriptedCreature.h"
 #endif
 #include "SmartAI.h"
 
@@ -1362,6 +1363,22 @@ TSNumber<uint32> TSCreature::GetOffhandEquip()
 TSNumber<uint32> TSCreature::GetRangedEquip()
 {
     return creature->GetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_ID + 2);
+}
+
+void TSCreature::SetVirtualItem(uint32 slot, uint32 itemId)
+{
+    creature->SetVirtualItem(slot, itemId);
+}
+
+void TSCreature::SetCombatMovement(bool allowMovement)
+{
+    if (CreatureAI* ai = creature->AI())
+    {
+        if (ScriptedAI* scriptedAI = dynamic_cast<ScriptedAI*>(ai))
+        {
+            scriptedAI->SetCombatMovement(allowMovement);
+        }
+    }
 }
 
 TSOutfit TSCreature::GetOutfit()

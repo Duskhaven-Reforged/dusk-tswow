@@ -188,7 +188,10 @@ void TSLua::load_unit_methods(sol::state& state)
     LUA_FIELD(ts_unit, TSUnit, DeMorph);
     LUA_FIELD(ts_unit, TSUnit, ClearInCombat);
     LUA_FIELD(ts_unit, TSUnit, StopSpellCast);
-    LUA_FIELD(ts_unit, TSUnit, InterruptSpell);
+    ts_unit.set_function("InterruptSpell", sol::overload(
+        [](TSUnit& unit, int spellType, bool delayed) { return unit.InterruptSpell(spellType, delayed); },
+        [](TSUnit& unit, int spellType, bool withDelayed, bool withInstant, int result, int resultOther) { return unit.InterruptSpell(spellType, withDelayed, withInstant, result, resultOther); }
+    ));
     LUA_FIELD(ts_unit, TSUnit, AddAura);
     LUA_FIELD(ts_unit, TSUnit, RemoveAura);
     LUA_FIELD(ts_unit, TSUnit, RemoveAllAuras);
@@ -238,4 +241,8 @@ void TSLua::load_unit_methods(sol::state& state)
         [](TSUnit& unit, float x, float y, float z, float o, float speedXY, float speedZ, bool forward) { return unit.JumpTo(x, y, z, o, speedXY, speedZ, forward); },
         [](TSUnit& unit, float x, float y, float z, float o, float speedXY, float speedZ) { return unit.JumpTo(x, y, z, o, speedXY, speedZ); }
     ));
+    LUA_FIELD(ts_unit, TSUnit, SetUnitFlag);
+    LUA_FIELD(ts_unit, TSUnit, RemoveUnitFlag);
+    LUA_FIELD_OVERLOAD_1_1(ts_unit, TSUnit, SetImmuneToPC, bool, bool);
+    LUA_FIELD_OVERLOAD_1_1(ts_unit, TSUnit, SetImmuneToNPC, bool, bool);
 }

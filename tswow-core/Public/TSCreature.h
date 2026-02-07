@@ -144,6 +144,8 @@ public:
     void EquipMainhand(uint32_t mainhand);
     void EquipOffhand(uint32_t offhand);
     void EquipRanged(uint32_t ranged);
+    void SetVirtualItem(uint32 slot, uint32 itemId);
+    void SetCombatMovement(bool allowMovement);
 
     TSNumber<float> GetThreat(TSUnit target, bool include_offline = false);
 

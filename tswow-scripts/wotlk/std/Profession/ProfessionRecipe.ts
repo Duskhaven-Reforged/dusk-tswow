@@ -80,8 +80,19 @@ export class ProfessionRecipe extends CellSystemTop {
     get Totems() { return new SingleArraySystem(this,this.spell.row.RequiredTotemCategoryID,0); }
     get CastTime() { return SpellCastTimeRegistry.ref(this, this.spell.row.CastingTimeIndex); }
 
+    /**
+     * Add this recipe to the learn spells for the specified profession rank.
+     * Note: Rank mapping - 'Apprentice' or 0 = rank 1, 'Journeyman' or 1 = rank 2, etc.
+     * @param rank The profession tier to learn this recipe at
+     * @returns this for method chaining
+     */
     LearnOnRank(rank: ProfessionTier) {
-        this.profession.Ranks.get(rank).LearnSpells().forEach(x=>
+        const learnSpells = this.profession.Ranks.get(rank).LearnSpells();
+        if (learnSpells.length === 0) {
+            console.warn(`No learn spells found for profession ${this.profession.ID} at rank ${rank}. Recipe ${this.ID} will not be auto-learned.`);
+            return this;
+        }
+        learnSpells.forEach(x=>
             {
                 x.Effects.addLearnSpells([this.ID]);
             })

@@ -363,3 +363,18 @@ TSGameObjectTemplate TSGameObject::GetTemplate()
 {
     return TSGameObjectTemplate(const_cast<GameObjectTemplate*>(go->GetGOInfo()));
 }
+
+void TSGameObject::SetFlag(uint32 flags)
+{
+    go->SetFlag(GameObjectFlags(flags));
+}
+
+void TSGameObject::RemoveFlag(uint32 flags)
+{
+    go->RemoveFlag(GameObjectFlags(flags));
+}
+
+bool TSGameObject::HasFlag(uint32 flags)
+{
+    return go->HasFlag(GameObjectFlags(flags));
+}
