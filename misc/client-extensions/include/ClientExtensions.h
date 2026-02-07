@@ -1,0 +1,14 @@
+#pragma once
+
+#include <Character/CharacterExtensions.h>
+#include <Character/CharacterFixes.h>
+#include <Misc/MiscFixes.h>
+#include <Spells/Spells.h>
+#include <Tooltip/SpellTooltipExtensions.h>
+#include <World/WorldData.h>
+
+class ClientExtensions {
+private:
+    static void initialize();
+    friend class Main;
+};
