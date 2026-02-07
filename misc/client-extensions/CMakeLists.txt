@@ -37,23 +37,25 @@ target_include_directories(detours PUBLIC ${DETOURS_SOURCE_DIR})
 
 file(GLOB_RECURSE ClientExtensions_sources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
+
+file(GLOB_RECURSE ClientExtensions_includes CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.inl"
 )
 
 list(FILTER ClientExtensions_sources EXCLUDE REGEX ".*/client_header_builder*")
 
-file(GLOB_RECURSE ClientExtensions_includes CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.inl"
-)
-
 add_library(ClientExtensions SHARED
     ${ClientExtensions_sources}
-    ${ClientExtensions_includes}
+)
+
+target_sources(ClientExtensions PRIVATE
+    FILE_SET HEADERS
+    BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src
+    FILES ${ClientExtensions_includes}
 )
 
 target_link_libraries(ClientExtensions PRIVATE detours)
@@ -63,14 +65,15 @@ if(MSVC)
 endif()
 
 target_include_directories(ClientExtensions PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${DETOURS_SOURCE_DIR}/src
-	${LUA_SOURCE_DIR}/src
-	${CMAKE_CURRENT_SOURCE_DIR} # so "Scripts" can include it
-    
+    ${LUA_SOURCE_DIR}/src
 )
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "DLL" FILES ${ClientExtensions_sources})
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/include" PREFIX "Headers" FILES ${ClientExtensions_includes})
+
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "DLL" FILES
+    ${ClientExtensions_sources}
+	${ClientExtensions_includes}
+)
 
 option(LUA_LOGGING "Allow logging from client lua" ON)
 if(LUA_LOGGING)
