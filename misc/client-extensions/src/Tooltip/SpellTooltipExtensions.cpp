@@ -210,7 +210,7 @@ void TooltipExtensions::SetNewVariablePointers() {
 void TooltipExtensions::AppendRuneCost(char* runeCostKey, int runeCount, char* buff, char* destBuffer) {
     char* sRuneCost = FrameScript::GetText(runeCostKey, -1, 0);
     SStr::Printf(buff, 128, sRuneCost, runeCount);//sizeof(buff)
-    SStr::Copy_0(destBuffer, buff, 0x7FFFFFFF);      
+    SStr::Append(destBuffer, buff, 0x7FFFFFFF);      
 }
 
 void TooltipExtensions::SetRuneCostTooltip(char* dest, char* buff, SpellRuneCostRow* row, uint32_t* spellFamily) {
@@ -218,11 +218,11 @@ void TooltipExtensions::SetRuneCostTooltip(char* dest, char* buff, SpellRuneCost
         if (row->m_blood) {
             AppendRuneCost("RUNE_COST_DEATH", row->m_blood, buff, dest);
             if (row->m_blood != 1)
-                SStr::Copy_0(dest, sPluralS, 0x7FFFFFFF);
+                SStr::Append(dest, sPluralS, 0x7FFFFFFF);
 
             if (row->m_runicPower < 0) {
                 int32_t m_Amount = -row->m_runicPower / 10;
-                SStr::Copy_0(dest, sConnectorPlus, 0x7FFFFFFF);
+                SStr::Append(dest, sConnectorPlus, 0x7FFFFFFF);
                 AppendRuneCost("RUNIC_POWER_COST", m_Amount, buff, dest);
             }
         }
@@ -238,7 +238,7 @@ void TooltipExtensions::SetRuneCostTooltip(char* dest, char* buff, SpellRuneCost
         for (const auto& rune : runes) {
             if (rune.count > 0) {
                 if (addSpace) {
-                    SStr::Copy_0(dest, sSpace, 0x7FFFFFFF);
+                    SStr::Append(dest, sSpace, 0x7FFFFFFF);
                 }
                 AppendRuneCost(rune.costKey, rune.count, buff, dest);
                 addSpace = true;
@@ -287,13 +287,13 @@ void TooltipExtensions::SetPowerCostTooltip(char* dest, SpellRow* spell, uint32_
 
         if (additionalCostRow && additionalCostRow->cost) {
             if (hasPowerCost)
-                SStr::Copy_0(dest, " + ", 0x7FFFFFFF);
+                SStr::Append(dest, " + ", 0x7FFFFFFF);
 
             SStr::Printf(buffer, 128, "%d %s", additionalCostRow->cost, additionalCostRow->resourceName);
-            SStr::Copy_0(dest, buffer, 0x7FFFFFFF);
+            SStr::Append(dest, buffer, 0x7FFFFFFF);
 
             if (additionalCostRow->flag == 1 && additionalCostRow->cost != 1)
-                SStr::Copy_0(dest, sPluralS, 0x7FFFFFFF);
+                SStr::Append(dest, sPluralS, 0x7FFFFFFF);
         }
     }
 }

@@ -751,7 +751,7 @@ namespace SMem {
 namespace SStr {
     CLIENT_FUNCTION(Printf, 0x76F070, __cdecl, int, (char*, uint32_t, char*, ...))
     CLIENT_FUNCTION(Copy, 0x76ED20, __stdcall, char*, (char*, char*, uint32_t))
-    CLIENT_FUNCTION(Copy_0, 0x76EF70, __stdcall, char*, (char*, char*, uint32_t))
+    CLIENT_FUNCTION(Append, 0x76EF70, __stdcall, char*, (char*, char*, uint32_t))
     CLIENT_FUNCTION(Len, 0x76EE30, __stdcall, char*, (char*))
     CLIENT_FUNCTION(Chr, 0x76E6E0, __cdecl, char*, (char*, char))
 }
