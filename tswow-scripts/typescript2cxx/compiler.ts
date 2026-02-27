@@ -205,6 +205,18 @@ export class Run {
         console.log(ts.formatDiagnostic(diagnostic, this.formatHost));
     }
 
+    private throwEmitterPassError(error: unknown, sourceFileName: string, pass: 'header' | 'source'): never {
+        const relativeName = path.relative(process.cwd(), sourceFileName);
+        const details =
+            error instanceof Error
+                ? (error.stack || error.message)
+                : `${error}`;
+
+        throw new Error(
+              `Emitter ${pass} generation failed for ${relativeName}`
+            + `\n${details}`);
+    }
+
     private generateBinary(
           program: ts.Program
         , sources: string[]
@@ -258,11 +270,19 @@ export class Run {
             // @tswow-begin: hack: const enums
             const emitterHeader = new Emitter(program.getTypeChecker(), options, cmdLineOptions, false, enumTypes, program.getCurrentDirectory());
             emitterHeader.HeaderMode = true;
-            emitterHeader.processNode(s);
+            try {
+                emitterHeader.processNode(s);
+            } catch (error) {
+                this.throwEmitterPassError(error, s.fileName, 'header');
+            }
             const emitterSource = new Emitter(program.getTypeChecker(), options, cmdLineOptions, false, enumTypes, program.getCurrentDirectory());
             // @tswow-end
             emitterSource.SourceMode = true;
-            emitterSource.processNode(s);
+            try {
+                emitterSource.processNode(s);
+            } catch (error) {
+                this.throwEmitterPassError(error, s.fileName, 'source');
+            }
 
             if (cmdLineOptions.trace) {
                 console.log(

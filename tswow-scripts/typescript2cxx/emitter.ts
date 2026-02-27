@@ -189,20 +189,93 @@ export class Emitter {
         return result;
     }
 
+    private getSyntaxKindName(kind: ts.SyntaxKind | number | undefined): string {
+        if (kind === undefined || kind === null) {
+            return 'Unknown';
+        }
+
+        return ts.SyntaxKind[kind] || `${kind}`;
+    }
+
+    private getContextNode(node?: ts.Node): ts.Node | undefined {
+        if (node) {
+            return node;
+        }
+
+        for (let i = this.scope.length - 1; i >= 0; i--) {
+            if (this.scope[i]) {
+                return this.scope[i];
+            }
+        }
+
+        return undefined;
+    }
+
+    private isFormattedEmitterError(error: unknown): boolean {
+        return !!(error
+            && error instanceof Error
+            && typeof error.message === 'string'
+            && error.message.startsWith('TypeScript Error:'));
+    }
+
+    private formatUnexpectedError(error: unknown, node?: ts.Node): string {
+        const rawMessage = error instanceof Error ? error.message : `${error}`;
+        const normalized = rawMessage.trim().toLowerCase();
+
+        if (normalized === 'not implemented'
+            || normalized === 'not implemented!'
+            || normalized === 'method not implemented.'
+            || normalized === 'method not implemented') {
+            const kindName = node ? this.getSyntaxKindName(node.kind) : 'Unknown';
+            return `unsupported emitter path for node kind '${kindName}'`;
+        }
+
+        return rawMessage;
+    }
+
+    private failUnsupported(node: ts.Node | undefined, details: string): never {
+        const contextNode = this.getContextNode(node);
+        const message = `Emitter does not support ${details} yet.`;
+        if (contextNode) {
+            this.error(message, contextNode);
+        }
+
+        throw new Error(message);
+    }
+
+    private rethrowWithContext(error: unknown, node: ts.Node | undefined, phase: string): never {
+        if (this.isFormattedEmitterError(error)) {
+            throw error;
+        }
+
+        const contextNode = this.getContextNode(node);
+        const detail = this.formatUnexpectedError(error, contextNode || node);
+        if (contextNode) {
+            this.error(`Emitter failed while ${phase}: ${detail}`, contextNode);
+        }
+
+        throw error instanceof Error
+            ? error
+            : new Error(`Emitter failed while ${phase}: ${detail}`);
+    }
+
     public processNode(node: ts.Node): void {
-        switch (node.kind) {
-            case ts.SyntaxKind.SourceFile:
-                this.processFile(<ts.SourceFile>node);
-                break;
-            case ts.SyntaxKind.Bundle:
-                this.processBundle(<ts.Bundle>node);
-                break;
-            case ts.SyntaxKind.UnparsedSource:
-                this.processUnparsedSource(<ts.UnparsedSource>node);
-                break;
-            default:
-                // TODO: finish it
-                throw new Error('Method not implemented.');
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.SourceFile:
+                    this.processFile(<ts.SourceFile>node);
+                    break;
+                case ts.SyntaxKind.Bundle:
+                    this.processBundle(<ts.Bundle>node);
+                    break;
+                case ts.SyntaxKind.UnparsedSource:
+                    this.processUnparsedSource(<ts.UnparsedSource>node);
+                    break;
+                default:
+                    this.failUnsupported(node, `top-level node kind '${this.getSyntaxKindName(node.kind)}'`);
+            }
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing top-level node '${this.getSyntaxKindName(node.kind)}'`);
         }
     }
 
@@ -568,11 +641,11 @@ export class Emitter {
     }
 
     processBundle(bundle: ts.Bundle): void {
-        throw new Error('Method not implemented.');
+        this.failUnsupported(bundle, `bundle nodes ('${this.getSyntaxKindName(bundle.kind)}')`);
     }
 
     processUnparsedSource(unparsedSource: ts.UnparsedSource): void {
-        throw new Error('Method not implemented.');
+        this.failUnsupported(unparsedSource, `unparsed source nodes ('${this.getSyntaxKindName(unparsedSource.kind)}')`);
     }
 
     processStatement(node: ts.Statement | ts.Declaration): void {
@@ -581,49 +654,51 @@ export class Emitter {
 
     processStatementInternal(nodeIn: ts.Statement | ts.Declaration, enableTypeAliases = false): void {
         const node = this.preprocessor.preprocessStatement(nodeIn);
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.EmptyStatement: return;
+                case ts.SyntaxKind.VariableStatement: this.processVariableStatement(<ts.VariableStatement>node); return;
+                case ts.SyntaxKind.FunctionDeclaration: this.processFunctionDeclaration(<ts.FunctionDeclaration>node); return;
+                case ts.SyntaxKind.Block: this.processBlock(<ts.Block>node); return;
+                case ts.SyntaxKind.ModuleBlock: this.processModuleBlock(<ts.ModuleBlock>node); return;
+                case ts.SyntaxKind.ReturnStatement: this.processReturnStatement(<ts.ReturnStatement>node); return;
+                case ts.SyntaxKind.IfStatement: this.processIfStatement(<ts.IfStatement>node); return;
+                case ts.SyntaxKind.DoStatement: this.processDoStatement(<ts.DoStatement>node); return;
+                case ts.SyntaxKind.WhileStatement: this.processWhileStatement(<ts.WhileStatement>node); return;
+                case ts.SyntaxKind.ForStatement: this.processForStatement(<ts.ForStatement>node); return;
+                case ts.SyntaxKind.ForInStatement: this.processForInStatement(<ts.ForInStatement>node); return;
+                case ts.SyntaxKind.ForOfStatement: this.processForOfStatement(<ts.ForOfStatement>node); return;
+                case ts.SyntaxKind.BreakStatement: this.processBreakStatement(<ts.BreakStatement>node); return;
+                case ts.SyntaxKind.ContinueStatement: this.processContinueStatement(<ts.ContinueStatement>node); return;
+                case ts.SyntaxKind.SwitchStatement: this.processSwitchStatement(<ts.SwitchStatement>node); return;
+                case ts.SyntaxKind.ExpressionStatement: this.processExpressionStatement(<ts.ExpressionStatement>node); return;
+                case ts.SyntaxKind.TryStatement: this.processTryStatement(<ts.TryStatement>node); return;
+                case ts.SyntaxKind.ThrowStatement: this.processThrowStatement(<ts.ThrowStatement>node); return;
+                case ts.SyntaxKind.DebuggerStatement: this.processDebuggerStatement(<ts.DebuggerStatement>node); return;
+                case ts.SyntaxKind.EnumDeclaration: this.processEnumDeclaration(<ts.EnumDeclaration>node); return;
+                case ts.SyntaxKind.ClassDeclaration: this.processClassDeclaration(<ts.ClassDeclaration>node); return;
+                case ts.SyntaxKind.InterfaceDeclaration: this.processClassDeclaration(<ts.InterfaceDeclaration>node); return;
+                case ts.SyntaxKind.ExportDeclaration: this.processExportDeclaration(<ts.ExportDeclaration>node); return;
+                case ts.SyntaxKind.ModuleDeclaration: this.processModuleDeclaration(<ts.ModuleDeclaration>node); return;
+                case ts.SyntaxKind.NamespaceExportDeclaration: this.processNamespaceDeclaration(<ts.NamespaceDeclaration>node); return;
+                case ts.SyntaxKind.LabeledStatement: this.processLabeledStatement(<ts.LabeledStatement>node); return;
+                case ts.SyntaxKind.ImportEqualsDeclaration: /*this.processImportEqualsDeclaration(<ts.ImportEqualsDeclaration>node);*/ return;
+                case ts.SyntaxKind.ImportDeclaration:
+                    /*done in forward declaration*/ /*this.processImportDeclaration(<ts.ImportDeclaration>node);*/ return;
+                case ts.SyntaxKind.TypeAliasDeclaration:
+                    /*done in forward Declaration*/
+                    if (enableTypeAliases) {
+                        this.processTypeAliasDeclaration(<ts.TypeAliasDeclaration>node);
+                    }
 
-        switch (node.kind) {
-            case ts.SyntaxKind.EmptyStatement: return;
-            case ts.SyntaxKind.VariableStatement: this.processVariableStatement(<ts.VariableStatement>node); return;
-            case ts.SyntaxKind.FunctionDeclaration: this.processFunctionDeclaration(<ts.FunctionDeclaration>node); return;
-            case ts.SyntaxKind.Block: this.processBlock(<ts.Block>node); return;
-            case ts.SyntaxKind.ModuleBlock: this.processModuleBlock(<ts.ModuleBlock>node); return;
-            case ts.SyntaxKind.ReturnStatement: this.processReturnStatement(<ts.ReturnStatement>node); return;
-            case ts.SyntaxKind.IfStatement: this.processIfStatement(<ts.IfStatement>node); return;
-            case ts.SyntaxKind.DoStatement: this.processDoStatement(<ts.DoStatement>node); return;
-            case ts.SyntaxKind.WhileStatement: this.processWhileStatement(<ts.WhileStatement>node); return;
-            case ts.SyntaxKind.ForStatement: this.processForStatement(<ts.ForStatement>node); return;
-            case ts.SyntaxKind.ForInStatement: this.processForInStatement(<ts.ForInStatement>node); return;
-            case ts.SyntaxKind.ForOfStatement: this.processForOfStatement(<ts.ForOfStatement>node); return;
-            case ts.SyntaxKind.BreakStatement: this.processBreakStatement(<ts.BreakStatement>node); return;
-            case ts.SyntaxKind.ContinueStatement: this.processContinueStatement(<ts.ContinueStatement>node); return;
-            case ts.SyntaxKind.SwitchStatement: this.processSwitchStatement(<ts.SwitchStatement>node); return;
-            case ts.SyntaxKind.ExpressionStatement: this.processExpressionStatement(<ts.ExpressionStatement>node); return;
-            case ts.SyntaxKind.TryStatement: this.processTryStatement(<ts.TryStatement>node); return;
-            case ts.SyntaxKind.ThrowStatement: this.processThrowStatement(<ts.ThrowStatement>node); return;
-            case ts.SyntaxKind.DebuggerStatement: this.processDebuggerStatement(<ts.DebuggerStatement>node); return;
-            case ts.SyntaxKind.EnumDeclaration: this.processEnumDeclaration(<ts.EnumDeclaration>node); return;
-            case ts.SyntaxKind.ClassDeclaration: this.processClassDeclaration(<ts.ClassDeclaration>node); return;
-            case ts.SyntaxKind.InterfaceDeclaration: this.processClassDeclaration(<ts.InterfaceDeclaration>node); return;
-            case ts.SyntaxKind.ExportDeclaration: this.processExportDeclaration(<ts.ExportDeclaration>node); return;
-            case ts.SyntaxKind.ModuleDeclaration: this.processModuleDeclaration(<ts.ModuleDeclaration>node); return;
-            case ts.SyntaxKind.NamespaceExportDeclaration: this.processNamespaceDeclaration(<ts.NamespaceDeclaration>node); return;
-            case ts.SyntaxKind.LabeledStatement: this.processLabeledStatement(<ts.LabeledStatement>node); return;
-            case ts.SyntaxKind.ImportEqualsDeclaration: /*this.processImportEqualsDeclaration(<ts.ImportEqualsDeclaration>node);*/ return;
-            case ts.SyntaxKind.ImportDeclaration:
-                /*done in forward declaration*/ /*this.processImportDeclaration(<ts.ImportDeclaration>node);*/ return;
-            case ts.SyntaxKind.TypeAliasDeclaration:
-                /*done in forward Declaration*/
-                if (enableTypeAliases) {
-                    this.processTypeAliasDeclaration(<ts.TypeAliasDeclaration>node);
-                }
+                    return;
+                case ts.SyntaxKind.ExportAssignment: /*nothing to do*/ return;
+            }
 
-                return;
-            case ts.SyntaxKind.ExportAssignment: /*nothing to do*/ return;
+            this.failUnsupported(node, `statement kind '${this.getSyntaxKindName(node.kind)}'`);
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing statement '${this.getSyntaxKindName(node.kind)}'`);
         }
-
-        // TODO: finish it
-        throw new Error('Method not implemented.');
     }
 
     processExpression(nodeIn: ts.Expression): void {
@@ -643,91 +718,103 @@ export class Emitter {
         // we need to process it for statements only
         //// this.functionContext.code.setNodeToTrackDebugInfo(node, this.sourceMapGenerator);
 
-        switch (node.kind) {
-            case ts.SyntaxKind.NewExpression: this.processNewExpression(<ts.NewExpression>node); return;
-            case ts.SyntaxKind.CallExpression: this.processCallExpression(<ts.CallExpression>node); return;
-            case ts.SyntaxKind.PropertyAccessExpression: this.processPropertyAccessExpression(<ts.PropertyAccessExpression>node); return;
-            case ts.SyntaxKind.PrefixUnaryExpression: this.processPrefixUnaryExpression(<ts.PrefixUnaryExpression>node); return;
-            case ts.SyntaxKind.PostfixUnaryExpression: this.processPostfixUnaryExpression(<ts.PostfixUnaryExpression>node); return;
-            case ts.SyntaxKind.BinaryExpression: this.processBinaryExpression(<ts.BinaryExpression>node); return;
-            case ts.SyntaxKind.ConditionalExpression: this.processConditionalExpression(<ts.ConditionalExpression>node); return;
-            case ts.SyntaxKind.DeleteExpression: this.processDeleteExpression(<ts.DeleteExpression>node); return;
-            case ts.SyntaxKind.TypeOfExpression: this.processTypeOfExpression(<ts.TypeOfExpression>node); return;
-            case ts.SyntaxKind.FunctionExpression: this.processFunctionExpression(<ts.FunctionExpression>node); return;
-            case ts.SyntaxKind.ArrowFunction: this.processArrowFunction(<ts.ArrowFunction>node); return;
-            case ts.SyntaxKind.ElementAccessExpression: this.processElementAccessExpression(<ts.ElementAccessExpression>node); return;
-            case ts.SyntaxKind.ParenthesizedExpression: this.processParenthesizedExpression(<ts.ParenthesizedExpression>node); return;
-            case ts.SyntaxKind.TypeAssertionExpression: this.processTypeAssertionExpression(<ts.TypeAssertion>node); return;
-            case ts.SyntaxKind.VariableDeclarationList: this.processVariableDeclarationList(<ts.VariableDeclarationList><any>node); return;
-            case ts.SyntaxKind.TrueKeyword:
-            case ts.SyntaxKind.FalseKeyword: this.processBooleanLiteral(<ts.BooleanLiteral>node); return;
-            case ts.SyntaxKind.NumericLiteral: this.processNumericLiteral(<ts.NumericLiteral>node); return;
-            case ts.SyntaxKind.StringLiteral: this.processStringLiteral(<ts.StringLiteral>node); return;
-            case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
-                this.processNoSubstitutionTemplateLiteral(<ts.NoSubstitutionTemplateLiteral>node); return;
-            case ts.SyntaxKind.ObjectLiteralExpression: this.processObjectLiteralExpression(<ts.ObjectLiteralExpression>node); return;
-            case ts.SyntaxKind.TemplateExpression: this.processTemplateExpression(<ts.TemplateExpression>node); return;
-            case ts.SyntaxKind.ArrayLiteralExpression: this.processArrayLiteralExpression(<ts.ArrayLiteralExpression>node); return;
-            case ts.SyntaxKind.RegularExpressionLiteral: this.processRegularExpressionLiteral(<ts.RegularExpressionLiteral>node); return;
-            case ts.SyntaxKind.ThisKeyword: this.processThisExpression(<ts.ThisExpression>node); return;
-            case ts.SyntaxKind.SuperKeyword: this.processSuperExpression(<ts.SuperExpression>node); return;
-            case ts.SyntaxKind.VoidExpression: this.processVoidExpression(<ts.VoidExpression>node); return;
-            case ts.SyntaxKind.NonNullExpression: this.processNonNullExpression(<ts.NonNullExpression>node); return;
-            case ts.SyntaxKind.AsExpression: this.processAsExpression(<ts.AsExpression>node); return;
-            case ts.SyntaxKind.SpreadElement: this.processSpreadElement(<ts.SpreadElement>node); return;
-            case ts.SyntaxKind.AwaitExpression: this.processAwaitExpression(<ts.AwaitExpression>node); return;
-            case ts.SyntaxKind.Identifier: this.processIdentifier(<ts.Identifier>node); return;
-            case ts.SyntaxKind.ComputedPropertyName: this.processComputedPropertyName(<ts.ComputedPropertyName><any>node); return;
-        }
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.NewExpression: this.processNewExpression(<ts.NewExpression>node); return;
+                case ts.SyntaxKind.CallExpression: this.processCallExpression(<ts.CallExpression>node); return;
+                case ts.SyntaxKind.PropertyAccessExpression: this.processPropertyAccessExpression(<ts.PropertyAccessExpression>node); return;
+                case ts.SyntaxKind.PrefixUnaryExpression: this.processPrefixUnaryExpression(<ts.PrefixUnaryExpression>node); return;
+                case ts.SyntaxKind.PostfixUnaryExpression: this.processPostfixUnaryExpression(<ts.PostfixUnaryExpression>node); return;
+                case ts.SyntaxKind.BinaryExpression: this.processBinaryExpression(<ts.BinaryExpression>node); return;
+                case ts.SyntaxKind.ConditionalExpression: this.processConditionalExpression(<ts.ConditionalExpression>node); return;
+                case ts.SyntaxKind.DeleteExpression: this.processDeleteExpression(<ts.DeleteExpression>node); return;
+                case ts.SyntaxKind.TypeOfExpression: this.processTypeOfExpression(<ts.TypeOfExpression>node); return;
+                case ts.SyntaxKind.FunctionExpression: this.processFunctionExpression(<ts.FunctionExpression>node); return;
+                case ts.SyntaxKind.ArrowFunction: this.processArrowFunction(<ts.ArrowFunction>node); return;
+                case ts.SyntaxKind.ElementAccessExpression: this.processElementAccessExpression(<ts.ElementAccessExpression>node); return;
+                case ts.SyntaxKind.ParenthesizedExpression: this.processParenthesizedExpression(<ts.ParenthesizedExpression>node); return;
+                case ts.SyntaxKind.TypeAssertionExpression: this.processTypeAssertionExpression(<ts.TypeAssertion>node); return;
+                case ts.SyntaxKind.VariableDeclarationList: this.processVariableDeclarationList(<ts.VariableDeclarationList><any>node); return;
+                case ts.SyntaxKind.TrueKeyword:
+                case ts.SyntaxKind.FalseKeyword: this.processBooleanLiteral(<ts.BooleanLiteral>node); return;
+                case ts.SyntaxKind.NumericLiteral: this.processNumericLiteral(<ts.NumericLiteral>node); return;
+                case ts.SyntaxKind.StringLiteral: this.processStringLiteral(<ts.StringLiteral>node); return;
+                case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
+                    this.processNoSubstitutionTemplateLiteral(<ts.NoSubstitutionTemplateLiteral>node); return;
+                case ts.SyntaxKind.ObjectLiteralExpression: this.processObjectLiteralExpression(<ts.ObjectLiteralExpression>node); return;
+                case ts.SyntaxKind.TemplateExpression: this.processTemplateExpression(<ts.TemplateExpression>node); return;
+                case ts.SyntaxKind.ArrayLiteralExpression: this.processArrayLiteralExpression(<ts.ArrayLiteralExpression>node); return;
+                case ts.SyntaxKind.RegularExpressionLiteral: this.processRegularExpressionLiteral(<ts.RegularExpressionLiteral>node); return;
+                case ts.SyntaxKind.ThisKeyword: this.processThisExpression(<ts.ThisExpression>node); return;
+                case ts.SyntaxKind.SuperKeyword: this.processSuperExpression(<ts.SuperExpression>node); return;
+                case ts.SyntaxKind.VoidExpression: this.processVoidExpression(<ts.VoidExpression>node); return;
+                case ts.SyntaxKind.NonNullExpression: this.processNonNullExpression(<ts.NonNullExpression>node); return;
+                case ts.SyntaxKind.AsExpression: this.processAsExpression(<ts.AsExpression>node); return;
+                case ts.SyntaxKind.SpreadElement: this.processSpreadElement(<ts.SpreadElement>node); return;
+                case ts.SyntaxKind.AwaitExpression: this.processAwaitExpression(<ts.AwaitExpression>node); return;
+                case ts.SyntaxKind.Identifier: this.processIdentifier(<ts.Identifier>node); return;
+                case ts.SyntaxKind.ComputedPropertyName: this.processComputedPropertyName(<ts.ComputedPropertyName><any>node); return;
+            }
 
-        // TODO: finish it
-        throw new Error('Method not implemented.');
+            this.failUnsupported(node, `expression kind '${this.getSyntaxKindName(node.kind)}'`);
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing expression '${this.getSyntaxKindName(node.kind)}'`);
+        }
     }
 
     processDeclaration(node: ts.Declaration): void {
-        switch (node.kind) {
-            case ts.SyntaxKind.PropertySignature: this.processPropertyDeclaration(<ts.PropertySignature>node); return;
-            case ts.SyntaxKind.PropertyDeclaration: this.processPropertyDeclaration(<ts.PropertyDeclaration>node); return;
-            case ts.SyntaxKind.Parameter: this.processPropertyDeclaration(<ts.ParameterDeclaration>node); return;
-            case ts.SyntaxKind.MethodSignature: this.processMethodDeclaration(<ts.MethodSignature>node); return;
-            case ts.SyntaxKind.MethodDeclaration: this.processMethodDeclaration(<ts.MethodDeclaration>node); return;
-            case ts.SyntaxKind.ConstructSignature: this.processMethodDeclaration(<ts.ConstructorDeclaration>node); return;
-            case ts.SyntaxKind.Constructor: this.processMethodDeclaration(<ts.ConstructorDeclaration>node); return;
-            case ts.SyntaxKind.SetAccessor: this.processMethodDeclaration(<ts.MethodDeclaration>node); return;
-            case ts.SyntaxKind.GetAccessor: this.processMethodDeclaration(<ts.MethodDeclaration>node); return;
-            case ts.SyntaxKind.FunctionDeclaration: this.processFunctionDeclaration(<ts.FunctionDeclaration>node); return;
-            case ts.SyntaxKind.IndexSignature: /*TODO: index*/ return;
-            case ts.SyntaxKind.SemicolonClassElement: /*TODO: index*/ return;
-        }
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.PropertySignature: this.processPropertyDeclaration(<ts.PropertySignature>node); return;
+                case ts.SyntaxKind.PropertyDeclaration: this.processPropertyDeclaration(<ts.PropertyDeclaration>node); return;
+                case ts.SyntaxKind.Parameter: this.processPropertyDeclaration(<ts.ParameterDeclaration>node); return;
+                case ts.SyntaxKind.MethodSignature: this.processMethodDeclaration(<ts.MethodSignature>node); return;
+                case ts.SyntaxKind.MethodDeclaration: this.processMethodDeclaration(<ts.MethodDeclaration>node); return;
+                case ts.SyntaxKind.ConstructSignature: this.processMethodDeclaration(<ts.ConstructorDeclaration>node); return;
+                case ts.SyntaxKind.Constructor: this.processMethodDeclaration(<ts.ConstructorDeclaration>node); return;
+                case ts.SyntaxKind.SetAccessor: this.processMethodDeclaration(<ts.MethodDeclaration>node); return;
+                case ts.SyntaxKind.GetAccessor: this.processMethodDeclaration(<ts.MethodDeclaration>node); return;
+                case ts.SyntaxKind.FunctionDeclaration: this.processFunctionDeclaration(<ts.FunctionDeclaration>node); return;
+                case ts.SyntaxKind.IndexSignature: /*TODO: index*/ return;
+                case ts.SyntaxKind.SemicolonClassElement: /*TODO: index*/ return;
+            }
 
-        // TODO: finish it
-        throw new Error('Method not implemented.');
+            this.failUnsupported(node, `declaration kind '${this.getSyntaxKindName(node.kind)}'`);
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing declaration '${this.getSyntaxKindName(node.kind)}'`);
+        }
     }
 
     processInclude(nodeIn: ts.Declaration | ts.Statement): void {
 
         const node = this.preprocessor.preprocessStatement(<ts.Statement>nodeIn);
-
-        switch (node.kind) {
-            case ts.SyntaxKind.TypeAliasDeclaration: this.processTypeAliasDeclaration(<ts.TypeAliasDeclaration>node); return;
-            case ts.SyntaxKind.ImportDeclaration: this.processImportDeclaration(<ts.ImportDeclaration>node); return;
-            default:
-                return;
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.TypeAliasDeclaration: this.processTypeAliasDeclaration(<ts.TypeAliasDeclaration>node); return;
+                case ts.SyntaxKind.ImportDeclaration: this.processImportDeclaration(<ts.ImportDeclaration>node); return;
+                default:
+                    return;
+            }
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing include for '${this.getSyntaxKindName(node.kind)}'`);
         }
     }
 
     processForwardDeclaration(nodeIn: ts.Declaration | ts.Statement): void {
 
         const node = this.preprocessor.preprocessStatement(<ts.Statement>nodeIn);
-
-        switch (node.kind) {
-            case ts.SyntaxKind.VariableStatement: this.processVariablesForwardDeclaration(<ts.VariableStatement>node); return;
-            case ts.SyntaxKind.InterfaceDeclaration:
-            case ts.SyntaxKind.ClassDeclaration: this.processClassForwardDeclaration(<ts.ClassDeclaration>node); return;
-            case ts.SyntaxKind.ModuleDeclaration: this.processModuleForwardDeclaration(<ts.ModuleDeclaration>node); return;
-            case ts.SyntaxKind.EnumDeclaration: this.processEnumForwardDeclaration(<ts.EnumDeclaration>node); return;
-            default:
-                return;
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.VariableStatement: this.processVariablesForwardDeclaration(<ts.VariableStatement>node); return;
+                case ts.SyntaxKind.InterfaceDeclaration:
+                case ts.SyntaxKind.ClassDeclaration: this.processClassForwardDeclaration(<ts.ClassDeclaration>node); return;
+                case ts.SyntaxKind.ModuleDeclaration: this.processModuleForwardDeclaration(<ts.ModuleDeclaration>node); return;
+                case ts.SyntaxKind.EnumDeclaration: this.processEnumForwardDeclaration(<ts.EnumDeclaration>node); return;
+                default:
+                    return;
+            }
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing forward declaration '${this.getSyntaxKindName(node.kind)}'`);
         }
     }
 
@@ -809,35 +896,38 @@ export class Emitter {
     processImplementation(nodeIn: ts.Declaration | ts.Statement, template?: boolean): void {
 
         const node = this.preprocessor.preprocessStatement(nodeIn);
+        try {
+            switch (node.kind) {
+                case ts.SyntaxKind.ClassDeclaration: this.processClassImplementation(<ts.ClassDeclaration>node, template); return;
+                case ts.SyntaxKind.ModuleDeclaration: this.processModuleImplementation(<ts.ModuleDeclaration>node, template); return;
+                case ts.SyntaxKind.PropertyDeclaration:
+                    if (!template && this.isStatic(node)) {
+                        this.processPropertyDeclaration(<ts.PropertyDeclaration>node, true);
+                    }
 
-        switch (node.kind) {
-            case ts.SyntaxKind.ClassDeclaration: this.processClassImplementation(<ts.ClassDeclaration>node, template); return;
-            case ts.SyntaxKind.ModuleDeclaration: this.processModuleImplementation(<ts.ModuleDeclaration>node, template); return;
-            case ts.SyntaxKind.PropertyDeclaration:
-                if (!template && this.isStatic(node)) {
-                    this.processPropertyDeclaration(<ts.PropertyDeclaration>node, true);
-                }
+                    return;
+                case ts.SyntaxKind.Constructor:
+                case ts.SyntaxKind.MethodDeclaration:
+                case ts.SyntaxKind.GetAccessor:
+                case ts.SyntaxKind.SetAccessor:
+                case ts.SyntaxKind.FunctionDeclaration:
+                    if ((template && this.isTemplate(<ts.MethodDeclaration>node))
+                        || (!template && !this.isTemplate(<ts.MethodDeclaration>node))) {
+                        this.processMethodDeclaration(<ts.MethodDeclaration>node, true);
+                    }
 
-                return;
-            case ts.SyntaxKind.Constructor:
-            case ts.SyntaxKind.MethodDeclaration:
-            case ts.SyntaxKind.GetAccessor:
-            case ts.SyntaxKind.SetAccessor:
-            case ts.SyntaxKind.FunctionDeclaration:
-                if ((template && this.isTemplate(<ts.MethodDeclaration>node))
-                    || (!template && !this.isTemplate(<ts.MethodDeclaration>node))) {
-                    this.processMethodDeclaration(<ts.MethodDeclaration>node, true);
-                }
+                    return;
+                case ts.SyntaxKind.ImportEqualsDeclaration:
+                    if (!template) {
+                        this.processImportEqualsDeclaration(<ts.ImportEqualsDeclaration>node);
+                    }
 
-                return;
-            case ts.SyntaxKind.ImportEqualsDeclaration:
-                if (!template) {
-                    this.processImportEqualsDeclaration(<ts.ImportEqualsDeclaration>node);
-                }
-
-                return;
-            default:
-                return;
+                    return;
+                default:
+                    return;
+            }
+        } catch (error) {
+            this.rethrowWithContext(error, node, `processing implementation '${this.getSyntaxKindName(node.kind)}'`);
         }
     }
 
@@ -2132,8 +2222,9 @@ export class Emitter {
             type = (<ts.LiteralTypeNode>typeIn).literal;
         }
 
-        let next;
-        switch (type && type.kind) {
+        try {
+            let next;
+            switch (type && type.kind) {
             case ts.SyntaxKind.TrueKeyword:
             case ts.SyntaxKind.FalseKeyword:
             case ts.SyntaxKind.BooleanKeyword:
@@ -2305,7 +2396,7 @@ export class Emitter {
 
                     this.writer.writeString(typeParameter.name.text);
                 } else {
-                    throw new Error('Not Implemented');
+                    this.failUnsupported(typeParameter, `type parameter name kind '${this.getSyntaxKindName(typeParameter.name.kind)}'`);
                 }
 
                 break;
@@ -2314,7 +2405,7 @@ export class Emitter {
                 if (parameter.name.kind === ts.SyntaxKind.Identifier) {
                     this.processType(parameter.type);
                 } else {
-                    throw new Error('Not Implemented');
+                    this.failUnsupported(parameter, `parameter name kind '${this.getSyntaxKindName(parameter.name.kind)}' while resolving a type`);
                 }
 
                 break;
@@ -2446,36 +2537,16 @@ export class Emitter {
                 this.writer.writeString(exprName.text);
                 break;
             default:
-                if(!auto) {
-                    // Try to find a better node with source file info
-                    let errorNode: ts.Node = type;
-                    let hasSourceFile = false;
-                    try {
-                        if (errorNode && typeof errorNode.getSourceFile === 'function') {
-                            hasSourceFile = !!errorNode.getSourceFile();
-                        }
-                    } catch (err) {}
-                    
-                    if (!hasSourceFile) {
-                        // Look in scope for a node with source file info
-                        for (let i = this.scope.length - 1; i >= 0; i--) {
-                            const scopeNode = this.scope[i];
-                            try {
-                                if (scopeNode && typeof scopeNode.getSourceFile === 'function') {
-                                    if (scopeNode.getSourceFile()) {
-                                        errorNode = scopeNode;
-                                        break;
-                                    }
-                                }
-                            } catch (err) {}
-                        }
-                    }
-                    this.error(
-                        `Failed to write union type `
-                      + `because 'auto' keyword is forbidden here.`
-                    , errorNode);
-                }
+                this.failUnsupported(
+                    node || <ts.Node><any>type,
+                    `type kind '${this.getSyntaxKindName(type && type.kind)}'`);
                 break;
+        }
+        } catch (error) {
+            this.rethrowWithContext(
+                error,
+                node || <ts.Node><any>type,
+                `processing type '${this.getSyntaxKindName(type && type.kind)}'`);
         }
     }
 
@@ -2614,16 +2685,20 @@ export class Emitter {
             // we're checking if we're somehow trying to write main into two header files.
             let filename = node.getSourceFile().fileName;
             if(mainFile !== undefined) {
-                throw new Error(`"Main" function found in both ${mainFile} and ${filename}, you can only have one function called "Main"`);
+                this.error(
+                    `"Main" function found in both ${mainFile} and ${filename}, only one function named "Main" is allowed.`
+                    , node);
             }
             mainFile = filename;
 
             if ( node.typeParameters && node.typeParameters.length > 0) {
-                throw new Error('"Main" function cannot have type parameters!');
+                this.error(`"Main" function cannot have type parameters.`, node);
             }
 
             if ( node.parameters.length !== 1 || node.parameters[0].type.getFullText().replace(' ', '') !== 'TSEvents') {
-                throw new Error('"Main" function must take a single argument "TSEvents" (globally defined!)');
+                this.error(
+                    `"Main" function must take a single argument "TSEvents" (globally defined).`
+                    , node);
             }
         }
 
@@ -3362,7 +3437,10 @@ export class Emitter {
         }
 
         if(!this.resolver.isStringType(firstType)) {
-            throw new Error(`Invalid type for switch: ${firstExpression.getText()}`);
+            this.error(
+                `Invalid switch case type '${firstExpression.getText()}'.`
+              + ` Mixed case label types are not supported.`
+                , firstExpression);
         }
 
         this.processSwitchStatementForAnyInternal(node);
