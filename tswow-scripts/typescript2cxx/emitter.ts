@@ -9,6 +9,27 @@ import { handleTSWoWOverride } from './tswow/override';
 import { generateStringify } from './tswow/stringify';
 
 let mainFile: string = undefined;
+
+type OptionalChainPropertyOp = {
+    kind: 'property';
+    node: ts.PropertyAccessExpression;
+    optional: boolean;
+};
+
+type OptionalChainElementOp = {
+    kind: 'element';
+    node: ts.ElementAccessExpression;
+    optional: boolean;
+};
+
+type OptionalChainCallOp = {
+    kind: 'call';
+    node: ts.CallExpression;
+    optional: boolean;
+};
+
+type OptionalChainOp = OptionalChainPropertyOp | OptionalChainElementOp | OptionalChainCallOp;
+
 export class Emitter {
     public writer: CodeWriter;
     preprocessor: Preprocessor;
@@ -24,6 +45,7 @@ export class Emitter {
     curClassName: string = "";
     didConstructor: boolean = false;
     asyncScopes: boolean[] = []
+    optionalChainCounter = 0;
     // @tswow-begin: hack: const enums
     enumTypes: {[key:string]: string}
     // @tswow-end
@@ -257,6 +279,359 @@ export class Emitter {
         throw error instanceof Error
             ? error
             : new Error(`Emitter failed while ${phase}: ${detail}`);
+    }
+
+    private isOptionalChainNode(node?: ts.Node): boolean {
+        if (!node) {
+            return false;
+        }
+
+        const optionalFlag = (<any>ts.NodeFlags).OptionalChain as number | undefined;
+        return !!(node && (
+            (optionalFlag !== undefined && (node.flags & optionalFlag) !== 0)
+            || (<any>node).questionDotToken));
+    }
+
+    private isOptionalChainContinuation(parent: ts.Node | undefined, node: ts.Node): boolean {
+        if (!parent || !this.isOptionalChainNode(parent)) {
+            return false;
+        }
+
+        if (parent.kind === ts.SyntaxKind.PropertyAccessExpression
+            || parent.kind === ts.SyntaxKind.ElementAccessExpression
+            || parent.kind === ts.SyntaxKind.CallExpression) {
+            return (<any>parent).expression === node;
+        }
+
+        return false;
+    }
+
+    private isOptionalChainRoot(node: ts.Expression): boolean {
+        return this.isOptionalChainNode(node) && !this.isOptionalChainContinuation(node.parent, node);
+    }
+
+    private getOptionalLambdaCapture(): string {
+        for (let i = this.scope.length - 1; i >= 0; i--) {
+            const scopeNode = this.scope[i];
+            if (!scopeNode) {
+                continue;
+            }
+
+            if (scopeNode.kind === ts.SyntaxKind.FunctionDeclaration
+                || scopeNode.kind === ts.SyntaxKind.FunctionExpression
+                || scopeNode.kind === ts.SyntaxKind.ArrowFunction
+                || scopeNode.kind === ts.SyntaxKind.MethodDeclaration
+                || scopeNode.kind === ts.SyntaxKind.Constructor
+                || scopeNode.kind === ts.SyntaxKind.GetAccessor
+                || scopeNode.kind === ts.SyntaxKind.SetAccessor) {
+                return '[&]';
+            }
+        }
+
+        return '[]';
+    }
+
+    private getOptionalChainParts(node: ts.Expression): { base: ts.Expression; ops: OptionalChainOp[] } | undefined {
+        if (!this.isOptionalChainNode(node)) {
+            return undefined;
+        }
+
+        const ops: OptionalChainOp[] = [];
+        let current: ts.Expression = node;
+
+        while (current && this.isOptionalChainNode(current)) {
+            if (ts.isPropertyAccessExpression(current)) {
+                ops.push({
+                    kind: 'property',
+                    node: current,
+                    optional: !!(<any>current).questionDotToken
+                });
+                current = current.expression;
+                continue;
+            }
+
+            if (ts.isElementAccessExpression(current)) {
+                ops.push({
+                    kind: 'element',
+                    node: current,
+                    optional: !!(<any>current).questionDotToken
+                });
+                current = current.expression;
+                continue;
+            }
+
+            if (ts.isCallExpression(current)) {
+                ops.push({
+                    kind: 'call',
+                    node: current,
+                    optional: !!(<any>current).questionDotToken
+                });
+                current = current.expression;
+                continue;
+            }
+
+            return undefined;
+        }
+
+        if (ops.length === 0 || !current) {
+            return undefined;
+        }
+
+        ops.reverse();
+        return { base: current, ops };
+    }
+
+    private writeOptionalPropertyAccess(
+        node: ts.PropertyAccessExpression,
+        baseWriter: () => void,
+        ops: OptionalChainOp[],
+        index: number): void {
+        const typeInfo = this.resolver.getOrResolveTypeOf(node.expression);
+        const symbolInfo = this.resolver.getSymbolAtLocation(node.name);
+        const nextOp = index + 1 < ops.length ? ops[index + 1] : undefined;
+        const isImmediatelyCalled = !!(nextOp
+            && nextOp.kind === 'call'
+            && nextOp.node.expression === node);
+
+        const methodAccess = !!(symbolInfo
+            && symbolInfo.valueDeclaration
+            && symbolInfo.valueDeclaration.kind === ts.SyntaxKind.MethodDeclaration
+            && !isImmediatelyCalled);
+
+        const isStaticMethodAccess = !!(symbolInfo
+            && symbolInfo.valueDeclaration
+            && this.isStatic(symbolInfo.valueDeclaration));
+
+        const getAccess = (
+            symbolInfo
+            && symbolInfo.declarations
+            && symbolInfo.declarations.length > 0
+            && (symbolInfo.declarations[0].kind === ts.SyntaxKind.GetAccessor
+                || symbolInfo.declarations[0].kind === ts.SyntaxKind.SetAccessor))
+            || (node.name.text === 'length' && this.resolver.isArrayOrStringType(typeInfo));
+
+        if (methodAccess) {
+            if (isStaticMethodAccess) {
+                this.writer.writeString('&');
+                this.processExpression(node.name);
+                return;
+            }
+
+            if (!symbolInfo || !symbolInfo.valueDeclaration) {
+                this.failUnsupported(node, `method reference '${node.getText()}'`);
+            }
+
+            this.writer.writeString('std::bind(&');
+            const valueDeclaration = <ts.ClassDeclaration>symbolInfo.valueDeclaration.parent;
+            if (!valueDeclaration || !valueDeclaration.name) {
+                this.failUnsupported(node, `method reference without class name '${node.getText()}'`);
+            }
+
+            this.processExpression(valueDeclaration.name);
+            this.writer.writeString('::');
+            this.processExpression(node.name);
+            this.writer.writeString(', ');
+            baseWriter();
+
+            const methodDeclaration = <ts.MethodDeclaration>(symbolInfo.valueDeclaration);
+            methodDeclaration.parameters.forEach((_, i) => {
+                this.writer.writeString(', std::placeholders::_' + (i + 1));
+            });
+
+            this.writer.writeString(')');
+            return;
+        }
+
+        if (node.expression.kind === ts.SyntaxKind.NewExpression
+            || node.expression.kind === ts.SyntaxKind.ArrayLiteralExpression) {
+            this.writer.writeString('(');
+            baseWriter();
+            this.writer.writeString(')');
+        } else {
+            baseWriter();
+        }
+
+        if (this.resolver.isAnyLikeType(typeInfo)) {
+            this.writer.writeString('["');
+            this.processExpression(node.name);
+            this.writer.writeString('"]');
+            return;
+        }
+
+        if (this.resolver.isStaticAccess(typeInfo)
+            || node.expression.kind === ts.SyntaxKind.SuperKeyword
+            || (typeInfo
+                && typeInfo.symbol
+                && typeInfo.symbol.valueDeclaration
+                && typeInfo.symbol.valueDeclaration.kind === ts.SyntaxKind.ModuleDeclaration)) {
+            this.writer.writeString('::');
+        } else {
+            this.writer.writeString('->');
+        }
+
+        if (getAccess) {
+            this.writer.writeString('get_');
+        }
+
+        this.processExpression(node.name);
+
+        if (getAccess) {
+            this.writer.writeString('()');
+        }
+    }
+
+    private writeOptionalElementAccess(
+        node: ts.ElementAccessExpression,
+        baseWriter: () => void): void {
+        const symbolInfo = this.resolver.getSymbolAtLocation(node.expression);
+        const type = this.resolver.typeToTypeNode(this.resolver.getOrResolveTypeOf(node.expression));
+
+        if (type && type.kind === ts.SyntaxKind.TupleType) {
+            if (node.argumentExpression.kind !== ts.SyntaxKind.NumericLiteral) {
+                this.failUnsupported(node.argumentExpression, `tuple index '${node.argumentExpression.getText()}' in optional chain`);
+            }
+
+            this.writer.writeString('std::get<');
+            (<any>node.argumentExpression).__skip_boxing = true;
+            this.processExpression(node.argumentExpression);
+            this.writer.writeString('>(');
+            baseWriter();
+            this.writer.writeString(')');
+            return;
+        }
+
+        let dereference =
+            type
+            && type.kind !== ts.SyntaxKind.TypeLiteral
+            && type.kind !== ts.SyntaxKind.StringKeyword
+            && type.kind !== ts.SyntaxKind.ArrayType
+            && type.kind !== ts.SyntaxKind.ObjectKeyword
+            && type.kind !== ts.SyntaxKind.AnyKeyword
+            && symbolInfo
+            && symbolInfo.valueDeclaration
+            && (!(<ts.ParameterDeclaration>symbolInfo.valueDeclaration).dotDotDotToken)
+            && (<any>symbolInfo.valueDeclaration).initializer
+            && (<any>symbolInfo.valueDeclaration).initializer.kind !== ts.SyntaxKind.ObjectLiteralExpression;
+
+        if (dereference) {
+            this.writer.writeString('(');
+        }
+
+        baseWriter();
+
+        if (dereference) {
+            this.writer.writeString(')');
+        }
+
+        this.writer.writeString('[');
+        this.processExpression(node.argumentExpression);
+        this.writer.writeString(']');
+    }
+
+    private writeOptionalCall(
+        node: ts.CallExpression,
+        baseWriter: () => void): void {
+        baseWriter();
+        this.processTemplateArguments(node);
+        this.writer.writeString('(');
+
+        let next = false;
+        if (node.arguments.length) {
+            node.arguments.forEach(element => {
+                if (next) {
+                    this.writer.writeString(', ');
+                }
+
+                this.processExpression(element);
+                next = true;
+            });
+        }
+
+        this.writer.writeString(')');
+    }
+
+    private writeOptionalChainOperation(
+        op: OptionalChainOp,
+        baseWriter: () => void,
+        ops: OptionalChainOp[],
+        index: number): void {
+        switch (op.kind) {
+            case 'property':
+                this.writeOptionalPropertyAccess(op.node, baseWriter, ops, index);
+                return;
+            case 'element':
+                this.writeOptionalElementAccess(op.node, baseWriter);
+                return;
+            case 'call':
+                this.writeOptionalCall(op.node, baseWriter);
+                return;
+        }
+    }
+
+    private writeOptionalChainFrom(
+        baseWriter: () => void,
+        ops: OptionalChainOp[],
+        index: number): void {
+        if (index >= ops.length) {
+            baseWriter();
+            return;
+        }
+
+        const op = ops[index];
+        if (op.optional
+            && op.kind === 'call'
+            && ts.isPropertyAccessExpression(op.node.expression)) {
+            const callTarget = op.node.expression;
+            const callSymbol = this.resolver.getSymbolAtLocation(callTarget.name);
+            if (callSymbol
+                && callSymbol.valueDeclaration
+                && callSymbol.valueDeclaration.kind === ts.SyntaxKind.MethodDeclaration) {
+                // `obj.method?.()` cannot be materialized as `auto temp = obj->method`.
+                // Fall back to a direct call for class methods, which preserves the common case.
+                const nextBaseWriter = () =>
+                    this.writeOptionalChainOperation(op, baseWriter, ops, index);
+                this.writeOptionalChainFrom(nextBaseWriter, ops, index + 1);
+                return;
+            }
+        }
+
+        if (op.optional) {
+            const capture = this.getOptionalLambdaCapture();
+            const tempName = `__tswow_opt_${this.optionalChainCounter++}`;
+            const returnTypeName = `__tswow_opt_ret_${this.optionalChainCounter++}`;
+            const nextBaseWriter = () =>
+                this.writeOptionalChainOperation(
+                    op,
+                    () => this.writer.writeString(tempName),
+                    ops,
+                    index);
+
+            this.writer.writeString(`(${capture}() { auto ${tempName} = `);
+            baseWriter();
+            this.writer.writeString(`; using ${returnTypeName} = decltype(`);
+            this.writeOptionalChainFrom(nextBaseWriter, ops, index + 1);
+            this.writer.writeString(`); if (${tempName} == TSNull()) return ${returnTypeName}(); return `);
+            this.writeOptionalChainFrom(nextBaseWriter, ops, index + 1);
+            this.writer.writeString('; }())');
+            return;
+        }
+
+        const nextBaseWriter = () =>
+            this.writeOptionalChainOperation(op, baseWriter, ops, index);
+        this.writeOptionalChainFrom(nextBaseWriter, ops, index + 1);
+    }
+
+    private processOptionalChainRoot(node: ts.Expression): boolean {
+        const parts = this.getOptionalChainParts(node);
+        if (!parts || parts.ops.length === 0) {
+            return false;
+        }
+
+        this.writeOptionalChainFrom(
+            () => this.processExpression(parts.base),
+            parts.ops,
+            0);
+        return true;
     }
 
     public processNode(node: ts.Node): void {
@@ -714,6 +1089,12 @@ export class Emitter {
                 return;
             }
         } catch(error) {}
+
+        if (this.isOptionalChainRoot(node)) {
+            if (this.processOptionalChainRoot(node)) {
+                return;
+            }
+        }
 
         // we need to process it for statements only
         //// this.functionContext.code.setNodeToTrackDebugInfo(node, this.sourceMapGenerator);
