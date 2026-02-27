@@ -15,16 +15,27 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 import { inMemory } from '../query/Query';
+import { BuildArgs } from '../Settings';
 import { Row } from '../table/Row';
 import { Table } from '../table/Table';
 import { SqlConnection } from './SQLConnection';
 import { SqlRow } from './SQLRow';
 
 export type SqlRowCreator<C, Q, R extends SqlRow<C, Q>> = (table: SqlTable<C, Q, R>, obj: {[key: string]: any}) => R;
+const EAGER_PRELOAD_TABLES = new Set<string>([
+    'trainer_spell',
+    'item_set_names',
+    'gameobject',
+    'item_template',
+]);
+const AUTO_EAGER_PRELOAD_QUERY_THRESHOLD = 32;
+const AUTO_EAGER_PRELOAD_TIME_THRESHOLD_MS = 250;
 
 export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
     private cachedRows: {[key: string]: R} = {};
     private cachedFirst: R | undefined;
+    private hasLoadedAllRows = false;
+    private autoPreloadDone = false;
     private chunk_size: number;
     protected rowCreator: SqlRowCreator<C, Q, R>;
 
@@ -86,7 +97,69 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
         return fields.map(x=>where[x]).join('_')
     }
 
+    private isUnfilteredQuery(where: Q, firstOnly: boolean) {
+        if(firstOnly || where === undefined || where === null) {
+            return false;
+        }
+        if(typeof(where) !== 'object') {
+            return false;
+        }
+        if((where as any).isAnyQuery || (where as any).isAllQuery) {
+            return false;
+        }
+        return Object.keys(where as any).length === 0;
+    }
+
+    private eagerPreload(reason: string) {
+        if(this.hasLoadedAllRows) {
+            return;
+        }
+
+        const start = Date.now();
+        const preloadedRows = SqlConnection.getRows(this, {} as any, false)
+            .filter(x => !this.cachedRows[Row.fullKey(x)]);
+        preloadedRows.forEach(x => this.cachedRows[Row.fullKey(x)] = x);
+        this.hasLoadedAllRows = true;
+        this.autoPreloadDone = true;
+
+        if(BuildArgs.USE_TIMER) {
+            console.log(
+                `[timer] Eager SQL preload ${this.name}: `
+                + `rows=${preloadedRows.length}, `
+                + `reason=${reason}, `
+                + `time=${((Date.now()-start)/1000).toFixed(2)}s`
+            );
+        }
+    }
+
+    private maybeEagerPreload() {
+        if(!EAGER_PRELOAD_TABLES.has(this.name)) {
+            return;
+        }
+        this.eagerPreload('allowlist');
+    }
+
+    private maybeAutoEagerPreload() {
+        if(this.autoPreloadDone || this.hasLoadedAllRows) {
+            return;
+        }
+        const stats = SqlConnection.getSourceReadStats(this.name);
+        if(stats.count < AUTO_EAGER_PRELOAD_QUERY_THRESHOLD) {
+            return;
+        }
+        if(stats.ms < AUTO_EAGER_PRELOAD_TIME_THRESHOLD_MS) {
+            return;
+        }
+        this.eagerPreload(
+              `query-threshold(${AUTO_EAGER_PRELOAD_QUERY_THRESHOLD})`
+            + `+time-threshold(${(AUTO_EAGER_PRELOAD_TIME_THRESHOLD_MS/1000).toFixed(2)}s)`
+        );
+    }
+
     private filterInt(where: Q, firstOnly = false): R[] {
+        this.maybeEagerPreload();
+        this.maybeAutoEagerPreload();
+
         // Try looking up using only primary key
         let pkLookup = this.isPkLookup(where);
         let cacheMatches: R[] = []
@@ -95,19 +168,33 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
             if(row) {
                 return [row];
             }
+            if(this.hasLoadedAllRows) {
+                return [];
+            }
         } else {
             for(let key in this.cachedRows) {
                 let value = this.cachedRows[key];
                 if(inMemory(where, value)) {
                     cacheMatches.push(value);
+                    if(firstOnly) {
+                        return cacheMatches;
+                    }
                 }
+            }
+            if(this.hasLoadedAllRows) {
+                return cacheMatches;
             }
         }
 
         const dbMatches = SqlConnection.getRows(this, where, firstOnly)
             .filter(x => !this.cachedRows[Row.fullKey(x)]);
         dbMatches.forEach(x => this.cachedRows[Row.fullKey(x)] = x);
-        return cacheMatches.concat(dbMatches);
+        if(this.isUnfilteredQuery(where, firstOnly)) {
+            this.hasLoadedAllRows = true;
+            this.autoPreloadDone = true;
+        }
+        const matches = cacheMatches.concat(dbMatches);
+        return firstOnly ? matches.slice(0,1) : matches;
     }
 
     addRow(row: R) {
@@ -193,5 +280,8 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
         // console.log(`Original Deletes: ${totalDeletes} - Final Deletes: ${deleteChunks.length} of chunk size ${table.chunk_size}`);
     
         table.cachedRows = {};
+        table.cachedFirst = undefined;
+        table.hasLoadedAllRows = false;
+        table.autoPreloadDone = false;
     }
 }
