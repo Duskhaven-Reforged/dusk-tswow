@@ -11,6 +11,7 @@ project(ClientExtensions)
 
 set(DETOURS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/Detours")
 set(LUA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/lua-5.1")
+set(CUSTOM_PACKET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/CustomPackets")
 
 file(GLOB_RECURSE Detours_sources CONFIGURE_DEPENDS
     "${DETOURS_SOURCE_DIR}/src/*.c"
@@ -68,6 +69,7 @@ target_include_directories(ClientExtensions PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${DETOURS_SOURCE_DIR}/src
     ${LUA_SOURCE_DIR}/src
+    ${CUSTOM_PACKET_DIR}
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "DLL" FILES

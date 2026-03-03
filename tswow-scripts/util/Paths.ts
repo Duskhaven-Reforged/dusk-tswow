@@ -734,7 +734,8 @@ export function SourcePaths(pathIn: string) {
             }),
 
             client_extensions: dirn('client-extensions',{
-                src: dir({ CustomPackets: dir({}),}),
+                CustomPackets: dir({}),
+                src: dir({}),
                 libs: dir({
                     lua_51: dirn('lua-5.1',{
                         src: dir({})
