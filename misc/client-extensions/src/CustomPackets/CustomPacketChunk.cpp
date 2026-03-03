@@ -1,4 +1,4 @@
-#include <CustomPackets/CustomPacketChunk.h>
+#include <CustomPacketChunk.h>
 
 #include <cstring>
 #include <string>

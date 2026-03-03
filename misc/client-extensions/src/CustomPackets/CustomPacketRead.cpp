@@ -1,4 +1,4 @@
-#include <CustomPackets/CustomPacketRead.h>
+#include <CustomPacketRead.h>
 
 CustomPacketRead::CustomPacketRead()
     : CustomPacketBase()

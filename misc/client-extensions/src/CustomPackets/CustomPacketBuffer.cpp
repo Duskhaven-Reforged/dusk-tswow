@@ -1,4 +1,4 @@
-#include <CustomPackets/CustomPacketBuffer.h>
+#include <CustomPacketBuffer.h>
 
 CustomPacketBuffer::CustomPacketBuffer(
       chunkSize_t minFragmentSize

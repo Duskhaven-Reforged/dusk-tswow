@@ -1,7 +1,7 @@
 #pragma once
 
-#include <CustomPackets/CustomPacketRead.h>
-#include <CustomPackets/CustomPacketDefines.h>
+#include <CustomPacketRead.h>
+#include <CustomPacketDefines.h>
 
 enum class CUSTOM_PACKET_API CustomPacketResult {
     NO_HEADER            = 0x1,   // 1

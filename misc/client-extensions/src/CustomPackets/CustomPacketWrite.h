@@ -1,7 +1,7 @@
 #pragma once
 
-#include <CustomPackets/CustomPacketDefines.h>
-#include <CustomPackets/CustomPacketBase.h>
+#include <CustomPacketDefines.h>
+#include <CustomPacketBase.h>
 
 #include <string>
 
