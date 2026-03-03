@@ -1,6 +1,6 @@
 #pragma once
 
-#include <CustomPackets/CustomPacketRead.h>
+#include <CustomPacketRead.h>
 
 #include <functional>
 

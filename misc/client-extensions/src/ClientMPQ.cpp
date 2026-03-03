@@ -1,4 +1,4 @@
-#include <CustomPackets/CustompacketChunk.h>
+#include <CustompacketChunk.h>
 #include <ClientMacros.h>
 #include <Logger.h>
 #include <SharedDefines.h>
