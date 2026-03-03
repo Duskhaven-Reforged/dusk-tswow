@@ -3,8 +3,8 @@
 #include <ClientLua.h>
 #include <Logger.h>
 
-#include <CustomPackets/CustomPacketDefines.h>
-#include <CustomPackets/CustomPacketBuffer.h>
+#include <CustomPacketDefines.h>
+#include <CustomPacketBuffer.h>
 
 #include <map>
 #include <sstream>
