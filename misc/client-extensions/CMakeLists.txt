@@ -36,6 +36,13 @@ target_include_directories(detours PUBLIC ${DETOURS_SOURCE_DIR})
 #add_library(lua STATIC ${Lua_sources})
 #target_compile_options(lua PRIVATE -w)
 
+FILE(GLOB_RECURSE CUSTOM_PACKET_SOURCES CONFIGURE_DEPENDS
+   "${CUSTOM_PACKET_DIR}/*.h"
+   "${CUSTOM_PACKET_DIR}/*.cpp"
+)
+add_library(cp STATIC ${CUSTOM_PACKET_SOURCES})
+target_include_directories(cp PUBLIC ${CUSTOM_PACKET_DIR})
+
 file(GLOB_RECURSE ClientExtensions_sources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
@@ -60,6 +67,7 @@ target_sources(ClientExtensions PRIVATE
 )
 
 target_link_libraries(ClientExtensions PRIVATE detours)
+target_link_libraries(ClientExtensions PRIVATE cp)
 
 if(MSVC)
     target_compile_definitions(ClientExtensions PUBLIC _CRT_SECURE_NO_WARNINGS)

@@ -508,7 +508,7 @@ export function BuildPaths(pathIn: string, tdb: string) {
         terminal_history: file('terminal-history.txt'),
         ClientExtensionsDll: file('ClientExtensions.dll'),
         client_extensions: dirn('client-extensions',{
-            dll_path: file('ClientExtensions/Release/ClientExtensions.dll')
+            dll_path: file('Release/ClientExtensions.dll')
         }),
         ClientExtensions64Exe: file('ClientExtensions64.exe'),
         client_extensions_64: dirn('client-extensions-64',{
