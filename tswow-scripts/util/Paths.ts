@@ -734,10 +734,12 @@ export function SourcePaths(pathIn: string) {
             }),
 
             client_extensions: dirn('client-extensions',{
-                CustomPackets: dir({}),
-                lua_51: dirn('lua-5.1',{
-                    src: dir({})
-                })
+                src: dir({ CustomPackets: dir({}),}),
+                libs: dir({
+                    lua_51: dirn('lua-5.1',{
+                        src: dir({})
+                    })
+                }),
             }),
             client_extensions_64: dirn('client-extensions-64',{
                 src: dir({}),

@@ -77,7 +77,7 @@ export namespace TrinityCore {
             });
         }
 
-        spaths.misc.client_extensions.CustomPackets
+        spaths.misc.client_extensions.src.CustomPackets
             .readDir('ABSOLUTE')
             .filter(x=>x.endsWith('.h'))
             .forEach(x=>x.copy(ipaths.bin.include.join(x.basename())))
