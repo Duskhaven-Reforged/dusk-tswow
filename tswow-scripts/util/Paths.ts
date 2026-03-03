@@ -370,6 +370,8 @@ export function InstallPath(pathIn: string, tdb: string) {
                 share: dir({})
             }),
             ClientExtensions_dll: file('ClientExtensions.dll'),
+            ClientExtensions64_exe: file('ClientExtensions64.exe'),
+            DiscordPartnerSDK_dll: file('discord_partner_sdk.dll'),
             include: dir({
                 global_d_ts: file('global.d.ts'),
                 tracy: dir({
@@ -507,6 +509,11 @@ export function BuildPaths(pathIn: string, tdb: string) {
         ClientExtensionsDll: file('ClientExtensions.dll'),
         client_extensions: dirn('client-extensions',{
             dll_path: file('ClientExtensions/Release/ClientExtensions.dll')
+        }),
+        ClientExtensions64Exe: file('ClientExtensions64.exe'),
+        client_extensions_64: dirn('client-extensions-64',{
+            exe_path: file('Release/ClientExtensions64.exe'),
+            DiscordPartnerSDK_dll_path: file('Release/discord_partner_sdk.dll')
         }),
         scripts_config: dirn('scripts-config',{
             typescript2cxx: dir({}),
@@ -731,6 +738,9 @@ export function SourcePaths(pathIn: string) {
                 lua_51: dirn('lua-5.1',{
                     src: dir({})
                 })
+            }),
+            client_extensions_64: dirn('client-extensions-64',{
+                src: dir({}),
             }),
         }),
 

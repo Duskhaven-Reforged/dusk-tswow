@@ -65,15 +65,6 @@ async function applyStage(collection: PatchCollection) {
     collection.splice(0, collection.length);
 }
 
-let ctime: number = 0;
-function time(msg: string) {
-    if(BuildArgs.USE_TIMER) {
-        let diff = Date.now()-ctime;
-        console.log(`${msg} in ${(diff/1000).toFixed(2)} seconds.`);
-        ctime = Date.now();
-    }
-}
-
 async function mainWrap() {
     try {
         await main();
@@ -90,7 +81,6 @@ async function main() {
         SqlConnection.logFile = fs.openSync(ipaths.coredata.last_datascript.get(),'a');
     }
 
-    ctime = Date.now();
     IdPublic.readFile();
     SqlConnection.connect();
 
@@ -101,7 +91,6 @@ async function main() {
             console.error(err.stack);
             process.exit(2);
         }
-        time(`Loaded/Cleaned SQL`);
     }
 
     // Read in all wotlk subdirectories (needed for all events to fire)
@@ -113,13 +102,26 @@ async function main() {
         })
 
     // Find all patch subdirectories
+    const moduleLoadStart = Date.now();
+    let totalScannedScripts = 0;
+    let totalLoadedScripts = 0;
+    let totalRequireMs = 0;
+    let totalSetupMs = 0;
+    const requireFileTimes: {[key: string]: number} = {};
     for (let dir of DatascriptModules) {
         try {
+            const moduleStart = Date.now();
+            let moduleScannedScripts = 0;
+            let moduleLoadedScripts = 0;
+            let moduleRequireMs = 0;
+            let moduleSetupMs = 0;
             dir.datascripts.build.toDirectory()
                 .iterate('RECURSE','FILES','FULL',node=>{
                     if(!node.endsWith('.js') || !node.isFile()) {
                         return;
                     }
+                    ++moduleScannedScripts;
+                    ++totalScannedScripts;
                     let ts = dir.datascripts.join(node.relativeTo(dir.datascripts.build))
                         .toFile().withExtension('.ts')
                     if(!ts.exists()) {
@@ -131,18 +133,54 @@ async function main() {
                         || node.toFile().readString().includes('InlineScripts')
                         || node.toFile().readString().includes('InlineTSLua')
                     ) {
+                        const requireStart = Date.now();
                         require(node.relativeTo(__dirname).get());
+                        const requireMs = Date.now()-requireStart;
+                        const profileName = ts.relativeTo(dir.datascripts).get();
+                        requireFileTimes[profileName] = (requireFileTimes[profileName] || 0) + requireMs;
+                        moduleRequireMs += requireMs;
+                        totalRequireMs += requireMs;
+                        ++moduleLoadedScripts;
+                        ++totalLoadedScripts;
                         if(profileScripts()) {
                             profiling[ts.relativeTo(dir.datascripts).get()] = Date.now()-v
                         }
+                        const setupStart = Date.now();
                         syncApplyStage(setups);
+                        const setupMs = Date.now()-setupStart;
+                        moduleSetupMs += setupMs;
+                        totalSetupMs += setupMs;
                     }
 
                 })
+            if(BuildArgs.USE_TIMER) {
+                console.log(
+                    `[timer] Datascript module ${dir.get()}: `
+                    + `total=${((Date.now()-moduleStart)/1000).toFixed(2)}s, `
+                    + `require=${(moduleRequireMs/1000).toFixed(2)}s, `
+                    + `setup=${(moduleSetupMs/1000).toFixed(2)}s, `
+                    + `loaded=${moduleLoadedScripts}/${moduleScannedScripts}`
+                );
+            }
         } catch (error) {
             console.error(`Error in patch ${dir.get()}:`, error);
             process.exit(3);
         }
+    }
+    if(BuildArgs.USE_TIMER) {
+        console.log(
+            `[timer] Datascript load/setup breakdown: `
+            + `require=${(totalRequireMs/1000).toFixed(2)}s, `
+            + `setup=${(totalSetupMs/1000).toFixed(2)}s, `
+            + `loaded=${totalLoadedScripts}/${totalScannedScripts}`
+        );
+        Object.entries(requireFileTimes)
+            .sort(([,a],[,b])=>b-a)
+            .slice(0,20)
+            .forEach(([file,ms])=>{
+                console.log(`[timer] Slow require ${file}: ${(ms/1000).toFixed(2)}s`);
+            });
+        console.log(`[timer] Load module datascripts + setup stage: ${((Date.now()-moduleLoadStart)/1000).toFixed(2)}s`);
     }
 
     cur_stage = 'READ'
@@ -156,7 +194,6 @@ async function main() {
 
     if(BuildArgs.WRITE_CLIENT) {
         _writeLUAXML();
-        time(`Wrote LUAXML`);
     }
     cur_stage = 'LUAXML'
     syncApplyStage(luaxmls);
@@ -168,7 +205,6 @@ async function main() {
     if(!BuildArgs.READ_ONLY) {
         syncApplyStage(sorts);
     }
-    time(`Executed scripts`);
 
     deasync((callback)=>
     {
@@ -178,8 +214,9 @@ async function main() {
 
     if(!BuildArgs.READ_ONLY) {
         IdPublic.writeFile();
-        time(`Wrote IDs`)
     }
+
+    SqlConnection.printSourceReadProfile();
 
     if(profileScripts()) {
         Object.entries(profiling)
