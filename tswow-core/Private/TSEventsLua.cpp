@@ -285,6 +285,7 @@ void TSLua::load_events(sol::state& state)
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnCalcSpellDuration);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, CanAuraBeBrokenBySpell);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnJumpStart);
+    LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnJumpEnd);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnCastCancelled);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, OnSpellCastFinished);
     LUA_MAPPED_HANDLE(spell_events, SpellEvents, CanMoveWhileChanneling);

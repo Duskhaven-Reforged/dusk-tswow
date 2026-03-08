@@ -641,6 +641,7 @@ struct TSEvents
         ID_EVENT(OnSuccessfulInterrupt, TSUnit caster, TSUnit who, TSSpell spell)
         ID_EVENT(OnCalcSpellDuration, TSSpellInfo Info, TSPlayer Player, TSMutableNumber<int32> Dur)
         ID_EVENT(OnJumpStart, TSSpellInfo, TSUnit, TSMutableNumber<float>, TSMutableNumber<float>, TSNumber<float>, TSNumber<float>, TSNumber<float>, TSNumber<float>)
+        ID_EVENT(OnJumpEnd, TSSpellInfo, TSUnit)
         ID_EVENT(OnCastCancelled, TSUnit, TSUnit, TSSpell, TSNumber<int32>, TSNumber<int32>)
         ID_EVENT(OnSpellCastFinished, TSSpell, TSUnit, TSNumber<uint32>)
         ID_EVENT(CanMoveWhileChanneling, TSSpell, TSUnit, TSMutable<bool, bool>)

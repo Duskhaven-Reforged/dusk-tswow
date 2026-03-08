@@ -8850,6 +8850,9 @@ declare namespace _hidden {
         OnJumpStart(callback: (info: TSSpellInfo, caster: TSUnit, speedXY: TSMutableNumber<float>, SpeedZ: TSMutableNumber<float>, Dist: TSNumber<float>, PosX: TSNumber<float>, PosY: TSNumber<float>, PosZ: TSNumber<float>) => void) : T;
         OnJumpStart(id: EventID, callback: (info: TSSpellInfo, caster: TSUnit, speedXY: TSMutableNumber<float>, SpeedZ: TSMutableNumber<float>, Dist: TSNumber<float>, PosX: TSNumber<float>, PosY: TSNumber<float>, PosZ: TSNumber<float>) => void) : T;
 
+        OnJumpEnd(callback: (info: TSSpellInfo, unit: TSUnit) => void) : T;
+        OnJumpEnd(id: EventID, callback: (info: TSSpellInfo, unit: TSUnit) => void) : T;
+
         CanAuraBeBrokenBySpell(callback: (Attacker: TSUnit, Victim: TSUnit, Aura: TSAura, DamageSpell: TSSpellInfo, DamageType: TSNumber<uint8>, CanBreak: TSMutable<bool, bool>) => void) : T;
         CanAuraBeBrokenBySpell(id: EventID, callback: (Attacker: TSUnit, Victim: TSUnit, Aura: TSAura, DamageSpell: TSSpellInfo, DamageType: TSNumber<uint8>, CanBreak: TSMutable<bool, bool>) => void) : T;
 

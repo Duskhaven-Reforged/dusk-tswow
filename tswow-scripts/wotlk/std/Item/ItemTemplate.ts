@@ -84,13 +84,21 @@ import { Stat } from "./ItemStats";
 type LoothavenRegistrationOptions = {
     moduleName?: string;
     filePath?: string;
+    /** Item tag (second argument of std.Items.create). No const required. */
+    tagName?: string;
+    /** Variable name holding the item (e.g. from `const beltofarugal = std.Items.create(...)`). */
     constName?: string;
+    /** Parent/display ID from create call when present (third argument of std.Items.create(mod, tag, parentedId)). */
+    parentedId?: number | null;
     metadata?: any;
 };
 
-// Create registry table in world_dest database
+// Single source of truth: loothaven_registry is created only here (world_dest).
+// We DROP then CREATE so the schema always matches; the table is repopulated by the finish("loothaven-register-items") callback in this file.
+console.log("Creating loothaven_registry table.");
 SQL.Databases.world_dest.writeEarly(`
-CREATE TABLE IF NOT EXISTS \`loothaven_registry\` (
+DROP TABLE IF EXISTS \`loothaven_registry\`;
+CREATE TABLE \`loothaven_registry\` (
     id INT NOT NULL AUTO_INCREMENT,
     item_entry INT(10) UNSIGNED NOT NULL,
     item_name VARCHAR(255) NOT NULL,
@@ -102,6 +110,8 @@ CREATE TABLE IF NOT EXISTS \`loothaven_registry\` (
     required_level INT NOT NULL DEFAULT 0,
     module_name VARCHAR(100) NOT NULL DEFAULT '',
     file_path VARCHAR(500) NOT NULL DEFAULT '',
+    tag_name VARCHAR(100) NOT NULL DEFAULT '',
+    parented_id INT NULL,
     const_name VARCHAR(100) NOT NULL DEFAULT '',
     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     metadata TEXT,
@@ -137,8 +147,8 @@ function registerLoothavenItemAuto(item: ItemTemplate, metadata?: any): void
         return;
     }
 
-    const itemTag = extractItemTag(callSite.filePath, callSite.line);
-    if (!itemTag)
+    const extracted = extractItemTag(callSite.filePath, callSite.line);
+    if (!extracted)
     {
         console.error(`Loothaven: could not extract item tag from ${callSite.filePath}:${callSite.line}`);
         console.error(`Loothaven: stack trace was: ${new Error().stack}`);
@@ -148,14 +158,16 @@ function registerLoothavenItemAuto(item: ItemTemplate, metadata?: any): void
     const moduleName = extractModuleName(callSite.filePath);
     const relativeFilePath = getRelativeFilePath(callSite.filePath);
     
-    console.log(`Loothaven: registering item with tag "${itemTag}", filePath: "${relativeFilePath}"`);
+    console.log(`Loothaven: registering item with tag "${extracted.tag}", filePath: "${relativeFilePath}"`);
 
     loothavenItemsToRegister.push({
         item,
         options: {
             moduleName,
             filePath: relativeFilePath,
-            constName: itemTag, // Store the item tag (e.g., 'sfk-cloth-head') instead of const name
+            tagName: extracted.tag,
+            constName: extracted.constName ?? undefined,
+            parentedId: extracted.parentedId ?? undefined,
             metadata: metadata && Object.keys(metadata).length > 0 ? metadata : undefined,
         },
     });
@@ -261,7 +273,7 @@ function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: n
     return null;
 }
 
-function extractItemTag(filePath: string, line: number): string | null
+function extractItemTag(filePath: string, line: number): { tag: string; constName: string | null; parentedId: number | null } | null
 {
     try
     {
@@ -295,6 +307,7 @@ function extractItemTag(filePath: string, line: number): string | null
         const startLine = Math.min(line - 1, lines.length - 1);
         const searchRange = 100;
         let constLineIndex = -1;
+        let extractedConstName: string | null = null;
 
         for (let i = startLine; i >= Math.max(0, startLine - searchRange); i--)
         {
@@ -305,17 +318,33 @@ function extractItemTag(filePath: string, line: number): string | null
             if (exportMatch)
             {
                 constLineIndex = i;
+                extractedConstName = exportMatch[2];
                 break;
             }
         }
 
-        if (constLineIndex === -1)
+        // If no const declaration, search backwards for std.Items.create( (unchained pattern)
+        let searchStartLine = constLineIndex;
+        if (searchStartLine === -1)
         {
-            console.error(`Loothaven: no const declaration found in ${actualPath} searching backwards from line ${line}`);
+            for (let i = startLine; i >= Math.max(0, startLine - searchRange); i--)
+            {
+                const lineText = lines[i];
+                const lineLower = lineText.toLowerCase();
+                if (lineLower.includes("std.items.create(") || lineLower.includes("items.create("))
+                {
+                    searchStartLine = i;
+                    break;
+                }
+            }
+        }
+        if (searchStartLine === -1)
+        {
+            console.error(`Loothaven: no const declaration and no std.Items.create( found in ${actualPath} searching backwards from line ${line}`);
             return null;
         }
 
-        // Now search forward from the const declaration to find std.Items.create() call
+        // Now search forward from the start line to find std.Items.create() call
         // The call might span multiple lines, so we need to handle that
         let createCallStart = -1;
         let createCallEnd = -1;
@@ -324,7 +353,7 @@ function extractItemTag(filePath: string, line: number): string | null
         let stringChar = '';
         let createCallText = '';
 
-        for (let i = constLineIndex; i < Math.min(constLineIndex + 50, lines.length); i++)
+        for (let i = searchStartLine; i < Math.min(searchStartLine + 50, lines.length); i++)
         {
             const lineText = lines[i];
             
@@ -362,7 +391,7 @@ function extractItemTag(filePath: string, line: number): string | null
                         const beforeParen = lineText.substring(searchStart, j).trim();
                         // Also check previous line if we're at the start of this line
                         let fullContext = beforeParen;
-                        if (j < 10 && i > constLineIndex)
+                        if (j < 10 && i > searchStartLine)
                         {
                             fullContext = lines[i - 1].trim() + ' ' + beforeParen;
                         }
@@ -403,26 +432,25 @@ function extractItemTag(filePath: string, line: number): string | null
 
         if (createCallStart === -1 || createCallEnd === -1)
         {
-            console.error(`Loothaven: could not find std.Items.create() call starting from line ${constLineIndex + 1} in ${actualPath}`);
+            console.error(`Loothaven: could not find std.Items.create() call starting from line ${searchStartLine + 1} in ${actualPath}`);
             return null;
         }
 
-        // Extract the tag (second argument) from std.Items.create('mod', 'tag')
+        // Extract the tag (second argument), optional parented ID (third argument) from std.Items.create('mod', 'tag'[, parentedId])
         // Note: createCallText starts with '(' since we captured from the opening parenthesis
         // Normalize whitespace and handle quotes properly
         const normalizedCall = createCallText.replace(/\s+/g, ' ').trim();
         
-        // Match the arguments: ('mod', 'tag') or ("mod", "tag")
-        // Handle escaped quotes in strings
-        // The captured text starts with '(', so we match from there
-        const tagMatch = normalizedCall.match(/\(\s*(['"`])((?:[^\\]|\\.)*?)\1\s*,\s*(['"`])((?:[^\\]|\\.)*?)\3/);
+        // Match the arguments: ('mod', 'tag') or ("mod", "tag") or ('mod', 'tag', 6392)
+        const tagMatch = normalizedCall.match(/\(\s*(['"`])((?:[^\\]|\\.)*?)\1\s*,\s*(['"`])((?:[^\\]|\\.)*?)\3(?:\s*,\s*(\d+))?\s*\)/);
         if (tagMatch && tagMatch[4])
         {
             // Unescape the tag string
             let tag = tagMatch[4];
             tag = tag.replace(/\\(.)/g, '$1'); // Unescape characters
-            console.log(`Loothaven: extracted tag "${tag}" from std.Items.create() call at line ${createCallStart + 1} in ${actualPath}`);
-            return tag;
+            const parentedId = tagMatch[5] ? parseInt(tagMatch[5], 10) : null;
+            console.log(`Loothaven: extracted tag "${tag}"${extractedConstName ? `, const "${extractedConstName}"` : ""}${parentedId !== null ? `, parentedId ${parentedId}` : ""} from std.Items.create() call at line ${createCallStart + 1} in ${actualPath}`);
+            return { tag, constName: extractedConstName, parentedId };
         }
 
         console.error(`Loothaven: could not extract tag from std.Items.create() call: ${normalizedCall.substring(0, 200)}`);
@@ -551,14 +579,16 @@ finish("loothaven-register-items", () =>
 
             const moduleName = options.moduleName || extractModuleName(options.filePath || "");
             const filePath = options.filePath || "";
-            const constName = options.constName || "";
+            const tagName = options.tagName ?? options.constName ?? "";
+            const constName = options.constName ?? "";
+            const parentedId = options.parentedId != null ? options.parentedId : null;
             const metadataJson = options.metadata ? JSON.stringify(options.metadata) : null;
 
             SQL.Databases.world_dest.write(`
                 INSERT INTO \`loothaven_registry\` (
                     item_entry, item_name, item_level, item_class, item_subclass,
                     item_quality, inventory_type, required_level,
-                    module_name, file_path, const_name, metadata
+                    module_name, file_path, tag_name, parented_id, const_name, metadata
                 ) VALUES (
                     ${itemId},
                     '${escapeSql(itemName)}',
@@ -570,6 +600,8 @@ finish("loothaven-register-items", () =>
                     ${requiredLevel},
                     '${escapeSql(moduleName)}',
                     '${escapeSql(filePath)}',
+                    '${escapeSql(tagName)}',
+                    ${parentedId !== null ? parentedId : "NULL"},
                     '${escapeSql(constName)}',
                     ${metadataJson ? `'${escapeSql(metadataJson)}'` : "NULL"}
                 )
@@ -583,6 +615,8 @@ finish("loothaven-register-items", () =>
                     required_level = VALUES(required_level),
                     module_name = VALUES(module_name),
                     file_path = VALUES(file_path),
+                    tag_name = VALUES(tag_name),
+                    parented_id = VALUES(parented_id),
                     const_name = VALUES(const_name),
                     metadata = VALUES(metadata),
                     registered_at = CURRENT_TIMESTAMP
