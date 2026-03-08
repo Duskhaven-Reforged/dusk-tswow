@@ -1,7 +1,7 @@
-#include "CustomPacketChunk.h"
+#include <CustomPacketChunk.h>
 
-#include <string>
 #include <cstring>
+#include <string>
 
 CustomPacketChunk::CustomPacketChunk(CustomPacketChunk const& other)
     : m_size(other.m_size)

@@ -5,3 +5,6 @@
 [submodule "misc/adt-creator"]
 	path = misc/adt-creator
 	url = https://github.com/tswow/adt-creator.git
+[submodule "misc/client-extensions/libs/Detours"]
+	path = misc/client-extensions/libs/Detours
+	url = https://github.com/microsoft/Detours

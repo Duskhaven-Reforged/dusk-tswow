@@ -1,9 +1,9 @@
 #pragma once
 
-#include "CustomPacketDefines.h"
+#include <CustomPacketDefines.h>
 
-#include "CustomPacketBase.h"
-#include "CustomPacketWrite.h"
+#include <CustomPacketBase.h>
+#include <CustomPacketWrite.h>
 
 class CUSTOM_PACKET_API CustomPacketRead : public CustomPacketBase {
 public:

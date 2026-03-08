@@ -1,7 +1,7 @@
-#include "CustomPacketBase.h"
+#include <CustomPacketBase.h>
 
-#include <string>
 #include <stdexcept>
+#include <string>
 
 CustomPacketBase::CustomPacketBase(CustomPacketBase const& base)
     : m_size(base.m_size)

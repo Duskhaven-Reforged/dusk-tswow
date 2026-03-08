@@ -1,7 +1,7 @@
 #pragma once
 
-#include "CustomPacketChunk.h"
-#include "CustomPacketDefines.h"
+#include <CustomPacketChunk.h>
+#include <CustomPacketDefines.h>
 
 #include <vector>
 

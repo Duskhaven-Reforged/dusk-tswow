@@ -216,6 +216,59 @@ export class Connection {
 export class SqlConnection {
     static additional: Connection[] = [];
     static logFile: number;
+    private static sourceReadCount = 0;
+    private static sourceReadMs = 0;
+    private static sourceRows = 0;
+    private static sourceReadByTable: {[key: string]: {count: number, ms: number, rows: number}} = {};
+
+    private static extractQueryTable(sql: string) {
+        const match = sql.match(/\bFROM\s+`?([a-zA-Z0-9_]+)`?/i);
+        if(match && match[1]) {
+            return match[1];
+        }
+        return '(unknown)';
+    }
+
+    static printSourceReadProfile(maxTables: number = 15) {
+        if(!BuildArgs.USE_TIMER) {
+            return;
+        }
+
+        console.log(
+            `[timer] SQL source reads: `
+            + `queries=${this.sourceReadCount}, `
+            + `rows=${this.sourceRows}, `
+            + `total=${(this.sourceReadMs/1000).toFixed(2)}s`
+        );
+
+        Object.entries(this.sourceReadByTable)
+            .sort(([,a],[,b])=>b.ms-a.ms)
+            .slice(0,maxTables)
+            .forEach(([table,stats])=>{
+                console.log(
+                    `[timer] SQL source table ${table}: `
+                    + `queries=${stats.count}, `
+                    + `rows=${stats.rows}, `
+                    + `time=${(stats.ms/1000).toFixed(2)}s`
+                );
+            });
+    }
+
+    static getSourceReadStats(table: string) {
+        const stats = this.sourceReadByTable[table];
+        if(stats) {
+            return stats;
+        }
+        return {count: 0, ms: 0, rows: 0};
+    }
+
+    private static resetSourceReadProfile() {
+        this.sourceReadCount = 0;
+        this.sourceReadMs = 0;
+        this.sourceRows = 0;
+        this.sourceReadByTable = {};
+    }
+
     static log(db: string, sql: string) {
         if(BuildArgs.LOG_SQL) {
             fs.writeSync(this.logFile,`[${db}]: ${sql}\n`);
@@ -240,6 +293,7 @@ export class SqlConnection {
 
     static connect() {
         this.endConnection();
+        this.resetSourceReadProfile();
         [this.auth,this.world_dst,this.world_src,this.characters]
             .forEach((x)=>Connection.connect(x));
     }
@@ -267,7 +321,22 @@ export class SqlConnection {
     }
 
     static querySource(sql: string): any {
-        return this.world_src.read(sql);
+        const start = Date.now();
+        const value = this.world_src.read(sql);
+        const elapsed = Date.now()-start;
+        const rows = Array.isArray(value) ? value.length : 0;
+
+        const table = this.extractQueryTable(sql);
+        const current = this.sourceReadByTable[table]
+            || (this.sourceReadByTable[table] = {count:0, ms:0, rows:0});
+        current.count += 1;
+        current.ms += elapsed;
+        current.rows += rows;
+
+        this.sourceReadCount += 1;
+        this.sourceReadMs += elapsed;
+        this.sourceRows += rows;
+        return value;
     }
 
     static allDbs() {
