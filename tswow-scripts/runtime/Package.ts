@@ -22,7 +22,7 @@ export interface PackageMeta {
 }
 
 export class Package {
-    static async packageClient(dataset: Dataset, fullDBC: boolean, fullInterface: boolean) {
+    static async packageClient(dataset: Dataset, fullDBC: boolean, fullInterface: boolean, folder: boolean) {
         term.log('client', `Packaging client for ${dataset.name}`)
         await Datascripts.build(dataset,['--no-shutdown']);
         await Addon.build(dataset);
@@ -118,14 +118,16 @@ export class Package {
                 'inherit'
             );
 
-            // Mirror layout into a folder (same hierarchy as MPQ / build-data patches) so content is usable without MPQ
-            const folderName = packageFile.basename().get().replace(/\.[^.]+$/, '');
-            const mirrorDirPath = path.join(resfp(ipaths.package), folderName);
-            wfs.mkDirs(mirrorDirPath, true);
-            for (const e of entries) {
-                const destPath = path.join(mirrorDirPath, e.dst);
-                wfs.mkDirs(path.dirname(destPath));
-                wfs.copy(e.src, destPath);
+            if (folder) {
+                // Mirror layout into a folder (same hierarchy as MPQ / build-data patches) when explicitly requested.
+                const folderName = packageFile.basename().get().replace(/\.[^.]+$/, '');
+                const mirrorDirPath = path.join(resfp(ipaths.package), folderName);
+                wfs.mkDirs(mirrorDirPath, true);
+                for (const e of entries) {
+                    const destPath = path.join(mirrorDirPath, e.dst);
+                    wfs.mkDirs(path.dirname(destPath));
+                    wfs.copy(e.src, destPath);
+                }
             }
 
             const chunkSize = NodeConfig.LauncherPatchChunkSize;
@@ -155,17 +157,18 @@ export class Package {
         term.debug('misc', `Initializing packages`)
         this.Command.addCommand(
               'client'
-            , 'dataset --fullDBC --fullInterface'
+            , 'dataset --fullDBC --fullInterface --folder'
             , 'Packages client data for the specified dataset'
             , async args => {
                 const lower = args.map(x=>x.toLowerCase())
                 const fullDBC = lower.includes('--fulldbc');
                 const fullInterface = lower.includes('--fullinterface');
+                const folder = lower.includes('--folder');
                 await Promise.all(Identifier.getDatasets(
                       args
                     , 'MATCH_ANY'
                     , NodeConfig.DefaultDataset
-                ).map(x=>this.packageClient(x,fullDBC,fullInterface)))
+                ).map(x=>this.packageClient(x,fullDBC,fullInterface,folder)))
             }
         )
     }
