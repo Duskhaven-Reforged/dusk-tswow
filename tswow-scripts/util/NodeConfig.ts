@@ -228,6 +228,37 @@ export class NodeConfigClass extends ConfigFile {
     })
     LauncherPatchChunkSize!: number
 
+    @Property({
+        name: 'Launcher.FileServerUrl'
+      , description: 'Base pull-zone URL used for supplementary patch downloads and launcher manifests'
+      , examples: [
+            ['','Falls back to VITE_FILESERVER_URL from the environment']
+          , ['https://duskhaven-patches.b-cdn.net/','Bunny pull-zone URL']
+        ]
+    })
+    LauncherFileServerUrl!: string
+
+    @Property({
+        name: 'Launcher.BunnyStorageEndpoint'
+      , description: 'Base Bunny Storage API endpoint used when uploading release artifacts'
+      , examples: [['https://storage.bunnycdn.com','Default Bunny storage API endpoint']]
+    })
+    LauncherBunnyStorageEndpoint!: string
+
+    @Property({
+        name: 'Launcher.BunnyStorageZone'
+      , description: 'Bunny storage zone used when uploading release artifacts'
+      , examples: [['duskhaven-patches','Default Duskhaven patch storage zone']]
+    })
+    LauncherBunnyStorageZone!: string
+
+    @Property({
+        name: 'Launcher.BunnyAccessKeyEnv'
+      , description: 'Environment variable that stores the Bunny Storage API AccessKey'
+      , examples: [['BUNNY_ACCESS_KEY','Recommended environment variable name']]
+    })
+    LauncherBunnyAccessKeyEnv!: string
+
     @Section("Misc")
 
     @Property({
