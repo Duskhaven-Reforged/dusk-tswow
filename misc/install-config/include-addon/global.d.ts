@@ -111,6 +111,16 @@ declare const QuestInfoRequiredMoneyText: WoWAPI.fontString
 declare const QuestInfoGroupSize: WoWAPI.fontString
 declare const QuestInfoDescriptionHeader: WoWAPI.Frame
 
+// Discord voice (client-extension Lua API; IPCTest.cpp)
+declare function VoiceStartCall(secret: string): void;
+declare function VoiceLeaveCall(): void;
+declare function VoiceEndAllCalls(): void;
+declare function VoiceSetSelfMute(muted: boolean): void;
+declare function VoiceSetSelfDeaf(deaf: boolean): void;
+declare function VoiceSetInputVolume(volume01: number): void;
+declare function VoiceSetOutputVolume(volume01: number): void;
+declare function VoiceSetPTTActive(active: boolean): void;
+
 declare function GetCVar(cvar: string): any
 declare function SetCVar(cvar: string, value: any): void
 declare function GetCVarDefault(cvar: string): any
