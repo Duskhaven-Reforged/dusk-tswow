@@ -21,6 +21,8 @@
 #include <vector>
 #include <cstdio>
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 
 inline bool exists(std::string const& name) {
     std::ifstream f(name.c_str());
@@ -41,11 +43,72 @@ bool clearFile(std::string const& file, const char* errorMsg)
     return true;
 }
 
+bool resolveCompression(std::string compressionName, DWORD& compressionMask)
+{
+    std::transform(
+        compressionName.begin(),
+        compressionName.end(),
+        compressionName.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); }
+    );
+
+    if (compressionName.empty() || compressionName == "zlib")
+    {
+        compressionMask = MPQ_COMPRESSION_ZLIB;
+        return true;
+    }
+
+    if (compressionName == "pkware" || compressionName == "pkzip")
+    {
+        compressionMask = MPQ_COMPRESSION_PKWARE;
+        return true;
+    }
+
+    if (compressionName == "bzip2")
+    {
+        compressionMask = MPQ_COMPRESSION_BZIP2;
+        return true;
+    }
+
+    if (compressionName == "sparse")
+    {
+        compressionMask = MPQ_COMPRESSION_SPARSE;
+        return true;
+    }
+
+    if (compressionName == "lzma")
+    {
+        compressionMask = MPQ_COMPRESSION_LZMA;
+        return true;
+    }
+
+    return false;
+}
+
+size_t progressInterval(size_t totalFiles)
+{
+    if (totalFiles <= 100)
+    {
+        return 1;
+    }
+
+    return std::max<size_t>(1, static_cast<size_t>(std::ceil(totalFiles / 100.0)));
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3)
     {
-        std::cout << "Usage: mpqbuilder filelist outputfile";
+        std::cout << "Usage: mpqbuilder filelist outputfile [compression]";
+        return -1;
+    }
+
+    DWORD compressionMask = MPQ_COMPRESSION_ZLIB;
+    if (argc >= 4 && !resolveCompression(argv[3], compressionMask))
+    {
+        std::cerr
+            << "Unknown compression type '" << argv[3] << "'. "
+            << "Supported values: zlib, pkware, pkzip, bzip2, sparse, lzma\n";
         return -1;
     }
 
@@ -130,7 +193,17 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    SFileSetDataCompression(MPQ_COMPRESSION_ZLIB);
+    if (!SFileSetDataCompression(compressionMask))
+    {
+        std::cerr << "Failed to configure MPQ compression, error=" << GetLastError() << "\n";
+        SFileCloseArchive(handle);
+        return -1;
+    }
+
+    const size_t totalFiles = files.size();
+    const size_t reportEvery = progressInterval(totalFiles);
+    size_t processedFiles = 0;
+    std::cout << "Adding files to MPQ: 0/" << totalFiles << "\n";
 
     for (auto const& pair : files)
     {
@@ -148,13 +221,19 @@ int main(int argc, char **argv)
             SFileCloseArchive(handle);
             return -1;
         }
+
+        ++processedFiles;
+        if (processedFiles == totalFiles || processedFiles % reportEvery == 0)
+        {
+            std::cout << "Adding files to MPQ: " << processedFiles << "/" << totalFiles << "\n";
+        }
     }
     SFileFlushArchive(handle);
     SFileCloseArchive(handle);
 
     // 3. Save to real output file
     std::string outputFile = argv[2];
-    if (!clearFile(outputFile, "Failed to remove old mpq file "));
+    if (!clearFile(outputFile, "Failed to remove old mpq file ")) return -1;
 
     std::ifstream  src(temp.m_file, std::ios::binary);
     std::ofstream  dst(outputFile, std::ios::binary);

@@ -218,6 +218,10 @@ export function ClientPatches(gamebuild: number) {
                 [0x6EE041, [0x86]],
                 [0x6EE042, [0x01]],
                 [0x6EE043, [0x00]]
+            ]),
+            patch('unlimited-patch-names', [
+                [0x5E0F09, [0x2A]],
+                [0x5E0F16, [0x2A]]
             ])
         ]
 }

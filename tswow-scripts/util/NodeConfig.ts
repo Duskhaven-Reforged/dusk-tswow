@@ -229,6 +229,13 @@ export class NodeConfigClass extends ConfigFile {
     LauncherPatchChunkSize!: number
 
     @Property({
+        name: 'Launcher.MaxPatchFileSizeMB'
+      , description: 'Maximum size per built MPQ in MB; 0 = no limit (no splitting). When set, large MPQs are split into multiple smaller files to speed up launcher scan and reassembly.'
+      , examples: [[0,'no limit'], [100,'100 MB cap']]
+    })
+    LauncherMaxPatchFileSizeMB!: number
+
+    @Property({
         name: 'Launcher.FileServerUrl'
       , description: 'Base pull-zone URL used for supplementary patch downloads and launcher manifests'
       , examples: [

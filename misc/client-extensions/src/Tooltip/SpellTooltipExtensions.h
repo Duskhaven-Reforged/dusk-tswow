@@ -22,7 +22,7 @@ private:
     static void SpellTooltipPowerCostExtension();
     static void SpellTooltipCooldownExtension();
     static void SpellTooltipRemainingCooldownExtension();
-    
+
     static void AppendRuneCost(char* runeCostKey, int runeCount, char* buff, char* destBuffer);
     static int __fastcall GetVariableValueEx(void* _this, uint32_t edx, uint32_t spellVariable, uint32_t a3, SpellRow* spell, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9);
     friend class ClientExtensions;

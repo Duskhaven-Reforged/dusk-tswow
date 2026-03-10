@@ -35,14 +35,115 @@ export interface PackageMeta {
 }
 
 type Entry = { src: string; dst: string };
+type MPQCompression = 'zlib' | 'pkware' | 'bzip2' | 'sparse' | 'lzma';
 type PackagedArtifact = ReleaseArtifact & { packageName: string };
+
+/** Partition entries into segments each under maxBytes (estimated by src file size). */
+function partitionEntriesBySize(entries: Entry[], maxBytes: number): Entry[][] {
+    if (entries.length === 0 || maxBytes <= 0) {
+        return entries.length === 0 ? [] : [entries];
+    }
+    const segments: Entry[][] = [];
+    let current: Entry[] = [];
+    let currentSize = 0;
+    for (const entry of entries) {
+        let size = 0;
+        try {
+            size = wfs.stat(entry.src).size;
+        } catch {
+            size = 0;
+        }
+        if (currentSize + size > maxBytes && current.length > 0) {
+            segments.push(current);
+            current = [];
+            currentSize = 0;
+        }
+        current.push(entry);
+        currentSize += size;
+    }
+    if (current.length > 0) {
+        segments.push(current);
+    }
+    return segments;
+}
+
+/** Ensure MPQ/target name has a "patch-" prefix (e.g. "A" -> "patch-A", "patch-B.MPQ" unchanged). */
+function ensurePatchPrefix(name: string): string {
+    const n = name.trim();
+    if (/^patch-/i.test(n)) {
+        return n;
+    }
+    return 'patch-' + (n.charAt(0).toUpperCase() + n.slice(1).toLowerCase().replace(/\.mpq$/i, ''));
+}
+
+/** Return output name for an MPQ segment. When splitting: patch-A01, patch-A02, etc. When single segment: original name (e.g. patch-A). */
+function segmentOutputName(baseMpqName: string, segmentIndex: number, totalSegments: number): string {
+    const base = ensurePatchPrefix(baseMpqName.replace(/\.mpq$/i, ''));
+    const hasMpqSuffix = baseMpqName.toLowerCase().endsWith('.mpq');
+    if (totalSegments === 1 && segmentIndex === 0) {
+        return hasMpqSuffix ? `${base}.MPQ` : base;
+    }
+    const segmentNum = String(segmentIndex + 1).padStart(2, '0');
+    const suffix = hasMpqSuffix ? '.MPQ' : '.MPQ';
+    return `${base}${segmentNum}${suffix}`;
+}
 
 export class Package {
     private static sanitizeFileName(value: string) {
         return value.replace(/[\\/:*?"<>|]+/g, '-');
     }
 
-    private static buildArchive(outputPath: string, entries: Entry[], folder: boolean) {
+    private static normalizeCompression(value: string): MPQCompression {
+        switch (value.trim().toLowerCase()) {
+            case 'zlib':
+                return 'zlib';
+            case 'pkware':
+            case 'pkzip':
+                return 'pkware';
+            case 'bzip2':
+                return 'bzip2';
+            case 'sparse':
+                return 'sparse';
+            case 'lzma':
+                return 'lzma';
+            default:
+                throw new Error(
+                    `Unsupported MPQ compression "${value}". `
+                    + `Expected one of: zlib, pkware, pkzip, bzip2, sparse, lzma.`
+                );
+        }
+    }
+
+    private static extractCompressionArg(args: string[]) {
+        const filtered: string[] = [];
+        let compression: MPQCompression | undefined = undefined;
+
+        for (let i = 0; i < args.length; ++i) {
+            const arg = args[i];
+            const lower = arg.toLowerCase();
+
+            if (lower === '--compression') {
+                const value = args[i + 1];
+                if (value === undefined) {
+                    throw new Error('Missing value for --compression');
+                }
+                compression = this.normalizeCompression(value);
+                i += 1;
+                continue;
+            }
+
+            if (lower.startsWith('--compression=')) {
+                compression = this.normalizeCompression(arg.substring('--compression='.length));
+                continue;
+            }
+
+            filtered.push(arg);
+        }
+
+        return { args: filtered, compression };
+    }
+
+    private static buildArchive(outputPath: string, entries: Entry[], folder: boolean, compression?: MPQCompression) {
         if (entries.length === 0) {
             throw new Error(`Refusing to build an MPQ with no files: ${outputPath}`);
         }
@@ -56,7 +157,8 @@ export class Package {
         wfs.mkDirs(path.dirname(outputPath));
 
         wsys.exec(
-            `"${ipaths.bin.mpqbuilder.mpqbuilder_exe.get()}" "${path.resolve(listfilePath)}" "${path.resolve(outputPath)}"`,
+            `"${ipaths.bin.mpqbuilder.mpqbuilder_exe.get()}" "${path.resolve(listfilePath)}" "${path.resolve(outputPath)}"`
+            + (compression !== undefined ? ` "${compression}"` : ''),
             'inherit'
         );
 
@@ -153,15 +255,18 @@ export class Package {
     }
 
     private static isBasePatchAReleasePath(releasePath: string) {
-        const normalized = releasePath.replace(/\\/g, '/').toLowerCase();
-        if (!normalized.startsWith('data/')) {
+        const normalized = releasePath.replace(/\\/g, '/').toLowerCase().replace(/^\/+/, '');
+        const baseName = path.posix.basename(normalized);
+        const isBaseA =
+            baseName === 'a.mpq'
+            || baseName === 'patch-a.mpq'
+            || baseName.endsWith('.a.mpq')
+            || /^patch-a(-\d+)?\.mpq$/.test(baseName)
+            || /^patch-a\d{2}\.mpq$/.test(baseName);
+        if (!isBaseA) {
             return false;
         }
-
-        const baseName = path.posix.basename(normalized);
-        return baseName === 'a.mpq'
-            || baseName === 'patch-a.mpq'
-            || baseName.endsWith('.a.mpq');
+        return normalized === baseName || normalized.startsWith('data/');
     }
 
     private static canonicalizeStagedReleasePath(releasePath: string) {
@@ -169,8 +274,12 @@ export class Package {
         if (!this.isBasePatchAReleasePath(normalized)) {
             return normalized;
         }
+        const baseName = path.posix.basename(normalized);
         const directory = path.posix.dirname(normalized);
-        return `${directory}/patch-A.MPQ`;
+        if (baseName === 'a.mpq' || baseName === 'patch-a.mpq') {
+            return `${directory}/patch-A.MPQ`;
+        }
+        return normalized;
     }
 
     private static canonicalizeChunkedInstallPath(releasePath: string) {
@@ -194,15 +303,15 @@ export class Package {
 
         if (basePatchMatches.length === 0) {
             throw new Error(
-                `Unable to find the base patch-A artifact in ${this.stageReleaseDir(dataset)}. `
+                `Unable to find the base patch-A artifact (patch-A.MPQ or patch-A01.MPQ, patch-A02.MPQ, etc.) in ${this.stageReleaseDir(dataset)}. `
                 + `Run "package client ${dataset.fullName} --pipeline" and ensure it produced the general patch.`
             );
         }
 
-        const requiredPaths = new Set<string>([basePatchMatches[0].releasePath]);
-        config.inputs.forEach(input => {
-            requiredPaths.add(resolveTargetOutputPath(input.target, config));
-        });
+        const requiredPaths = new Set<string>(basePatchMatches.map(a => a.releasePath));
+        stagedArtifacts
+            .filter(a => !this.isBasePatchAReleasePath(a.releasePath))
+            .forEach(a => requiredPaths.add(a.releasePath));
 
         return Array.from(requiredPaths)
             .sort((left, right) => left.localeCompare(right))
@@ -256,10 +365,8 @@ export class Package {
     }
 
     private static resolveChunkedFallbackRemotePath(remoteVersionRoot: string, artifact: ReleaseArtifact) {
-        const releasePath = this.isBasePatchAReleasePath(artifact.releasePath)
-            ? 'patch-A.MPQ'
-            : artifact.releasePath;
-        return this.normalizeRemotePath(`${remoteVersionRoot}/${releasePath}`);
+        const fileName = path.posix.basename(artifact.releasePath.replace(/\\/g, '/'));
+        return this.normalizeRemotePath(`${remoteVersionRoot}/${fileName}`);
     }
 
     private static resolveChunkedPublishInputs(dataset: Dataset, config: ResolvedSupplementaryPatchConfig) {
@@ -353,25 +460,33 @@ export class Package {
         dataset: Dataset,
         entriesByMpq: { [mpq: string]: Entry[] },
         folder: boolean,
-        supplementaryConfig: ResolvedSupplementaryPatchConfig
+        supplementaryConfig: ResolvedSupplementaryPatchConfig,
+        compression?: MPQCompression
     ) {
         const artifacts: PackagedArtifact[] = [];
+        const maxPatchFileSizeMB = NodeConfig.LauncherMaxPatchFileSizeMB ?? 0;
+        const maxBytes = maxPatchFileSizeMB > 0 ? maxPatchFileSizeMB * 1024 * 1024 : 0;
         term.debug('client', `Packaging ${Object.keys(entriesByMpq).length} MPQ(s)`);
 
         for (const [mpq, entries] of Object.entries(entriesByMpq)) {
-            term.debug('client', `Packaging ${mpq}`);
-            const packageFile = path.join(
-                resfp(ipaths.package),
-                mpq.toLowerCase().endsWith('.mpq')
-                    ? `${dataset.fullName}.${mpq}`
-                    : `${dataset.fullName}.${mpq}.MPQ`
-            );
-            this.buildArchive(packageFile, entries, folder);
-            artifacts.push({
-                packageName: path.basename(packageFile),
-                sourcePath: packageFile,
-                releasePath: resolveLocalPackageOutputPath(mpq, path.basename(packageFile), supplementaryConfig),
-            });
+            const effectiveMpq = ensurePatchPrefix(mpq);
+            const segments = maxBytes > 0 ? partitionEntriesBySize(entries, maxBytes) : [entries];
+            for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+                const segmentEntries = segments[segmentIndex];
+                if (segmentEntries.length === 0) {
+                    continue;
+                }
+                const outputName = segmentOutputName(effectiveMpq, segmentIndex, segments.length);
+                term.debug('client', `Packaging ${outputName}`);
+                const logicalClientName = outputName.toLowerCase().endsWith('.mpq') ? outputName : `${outputName}.MPQ`;
+                const packageFile = path.join(resfp(ipaths.package), logicalClientName);
+                this.buildArchive(packageFile, segmentEntries, folder, compression);
+                artifacts.push({
+                    packageName: path.basename(packageFile),
+                    sourcePath: packageFile,
+                    releasePath: resolveLocalPackageOutputPath(outputName, logicalClientName, supplementaryConfig),
+                });
+            }
         }
 
         return artifacts;
@@ -429,7 +544,8 @@ export class Package {
     private static async buildSupplementaryPackageArtifacts(
         dataset: Dataset,
         config: ResolvedSupplementaryPatchConfig,
-        folder: boolean
+        folder: boolean,
+        compression?: MPQCompression
     ) {
         if (config.inputs.length === 0) {
             return [] as PackagedArtifact[];
@@ -476,24 +592,35 @@ export class Package {
         }
 
         const artifacts: PackagedArtifact[] = [];
+        const maxPatchFileSizeMB = NodeConfig.LauncherMaxPatchFileSizeMB ?? 0;
+        const maxBytes = maxPatchFileSizeMB > 0 ? maxPatchFileSizeMB * 1024 * 1024 : 0;
+
         for (const [target, targetDir] of Object.entries(targetDirs)) {
             const entries = this.collectGroupEntries(targetDir);
             if (entries.length === 0) {
                 continue;
             }
 
-            const baseName = this.sanitizeFileName(
-                target.toLowerCase().endsWith('.mpq')
-                    ? target
-                    : `${target}.MPQ`
-            );
-            const packageFile = path.join(resfp(ipaths.package), `${dataset.fullName}.supplementary.${baseName}`);
-            this.buildArchive(packageFile, entries, folder);
-            artifacts.push({
-                packageName: path.basename(packageFile),
-                sourcePath: packageFile,
-                releasePath: resolveTargetOutputPath(target, config),
-            });
+            const segments = maxBytes > 0 ? partitionEntriesBySize(entries, maxBytes) : [entries];
+            for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
+                const segmentEntries = segments[segmentIndex];
+                if (segmentEntries.length === 0) {
+                    continue;
+                }
+                const outputName = segmentOutputName(target, segmentIndex, segments.length);
+                const baseName = this.sanitizeFileName(
+                    outputName.toLowerCase().endsWith('.mpq')
+                        ? outputName
+                        : `${outputName}.MPQ`
+                );
+                const packageFile = path.join(resfp(ipaths.package), baseName);
+                this.buildArchive(packageFile, segmentEntries, folder, compression);
+                artifacts.push({
+                    packageName: path.basename(packageFile),
+                    sourcePath: packageFile,
+                    releasePath: resolveTargetOutputPath(outputName, config),
+                });
+            }
         }
 
         return artifacts;
@@ -506,7 +633,8 @@ export class Package {
         folder: boolean,
         pipeline: boolean,
         publish: boolean,
-        dryRun: boolean
+        dryRun: boolean,
+        compression?: MPQCompression
     ) {
         term.log('client', `Packaging client for ${dataset.name}`)
         await Datascripts.build(dataset,['--no-shutdown']);
@@ -582,15 +710,20 @@ export class Package {
                 });
             });
 
-        // Remove old package outputs (MPQ and folder)
+        // Remove old package outputs (dataset-prefixed and patch-*.MPQ / patch-* dirs)
         ipaths.package.iterateDef(node => {
-            if (node.basename().get().startsWith(dataset.fullName)) node.remove();
+            const base = node.basename().get();
+            if (base.startsWith(dataset.fullName)) {
+                node.remove();
+            } else if (base.toLowerCase().startsWith('patch-') && (base.toLowerCase().endsWith('.mpq') || node.isDirectory())) {
+                node.remove();
+            }
         });
 
         const supplementaryConfig = readSupplementaryPatchConfig(dataset.fullName);
-        const localArtifacts = this.buildLocalPackageArtifacts(dataset, entriesByMpq, folder, supplementaryConfig);
+        const localArtifacts = this.buildLocalPackageArtifacts(dataset, entriesByMpq, folder, supplementaryConfig, compression);
         const supplementaryArtifacts = pipeline
-            ? await this.buildSupplementaryPackageArtifacts(dataset, supplementaryConfig, folder)
+            ? await this.buildSupplementaryPackageArtifacts(dataset, supplementaryConfig, folder, compression)
             : [];
 
         const allArtifacts = localArtifacts.concat(supplementaryArtifacts);
@@ -606,6 +739,27 @@ export class Package {
                 await this.uploadReleaseArtifacts(supplementaryConfig, stagedArtifacts, manifestPath, dryRun);
             }
         }
+    }
+
+    static packageDirectory(sourceDir: string, outputPatchName: string, compression?: MPQCompression) {
+        const resolvedSourceDir = path.resolve(sourceDir);
+        if (!wfs.exists(resolvedSourceDir)) {
+            throw new Error(`Package source directory does not exist: ${resolvedSourceDir}`);
+        }
+        if (!wfs.isDirectory(resolvedSourceDir)) {
+            throw new Error(`Package source path is not a directory: ${resolvedSourceDir}`);
+        }
+
+        const sourceName = this.sanitizeFileName(path.basename(resolvedSourceDir));
+        const outputName = this.sanitizeFileName(
+            outputPatchName.toLowerCase().endsWith('.mpq')
+                ? outputPatchName
+                : `${outputPatchName}.MPQ`
+        );
+        const outputPath = path.join(resfp(ipaths.package), sourceName, outputName);
+        const entries = this.collectGroupEntries(resolvedSourceDir);
+        term.log('client', `Packaging directory ${resolvedSourceDir} to ${outputPath} (${entries.length} file(s))`);
+        this.buildArchive(outputPath, entries, false, compression);
     }
 
     static buildChunkedRelease(dataset: Dataset) {
@@ -650,10 +804,11 @@ export class Package {
         term.debug('misc', `Initializing packages`)
         this.Command.addCommand(
               'client'
-            , 'dataset --fullDBC --fullInterface --folder --pipeline --publish --dry-run'
+            , 'dataset --fullDBC --fullInterface --folder --pipeline --publish --dry-run --compression=<type>'
             , 'Packages client data for the specified dataset'
             , async args => {
-                const lower = args.map(x=>x.toLowerCase())
+                const parsed = this.extractCompressionArg(args);
+                const lower = parsed.args.map(x=>x.toLowerCase())
                 const fullDBC = lower.includes('--fulldbc');
                 const fullInterface = lower.includes('--fullinterface');
                 const folder = lower.includes('--folder');
@@ -661,10 +816,27 @@ export class Package {
                 const pipeline = publish || lower.includes('--pipeline');
                 const dryRun = lower.includes('--dry-run');
                 await Promise.all(Identifier.getDatasets(
-                      args
+                      parsed.args
                     , 'MATCH_ANY'
                     , NodeConfig.DefaultDataset
-                ).map(x=>this.packageClient(x,fullDBC,fullInterface,folder,pipeline,publish,dryRun)))
+                ).map(x=>this.packageClient(x,fullDBC,fullInterface,folder,pipeline,publish,dryRun,parsed.compression)))
+            }
+        )
+        this.Command.addCommand(
+              'directory'
+            , 'source-dir output-patch-name [compression|--compression=<type>]'
+            , 'Packages the contents of a directory into an MPQ under release/package/<source-dir-name>/'
+            , async args => {
+                const parsed = this.extractCompressionArg(args);
+                if (parsed.args.length < 2 || parsed.args.length > 3) {
+                    throw new Error('Expected package directory <source-dir> <output-patch-name> [compression]');
+                }
+
+                const sourceDir = parsed.args[0];
+                const outputPatchName = parsed.args[1];
+                const compression = parsed.compression
+                    || (parsed.args[2] ? this.normalizeCompression(parsed.args[2]) : undefined);
+                this.packageDirectory(sourceDir, outputPatchName, compression);
             }
         )
         this.Command.addCommand(
