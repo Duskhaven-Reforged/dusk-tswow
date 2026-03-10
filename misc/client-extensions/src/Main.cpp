@@ -98,7 +98,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
             return 0;
         }, nullptr, 0, nullptr);
         // Startup DHV
-        //Main::StartDHV();
+        Main::StartDHV();
     }
     return TRUE;
 }
