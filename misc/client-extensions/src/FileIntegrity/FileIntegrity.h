@@ -2,17 +2,18 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-namespace FileIntegrity {
+namespace FileIntegrity
+{
+    struct FileInfo
+    {
+        uint64_t size = 0;
+        std::string hashHex;
+    };
 
-struct MpqEntry {
-    std::string filename;
-    uint64_t size = 0;   // file size in bytes (no full read)
-    std::string hashHex; // optional: lightweight hash (e.g. first+last bytes); empty if not computed
-};
+    std::unordered_map<std::string, FileInfo> const& GetLoadedMpqEntries();
+    void RunStartupScan();
 
-std::vector<MpqEntry> const& GetLoadedMpqEntries();
-void RunStartupScan();
-
-}
+} // namespace FileIntegrity
