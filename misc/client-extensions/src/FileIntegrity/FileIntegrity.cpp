@@ -20,118 +20,79 @@ static std::string ToHex(uint64_t v) {
     return std::string(buf);
 }
 
-static std::string GetExeDirectory() {
+// One path: exe directory. Call once per scan.
+static std::string GetDataRoot() {
     char path[MAX_PATH];
-    DWORD len = GetModuleFileNameA(NULL, path, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH) return "";
-    for (DWORD i = len; i > 0; --i) {
+    if (GetModuleFileNameA(NULL, path, MAX_PATH) == 0) return "";
+    for (int i = (int)strlen(path); i > 0; --i) {
         if (path[i - 1] == '\\' || path[i - 1] == '/') {
             path[i] = '\0';
-            return std::string(path);
+            return std::string(path) + "Data\\";
         }
     }
     return "";
 }
 
-static std::string LightweightHashFile(const std::string& fullPath, uint64_t fileSize) {
-    const size_t chunk = 65536;
-    HANDLE h = CreateFileA(fullPath.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+// Metadata: size from find data. Hash: single read of first 64k + size mixed in.
+static std::string HashFileHead(const std::string& path, uint64_t size) {
+    HANDLE h = CreateFileA(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return "";
 
     uint64_t hash = FNV_OFFSET;
-    uint8_t buf[chunk];
-    DWORD read = 0;
-
-    auto mix = [&hash](const uint8_t* p, size_t n) {
-        for (size_t i = 0; i < n; ++i) {
-            hash ^= static_cast<uint64_t>(p[i]);
+    uint8_t buf[65536];
+    DWORD nr = 0;
+    if (ReadFile(h, buf, sizeof(buf), &nr, NULL) && nr > 0) {
+        for (DWORD i = 0; i < nr; ++i) {
+            hash ^= (uint64_t)buf[i];
             hash *= FNV_PRIME;
         }
-    };
-
-    if (ReadFile(h, buf, (DWORD)chunk, &read, NULL) && read > 0)
-        mix(buf, read);
-
-    if (fileSize > chunk) {
-        LARGE_INTEGER off;
-        off.QuadPart = static_cast<LONGLONG>(fileSize - (read = 0));
-        if (SetFilePointerEx(h, off, NULL, FILE_BEGIN) && ReadFile(h, buf, (DWORD)chunk, &read, NULL) && read > 0)
-            mix(buf, read);
     }
-
     for (int i = 0; i < 8; ++i) {
-        hash ^= static_cast<uint64_t>((fileSize >> (i * 8)) & 0xffu);
+        hash ^= (size >> (i * 8)) & 0xff;
         hash *= FNV_PRIME;
     }
-
     CloseHandle(h);
     return ToHex(hash);
 }
 
-static bool AlreadyRecorded(const std::string& key) {
-    for (const auto& e : s_entries)
-        if (e.filename == key) return true;
-    return false;
-}
+// Folders under Data to scan (empty = Data root).
+static const char* const s_dataSubdirs[] = { "", "enUS", "enGB" };
 
-static void ScanDirForMpqs(const std::string& fullDir, const std::string& relativePrefix) {
+static void ScanOneDir(const std::string& dataRoot, const char* subdir) {
+    std::string dir = dataRoot;
+    if (subdir[0]) { dir += subdir; dir += '\\'; }
+
     WIN32_FIND_DATAA fd = {};
-    std::string pattern = fullDir + "*.mpq";
-    HANDLE hFind = FindFirstFileA(pattern.c_str(), &fd);
-    if (hFind == INVALID_HANDLE_VALUE) return;
+    HANDLE h = FindFirstFileA((dir + "*.mpq").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
 
     do {
-        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
         const char* name = fd.cFileName;
-        size_t len = strlen(name);
-        if (len < 4 || _strnicmp(name + len - 4, ".mpq", 4) != 0) continue;
+        size_t nlen = strlen(name);
+        if (nlen < 4 || _strnicmp(name + nlen - 4, ".mpq", 4) != 0) continue;
 
-        std::string entryName = relativePrefix.empty() ? std::string(name) : relativePrefix + name;
-        std::lock_guard<std::mutex> lock(s_mutex);
-        if (AlreadyRecorded(entryName)) continue;
-
+        std::string entryName = subdir[0] ? std::string(subdir) + "\\" + name : name;
         ULARGE_INTEGER uli;
         uli.HighPart = fd.nFileSizeHigh;
         uli.LowPart = fd.nFileSizeLow;
         uint64_t sz = uli.QuadPart;
-        std::string fullPath = fullDir + name;
-        std::string hashHex = LightweightHashFile(fullPath, sz);
+        std::string fullPath = dir + name;
+        std::string hashHex = HashFileHead(fullPath, sz);
+
+        std::lock_guard<std::mutex> lock(s_mutex);
         s_entries.push_back({ entryName, sz, std::move(hashHex) });
-        auto const& e = s_entries.back();
+        const auto& e = s_entries.back();
         LOG_INFO << "FileIntegrity: " << e.filename << " size=" << e.size << (e.hashHex.empty() ? "" : " hash=") << e.hashHex;
-    } while (FindNextFileA(hFind, &fd));
-    FindClose(hFind);
-}
-
-static void ScanDataDirectoryRecursive(const std::string& fullDir, const std::string& relativePrefix) {
-    ScanDirForMpqs(fullDir, relativePrefix);
-
-    WIN32_FIND_DATAA fd = {};
-    HANDLE hFind = FindFirstFileA((fullDir + "*").c_str(), &fd);
-    if (hFind == INVALID_HANDLE_VALUE) return;
-
-    do {
-        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) continue;
-        const char* name = fd.cFileName;
-        if (name[0] == '.' && (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))) continue;
-
-        std::string subFull = fullDir + name + "\\";
-        std::string subRel = relativePrefix.empty() ? std::string(name) + "\\" : relativePrefix + name + "\\";
-        ScanDataDirectoryRecursive(subFull, subRel);
-    } while (FindNextFileA(hFind, &fd));
-    FindClose(hFind);
-}
-
-static void ScanDataDirectory() {
-    std::string dataDir = GetExeDirectory();
-    if (dataDir.empty()) return;
-    if (dataDir.back() != '\\' && dataDir.back() != '/') dataDir += '\\';
-    dataDir += "Data\\";
-    ScanDataDirectoryRecursive(dataDir, "");
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
 }
 
 void RunStartupScan() {
-    ScanDataDirectory();
+    std::string dataRoot = GetDataRoot();
+    if (dataRoot.empty()) return;
+    for (const char* subdir : s_dataSubdirs)
+        ScanOneDir(dataRoot, subdir);
 }
 
 std::vector<MpqEntry> const& GetLoadedMpqEntries() {
