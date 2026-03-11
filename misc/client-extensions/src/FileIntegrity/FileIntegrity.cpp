@@ -1,4 +1,5 @@
 #include "FileIntegrity.h"
+#include <ClientLua.h>
 #include <Logger.h>
 #include <Windows.h>
 #include <algorithm>
@@ -157,3 +158,29 @@ namespace FileIntegrity
         return s_entries;
     }
 } // namespace FileIntegrity
+    LUA_FUNCTION(GetMPQHashResults, (lua_State * L))
+    {
+        const std::unordered_map<std::string, FileIntegrity::FileInfo>& fileInfo = FileIntegrity::GetLoadedMpqEntries();
+        std::string result;
+        bool first = true;
+
+        for (const auto& pair : fileInfo)
+        {
+            const std::string& key = pair.first;
+            const FileIntegrity::FileInfo& info   = pair.second;
+
+            if (first)
+                first = false;
+            else
+                result.push_back(',');
+
+            result += key;
+            result.push_back('|');
+            result += std::to_string(info.size);
+            result.push_back('|');
+            result += info.hashHex;
+        }
+
+        ClientLua::PushString(L, result.c_str());
+        return 1;
+    }
