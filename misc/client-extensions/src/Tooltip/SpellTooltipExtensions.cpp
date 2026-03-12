@@ -390,50 +390,34 @@ void TooltipExtensions::SpellTooltipRemainingCooldownExtension() {
     Util::OverwriteUInt32AtAddress(0x625006, Util::CalculateAddress(reinterpret_cast<uint32_t>(&SetSpellRemainingCooldownTooltip), 0x62500A));
 }
 
-void __stdcall TooltipExtensions::SetSpellRemainingCooldownTooltip(
-    char* dest,
-    SpellRow* spell,
-    void* tooltip,
-    uint32_t currentCooldown)
-{
-    if (!dest || !spell || !tooltip)
-        return;
-
-    uint32_t recoveryTime = currentCooldown;
-
+void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* spell, void* _this, uint32_t currentCooldown) {
+    void* ptr = reinterpret_cast<void*>(0xAD2D30);
+    uint32_t recoveryTime = 0;
     auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
 
     if (it != CharacterDefines::spellChargeMap.end())
     {
-        auto& temp = it->second;
+        CharacterDefines::SpellCharge temp = it->second;
+        if (temp.remainingCooldown >= currentCooldown) {
+            uint32_t currAsync = OsGetAsyncTimeMs();
 
-        uint32_t now = OsGetAsyncTimeMs();
+            if (temp.remainingCooldown > (currAsync - temp.async))
+                recoveryTime = temp.remainingCooldown + (temp.async - currAsync);
+            else
+                recoveryTime = 0;
 
-        if (temp.remainingCooldown > (now - temp.async))
-            recoveryTime = temp.remainingCooldown - (now - temp.async);
+            temp.remainingCooldown = recoveryTime;
+            temp.async = currAsync;
+            it->second = temp;
+        }
         else
-            recoveryTime = 0;
-
-        temp.remainingCooldown = recoveryTime;
-        temp.async = now;
+            recoveryTime = currentCooldown;
     }
+    else
+        recoveryTime = currentCooldown;
 
-    if (!recoveryTime)
-        return;
-
-    char duration[128];
-
-    CGTooltip::GetDurationString(
-        duration,
-        sizeof(duration),
-        recoveryTime,
-        "ITEM_COOLDOWN_TIME",
-        0,
-        1,
-        0
-    );
-
-    sub_61FEC0(tooltip, duration, 0, (void*)0xAD2D30, (void*)0xAD2D30, 0);
+    if (recoveryTime) {
+        CGTooltip::GetDurationString(dest, 128, recoveryTime, "ITEM_COOLDOWN_TIME", 0, 1, 0);
+        sub_61FEC0(_this, dest, 0, ptr, ptr, 0);
+    }
 }
-
-
