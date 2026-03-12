@@ -11,7 +11,7 @@
 
 void TooltipExtensions::Apply() {
     SpellTooltipVariableExtension();
-    SpellTooltipRuneCostExtension();
+    // SpellTooltipRuneCostExtension();
     //SpellTooltipPowerCostExtension();
     //SpellTooltipCooldownExtension();
     // SpellTooltipRemainingCooldownExtension();
