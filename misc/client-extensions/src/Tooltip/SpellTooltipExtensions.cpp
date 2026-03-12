@@ -11,10 +11,11 @@
 
 void TooltipExtensions::Apply() {
     SpellTooltipVariableExtension();
-    // SpellTooltipRuneCostExtension();
+    SpellTooltipSetSpellExtension();
+    //SpellTooltipRuneCostExtension();
     //SpellTooltipPowerCostExtension();
     //SpellTooltipCooldownExtension();
-    // SpellTooltipRemainingCooldownExtension();
+    //SpellTooltipRemainingCooldownExtension();
 }
 
 void TooltipExtensions::SpellTooltipVariableExtension() {
@@ -85,6 +86,11 @@ float ApplyScalarsForPlayer(CGPlayer* activePlayer, SpellRow* spell, int index, 
 
     return total;
 }
+
+// Client-side color pointers used by tooltip rendering helpers.
+static void* const sColorHexWhite      = reinterpret_cast<void*>(0xAD2D30);
+static void* const sColorHexGrey0      = reinterpret_cast<void*>(0xAD2D38);
+static void* const sColorHexDarkYellow = reinterpret_cast<void*>(0xAD2D2C);
 
 int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t spellVariable, uint32_t a3, SpellRow* spell, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9) {
     uint32_t result = 0;
@@ -420,4 +426,292 @@ void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* s
         CGTooltip::GetDurationString(dest, 128, recoveryTime, "ITEM_COOLDOWN_TIME", 0, 1, 0);
         sub_61FEC0(_this, dest, 0, ptr, ptr, 0);
     }
+}
+
+void TooltipExtensions::SpellTooltipSetSpellExtension() {
+    // Overwrite the CGTooltip__SetSpell entry with a call into our fastcall hook.
+    // 0x006238A0 is the original address of CGTooltip__SetSpell.
+    // We install a small stub: pushad/save, move ecx/edx as-is, and call SetSpellTooltipHook.
+    // For safety and simplicity here, we patch the entry point to an absolute call to our hook
+    // followed by a return with the original stack-cleanup size (0x3C bytes).
+
+    uint8_t patchBytes[] = {
+        0xE9,0,0,0,0
+    };
+
+    // Write the bytes first, then fix up the relative call target.
+    Util::OverwriteBytesAtAddress(0x6238A0, patchBytes, sizeof(patchBytes));
+    Util::OverwriteUInt32AtAddress(
+        0x6238A1,
+        Util::CalculateAddress(reinterpret_cast<uint32_t>(&SetSpellTooltipHook), 0x6238A5));
+}
+
+int __fastcall TooltipExtensions::SetSpellTooltipHook(
+    void* thisPtr,
+    void* edx,
+    int spellId,
+    int a3,
+    int a4,
+    int a5,
+    int a6,
+    int a7,
+    int a8,
+    uint32_t* a9,
+    int a10,
+    int a11,
+    int a12,
+    int a13,
+    int a14,
+    int a15,
+    int a16)
+{
+    return SetSpellTooltipImpl(
+        thisPtr,
+        spellId,
+        a3,
+        a4,
+        a5,
+        a6,
+        a7,
+        a8,
+        a9,
+        a10,
+        a11,
+        a12,
+        a13,
+        a14,
+        a15,
+        a16);
+}
+
+int TooltipExtensions::SetSpellTooltipImpl(
+    void* tooltip,
+    int spellId,
+    int a3,
+    int a4,
+    int a5,
+    int a6,
+    int a7,
+    int a8,
+    uint32_t* a9,
+    int a10,
+    int a11,
+    int a12,
+    int a13,
+    int a14,
+    int a15,
+    int a16)
+{
+    // Early out if we do not have a tooltip object.
+    if (!tooltip)
+        return 0;
+
+    LOG_DEBUG << "Tooltip object is valid";
+    // Clear tooltip if this is not an update call.
+    if (!a11) {
+        CGTooltipInternal::ClearTooltip(tooltip);
+    }
+
+    // Resolve active player and unit context.
+    CGPlayer* activePlayer = reinterpret_cast<CGPlayer*>(
+        ClntObjMgr::ObjectPtr(ClntObjMgr::GetActivePlayer(), TYPEMASK_PLAYER));
+    if (!activePlayer) {
+        CSimpleFrame::Hide(tooltip);
+        return 0;
+    }
+
+    LOG_DEBUG << "Player is valid";
+    CGUnit* unit = &activePlayer->unitBase;
+    if (a7) {
+        // target unit from stru_C24220 – not currently exposed; fall back to player.
+        unit = &activePlayer->unitBase;
+    } else if (a5) {
+        uint64_t petGuid = CGPetInfo_C::GetPet(0);
+        unit = reinterpret_cast<CGUnit*>(ClntObjMgr::ObjectPtr(petGuid, TYPEMASK_UNIT));
+        if (!unit)
+            unit = &activePlayer->unitBase;
+    } else {
+        unit = &activePlayer->unitBase;
+    }
+
+    LOG_DEBUG << "Querying spell: " << spellId;
+    // Fetch spell row from the client spell DB (matches original CGTooltip__SetSpell).
+    WoWClientDB* spellDB = reinterpret_cast<WoWClientDB*>(0x00AD49D0); // g_spellDB
+    SpellRow spellRow{};
+    if (!ClientDB::GetLocalizedRow(spellDB, static_cast<uint32_t>(spellId), &spellRow)) {
+        if (!a11) {
+            CSimpleFrame::Hide(tooltip);
+        }
+        return 0;
+    }
+    SpellRow* spell = &spellRow;
+
+    LOG_DEBUG << "Spell row found";
+    // Basic line buffers.
+    char lineLeft[128] = {};
+    char lineRight[128] = {};
+
+    // Top name line: spell name and optional subtext.
+    {
+        char* name = spell->m_name_lang;
+        char* subText = nullptr;
+        if (a3 || a6) {
+            subText = spell->m_nameSubtext_lang;
+        }
+
+        if (name && *name) {
+            SStr::Copy(lineLeft, name, sizeof(lineLeft));
+            if (subText && *subText) {
+                SStr::Copy(lineRight, subText, sizeof(lineRight));
+            } else {
+                lineRight[0] = 0;
+            }
+
+            sub_61FEC0(
+                tooltip,
+                lineLeft,
+                lineRight[0] ? lineRight : nullptr,
+                sColorHexWhite,
+                sColorHexGrey0,
+                0);
+        }
+    }
+
+    // Power cost: re-use existing helper where possible.
+    {
+        uint32_t powerCost = Spell_C::GetPowerCost(spell, unit);
+        uint32_t powerCostPerSec = Spell_C::GetPowerCostPerSecond(spell, unit);
+
+        if (powerCost || powerCostPerSec) {
+            // Determine power display row (if any) using global CDBC map.
+            PowerDisplayRow* powerDisplayRow =
+                GlobalCDBCMap.getRow<PowerDisplayRow>("PowerDisplay", spell->m_powerDisplayID);
+
+            char powerBuffer[128] = {};
+            const char* powerStringKey = "HEALTH_COST";
+            if (spell->m_powerType <= POWER_RUNIC_POWER) {
+                static const char* powerKeys[] = {
+                    "MANA_COST",
+                    "RAGE_COST",
+                    "FOCUS_COST",
+                    "ENERGY_COST",
+                    "HAPPINESS_COST",
+                    "RUNE_COST",
+                    "UNKNOWN",
+                    "RUNIC_POWER_COST"
+                };
+                powerStringKey = powerKeys[spell->m_powerType];
+            }
+
+            SetPowerCostTooltip(
+                powerBuffer,
+                spell,
+                powerCost,
+                powerCostPerSec,
+                const_cast<char*>(powerStringKey),
+                powerDisplayRow);
+
+            if (powerBuffer[0]) {
+                sub_61FEC0(
+                    tooltip,
+                    powerBuffer,
+                    nullptr,
+                    sColorHexWhite,
+                    sColorHexWhite,
+                    0);
+            }
+        }
+    }
+
+    // Range information.
+    {
+        float minRange = 0.0f;
+        float maxRange = 0.0f;
+        float minRangeFriendly = 0.0f;
+        float maxRangeFriendly = 0.0f;
+
+        Spell_C::GetMinMaxRange(unit, spell, &minRange, &maxRange, 0, 0);
+        Spell_C::GetMinMaxRange(unit, spell, &minRangeFriendly, &maxRangeFriendly, 1, 0);
+
+        bool hasRange = maxRange > 0.0f;
+        if (hasRange) {
+            char rangeText[32] = {};
+            if (minRange > 0.0f) {
+                SStr::Printf(rangeText, sizeof(rangeText), "%d-%d",
+                             static_cast<int>(minRange),
+                             static_cast<int>(maxRange));
+            } else {
+                SStr::Printf(rangeText, sizeof(rangeText), "%d", static_cast<int>(maxRange));
+            }
+
+            char format[128] = {};
+            SStr::Copy(format, FrameScript::GetText("SPELL_RANGE", -1, 0), sizeof(format));
+            SStr::Printf(lineLeft, sizeof(lineLeft), format, rangeText);
+
+            sub_61FEC0(
+                tooltip,
+                lineLeft,
+                nullptr,
+                sColorHexWhite,
+                sColorHexWhite,
+                0);
+        }
+    }
+
+    // Cooldown and cast time – reuse existing cooldown helper for consistency.
+    {
+        char castBuf[128] = {};
+        char cdBuf[128] = {};
+        uintptr_t flag = 0;
+
+        SetSpellCooldownTooltip(
+            castBuf,
+            spell,
+            &flag,
+            a5,
+            a7,
+            cdBuf,
+            tooltip,
+            Spell_C::GetPowerCost(spell, unit));
+
+        if (castBuf[0] || cdBuf[0]) {
+            sub_61FEC0(
+                tooltip,
+                castBuf,
+                cdBuf[0] ? cdBuf : nullptr,
+                sColorHexWhite,
+                sColorHexWhite,
+                0);
+        }
+    }
+
+    // Description text.
+    if (spell->m_description_lang && *spell->m_description_lang) {
+        char desc[2048] = {};
+        SpellParser::ParseText(
+            spell,
+            desc,
+            sizeof(desc),
+            a5,
+            a7,
+            0,
+            0,
+            1,
+            0);
+
+        sub_61FEC0(
+            tooltip,
+            desc,
+            nullptr,
+            sColorHexDarkYellow,
+            sColorHexDarkYellow,
+            1);
+    }
+
+    // Finalize: show and size tooltip.
+    CSimpleFrame::Show(tooltip);
+    CGTooltipInternal::CalculateSize(tooltip);
+
+    LOG_DEBUG << "Tooltip finalized";
+    return 1;
 }

@@ -720,12 +720,18 @@ namespace Spell_C {
     CLIENT_FUNCTION(CanTargetTerrain, 0x007FD750, __cdecl, bool, ())
     CLIENT_FUNCTION(CanTargetUnits, 0x007FD650, __cdecl, bool, ())
     CLIENT_FUNCTION(GetSpellRange, 0x00802C30, __cdecl, void, (void* a1, unsigned int spellId, float* minDist, float* maxDist, void* a5))
+    CLIENT_FUNCTION(GetPowerCost, 0x008012F0, __cdecl, uint32_t, (SpellRow*, CGUnit*))
+    CLIENT_FUNCTION(GetPowerCostPerSecond, 0x007FF100, __cdecl, uint32_t, (SpellRow*, CGUnit*))
+    CLIENT_FUNCTION(GetMinMaxRange, 0x007FF480, __cdecl, void, (CGUnit*, SpellRow*, float*, float*, uint32_t, uint32_t))
+    CLIENT_FUNCTION(UsesDefaultMinRange, 0x007FF3C0, __cdecl, bool, (SpellRow*))
+    CLIENT_FUNCTION(GetDefaultMinRange, 0x007FF400, __cdecl, void, (SpellRow*, float*))
 }
 
 namespace SpellRec_C {
     CLIENT_FUNCTION(GetLevel, 0x7FF070, __cdecl, uint32_t, (SpellRow*, uint32_t, uint32_t))
     CLIENT_FUNCTION(GetCastTime, 0x7FF180, __cdecl, uint32_t, (SpellRow*, uint32_t, uint32_t, uint32_t))
     CLIENT_FUNCTION(ModifySpellValueInt, 0x7FDB50, __cdecl, void, (SpellRow*, uint32_t*, uint32_t))
+    CLIENT_FUNCTION(GetModifiedStatValue, 0x7FDB50, __cdecl, void, (SpellRow*, int32_t*, uint32_t))
 }
 
 namespace SErr {
@@ -774,3 +780,15 @@ CLIENT_FUNCTION(sub_812410, 0x812410, __cdecl, SkillLineAbilityRow*, (uint32_t, 
 CLIENT_FUNCTION(TerrainClick, 0x00527830, __cdecl, void, (TerrainClickEvent*))
 CLIENT_FUNCTION(SStrCmpI, 0x0076E780, __stdcall, int, (char* text1, const char* text2, int length))
 CLIENT_FUNCTION(TraceLine, 0x007A3B70, __cdecl, char, (C3Vector* start, C3Vector* end, C3Vector* hitPoint, float* distance, uint32_t flag, uint32_t optional))
+
+// Tooltip and UI helpers
+namespace CGTooltipInternal {
+    CLIENT_FUNCTION(ClearTooltip, 0x61C620, __thiscall, void, (void*))
+    CLIENT_FUNCTION(CalculateSize, 0x61CAF0, __thiscall, void, (void*))
+    CLIENT_FUNCTION(SetItem, 0x6277F0, __thiscall, void, (void*, int, unsigned int, void*, int, int, int, int, int, int, int, int, int, int, int, int))
+}
+
+namespace CSimpleFrame {
+    CLIENT_FUNCTION(Hide, 0x0048F620, __thiscall, void, (void*))
+    CLIENT_FUNCTION(Show, 0x0048F660, __thiscall, void, (void*))
+}
