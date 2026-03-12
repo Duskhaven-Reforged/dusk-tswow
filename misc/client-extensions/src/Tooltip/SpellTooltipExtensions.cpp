@@ -582,6 +582,14 @@ int TooltipExtensions::SetSpellTooltipImpl(
         uint32_t powerCost = Spell_C::GetPowerCost(spell, unit);
         uint32_t powerCostPerSec = Spell_C::GetPowerCostPerSecond(spell, unit);
 
+        // Match base client behavior: divide by Unit::GetPowerDivisor(m_powerType)
+        // so that rage/runic power/etc. are scaled correctly for display.
+        uint32_t divisor = Unit_C::GetPowerDivisor(spell->m_powerType);
+        if (divisor > 1) {
+            powerCost /= divisor;
+            powerCostPerSec /= divisor;
+        }
+
         if (powerCost || powerCostPerSec) {
             // Determine power display row (if any) using global CDBC map.
             PowerDisplayRow* powerDisplayRow =
@@ -660,6 +668,9 @@ int TooltipExtensions::SetSpellTooltipImpl(
 
     // Cooldown and cast time – reuse existing cooldown helper for consistency.
     {
+        // SetSpellCooldownTooltip already formats and adds the line to the tooltip
+        // via sub_61FEC0, matching the original client behavior. We just provide
+        // temporary buffers for it to use.
         char castBuf[128] = {};
         char cdBuf[128] = {};
         uintptr_t flag = 0;
@@ -673,16 +684,6 @@ int TooltipExtensions::SetSpellTooltipImpl(
             cdBuf,
             tooltip,
             Spell_C::GetPowerCost(spell, unit));
-
-        if (castBuf[0] || cdBuf[0]) {
-            sub_61FEC0(
-                tooltip,
-                castBuf,
-                cdBuf[0] ? cdBuf : nullptr,
-                sColorHexWhite,
-                sColorHexWhite,
-                0);
-        }
     }
 
     // Description text.

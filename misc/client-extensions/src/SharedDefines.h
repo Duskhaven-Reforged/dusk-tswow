@@ -727,6 +727,10 @@ namespace Spell_C {
     CLIENT_FUNCTION(GetDefaultMinRange, 0x007FF400, __cdecl, void, (SpellRow*, float*))
 }
 
+namespace Unit_C {
+    CLIENT_FUNCTION(GetPowerDivisor, 0x007FDE00, __cdecl, uint32_t, (uint32_t))
+}
+
 namespace SpellRec_C {
     CLIENT_FUNCTION(GetLevel, 0x7FF070, __cdecl, uint32_t, (SpellRow*, uint32_t, uint32_t))
     CLIENT_FUNCTION(GetCastTime, 0x7FF180, __cdecl, uint32_t, (SpellRow*, uint32_t, uint32_t, uint32_t))
