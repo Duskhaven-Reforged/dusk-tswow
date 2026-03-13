@@ -505,7 +505,7 @@ struct SpellIconRow {
 };
 
 struct SpellRuneCostRow {
-    uint32_t m_ID;
+    int32_t m_ID;
     int32_t m_blood;
     int32_t m_unholy;
     int32_t m_frost;
@@ -726,6 +726,9 @@ namespace Spell_C {
     CLIENT_FUNCTION(UsesDefaultMinRange, 0x007FF3C0, __cdecl, bool, (SpellRow*))
     CLIENT_FUNCTION(GetDefaultMinRange, 0x007FF400, __cdecl, void, (SpellRow*, float*))
 }
+
+CLIENT_FUNCTION(SpellRec_RangeHasFlag_0x1, 0x007FF380, __cdecl, bool, (SpellRow*))
+CLIENT_FUNCTION(SpellRec_IsModifiedStat, 0x00800770, __cdecl, bool, (SpellRow*, uint32_t))
 
 namespace Unit_C {
     CLIENT_FUNCTION(GetPowerDivisor, 0x007FDE00, __cdecl, uint32_t, (uint32_t))

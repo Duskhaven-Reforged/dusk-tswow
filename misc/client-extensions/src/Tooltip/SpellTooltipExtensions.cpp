@@ -12,7 +12,6 @@
 void TooltipExtensions::Apply() {
     SpellTooltipVariableExtension();
     SpellTooltipSetSpellExtension();
-    //SpellTooltipRuneCostExtension();
     //SpellTooltipPowerCostExtension();
     //SpellTooltipCooldownExtension();
     //SpellTooltipRemainingCooldownExtension();
@@ -30,17 +29,6 @@ void TooltipExtensions::SpellTooltipVariableExtension() {
     SetNewVariablePointers();
     // change pointer of GetVariableTableValue to pointer to extended function
     Util::OverwriteUInt32AtAddress(0x578E8B, Util::CalculateAddress(reinterpret_cast<uint32_t>(&GetVariableValueEx), 0x578E8F));
-}
-
-void TooltipExtensions::SpellTooltipRuneCostExtension() {
-    uint8_t patchBytes[] = {
-        0x8D, 0x9D, 0xB8, 0xFD, 0xFF, 0xFF, 0x53, 0x8D, 0x06, 0x50, 0x8D, 0x8D, 0xA0, 0xFE, 0xFF, 0xFF,
-        0x51, 0x8D, 0x95, 0x20, 0xFF, 0xFF, 0xFF, 0x52, 0xE8, 0x00, 0x00, 0x00, 0x00, 0xE9, 0x4B, 0x02,
-        0x00, 0x00
-    };
-
-    Util::OverwriteBytesAtAddress(0x623C71, patchBytes, sizeof(patchBytes));
-    Util::OverwriteUInt32AtAddress(0x623C8A, Util::CalculateAddress(reinterpret_cast<uint32_t>(&SetRuneCostTooltip), 0x623C8E));
 }
 
 void GetSpellScalarsForEffect(int SpellId, int idx, float& ap, float& sp, float& bv)
@@ -213,46 +201,6 @@ void TooltipExtensions::SetNewVariablePointers() {
         spellVariables[140 + i] = reinterpret_cast<uint32_t>(tooltipSpellVariablesExtensions[i]);
 }
 
-void TooltipExtensions::AppendRuneCost(char* runeCostKey, int runeCount, char* buff, char* destBuffer) {
-    char* sRuneCost = FrameScript::GetText(runeCostKey, -1, 0);
-    SStr::Printf(buff, 128, sRuneCost, runeCount);//sizeof(buff)
-    SStr::Append(destBuffer, buff, 0x7FFFFFFF);      
-}
-
-void TooltipExtensions::SetRuneCostTooltip(char* dest, char* buff, SpellRuneCostRow* row, uint32_t* spellFamily) {
-    if (*spellFamily == SPELLFAMILY_DEATHKNIGHT) {
-        if (row->m_blood) {
-            AppendRuneCost("RUNE_COST_DEATH", row->m_blood, buff, dest);
-            if (row->m_blood != 1)
-                SStr::Append(dest, sPluralS, 0x7FFFFFFF);
-
-            if (row->m_runicPower < 0) {
-                int32_t m_Amount = -row->m_runicPower / 10;
-                SStr::Append(dest, sConnectorPlus, 0x7FFFFFFF);
-                AppendRuneCost("RUNIC_POWER_COST", m_Amount, buff, dest);
-            }
-        }
-    }
-    else {
-        RuneData runes[] = {
-            {"RUNE_COST_BLOOD", row->m_blood},
-            {"RUNE_COST_UNHOLY", row->m_unholy},
-            {"RUNE_COST_FROST", row->m_frost}
-        };
-
-        bool addSpace = false;
-        for (const auto& rune : runes) {
-            if (rune.count > 0) {
-                if (addSpace) {
-                    SStr::Append(dest, sSpace, 0x7FFFFFFF);
-                }
-                AppendRuneCost(rune.costKey, rune.count, buff, dest);
-                addSpace = true;
-            }
-        }
-    }
-}
-
 void TooltipExtensions::SpellTooltipPowerCostExtension() {
     uint8_t patchBytes[] = {
         0x57, 0x51, 0x56, 0x8B, 0x4D, 0x2C, 0x51, 0x8D, 0x95, 0x78, 0xFB, 0xFF, 0xFF, 0x8D, 0x8D, 0x20,
@@ -361,23 +309,30 @@ void TooltipExtensions::SetSpellCooldownTooltip(char* dest, SpellRow* spell, uin
     double recoveryTime = 0;
     auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
 
+    auto isCharged = false;
     if (it != CharacterDefines::spellChargeMap.end()) {
         CharacterDefines::SpellCharge temp = it->second;
         recoveryTime = temp.cooldown;
+        isCharged = temp.maxCharges > 1;
     }
     else
         recoveryTime = spell->m_categoryRecoveryTime > spell->m_recoveryTime ? spell->m_categoryRecoveryTime : spell->m_recoveryTime;
 
     if (recoveryTime > 0) {
         bool isLongRecovery = recoveryTime >= MILLISECONDS_IN_MINUTE;
-        char* str = isLongRecovery ? "SPELL_RECAST_TIME_MIN" : "SPELL_RECAST_TIME_SEC";
+        char* str = isLongRecovery ? "SPELL_RECAST_TIME_MIN" : "SPELL_RECAST_TIME_SEC"; // sets to % min/sec
         double divider = isLongRecovery ? MILLISECONDS_IN_MINUTE : MILLISECONDS_IN_SECOND;
+
         SStr::Copy(buffer, FrameScript::GetText(str, -1, 0), 128);
+        if (isCharged) {
+            SStr::Append(buffer, FrameScript::GetText("SPELL_RECAST_RECHARGE", -1, 0), 128);
+        }
+        else {
+            SStr::Append(buffer, FrameScript::GetText("SPELL_RECAST_COOLDOWN", -1, 0), 128);
+        }
         SStr::Printf(src, 128, buffer, recoveryTime / divider);
     }
     else {
-        //Al really had src[0] = 0;
-        //then tried to blame IDA for that.
         *src = 0;
     }
 
@@ -506,7 +461,6 @@ int TooltipExtensions::SetSpellTooltipImpl(
     if (!tooltip)
         return 0;
 
-    LOG_DEBUG << "Tooltip object is valid";
     // Clear tooltip if this is not an update call.
     if (!a11) {
         CGTooltipInternal::ClearTooltip(tooltip);
@@ -520,7 +474,6 @@ int TooltipExtensions::SetSpellTooltipImpl(
         return 0;
     }
 
-    LOG_DEBUG << "Player is valid";
     CGUnit* unit = &activePlayer->unitBase;
     if (a7) {
         // target unit from stru_C24220 – not currently exposed; fall back to player.
@@ -534,7 +487,6 @@ int TooltipExtensions::SetSpellTooltipImpl(
         unit = &activePlayer->unitBase;
     }
 
-    LOG_DEBUG << "Querying spell: " << spellId;
     // Fetch spell row from the client spell DB (matches original CGTooltip__SetSpell).
     WoWClientDB* spellDB = reinterpret_cast<WoWClientDB*>(0x00AD49D0); // g_spellDB
     SpellRow spellRow{};
@@ -546,7 +498,6 @@ int TooltipExtensions::SetSpellTooltipImpl(
     }
     SpellRow* spell = &spellRow;
 
-    LOG_DEBUG << "Spell row found";
     // Basic line buffers.
     char lineLeft[128] = {};
     char lineRight[128] = {};
@@ -577,100 +528,183 @@ int TooltipExtensions::SetSpellTooltipImpl(
         }
     }
 
-    // Power cost: re-use existing helper where possible.
+    // Cost and range on the same row (left = cost, right = range). Matches disas.txt lines 280-364.
     {
+        char costStr[128] = {};
+        char rangeStr[128] = {};
+
         uint32_t powerCost = Spell_C::GetPowerCost(spell, unit);
-        uint32_t powerCostPerSec = Spell_C::GetPowerCostPerSecond(spell, unit);
-
-        // Match base client behavior: divide by Unit::GetPowerDivisor(m_powerType)
-        // so that rage/runic power/etc. are scaled correctly for display.
-        uint32_t divisor = Unit_C::GetPowerDivisor(spell->m_powerType);
-        if (divisor > 1) {
-            powerCost /= divisor;
-            powerCostPerSec /= divisor;
-        }
-
-        if (powerCost || powerCostPerSec) {
-            // Determine power display row (if any) using global CDBC map.
-            PowerDisplayRow* powerDisplayRow =
-                GlobalCDBCMap.getRow<PowerDisplayRow>("PowerDisplay", spell->m_powerDisplayID);
-
-            char powerBuffer[128] = {};
-            const char* powerStringKey = "HEALTH_COST";
-            if (spell->m_powerType <= POWER_RUNIC_POWER) {
-                static const char* powerKeys[] = {
-                    "MANA_COST",
-                    "RAGE_COST",
-                    "FOCUS_COST",
-                    "ENERGY_COST",
-                    "HAPPINESS_COST",
-                    "RUNE_COST",
-                    "UNKNOWN",
-                    "RUNIC_POWER_COST"
-                };
-                powerStringKey = powerKeys[spell->m_powerType];
+        if (!a3) {
+            uint32_t powerCostPerSec = Spell_C::GetPowerCostPerSecond(spell, unit);
+            uint32_t divisor = Unit_C::GetPowerDivisor(spell->m_powerType);
+            if (divisor > 1) {
+                powerCost /= divisor;
+                powerCostPerSec /= divisor;
             }
 
-            SetPowerCostTooltip(
-                powerBuffer,
-                spell,
-                powerCost,
-                powerCostPerSec,
-                const_cast<char*>(powerStringKey),
-                powerDisplayRow);
+            // disas 289: if ( spellRec.m_powerType != 5 ) -> power cost; else -> rune cost (330-364).
+            if (spell->m_powerType == POWER_RUNES) {
+                // disas 331-334: v36 = g_spellRuneCostDB.b_base_02.m_recordsById[spellRec.m_runeCostID - g_spellRuneCostDB.b_base_01.b_base.m_minID]
+                if (spell->m_runeCostID != 0) {
+                    const uintptr_t runeCostDB = 0x00AD49AC;
+                    // WowClientDB layout: b_base_01 at +0 (WowClientDB_Base: m_maxID +12, m_minID +16), b_base_02 at +0x14 (m_recordsById at +8).
+                    uint32_t runeMinID = *reinterpret_cast<uint32_t*>(runeCostDB + 16);
+                    uint32_t runeMaxID = *reinterpret_cast<uint32_t*>(runeCostDB + 12);
+                    LOG_DEBUG << "SpellRuneCost: runeCostID=" << spell->m_runeCostID << " minID=" << runeMinID << " maxID=" << runeMaxID;
 
-            if (powerBuffer[0]) {
-                sub_61FEC0(
-                    tooltip,
-                    powerBuffer,
-                    nullptr,
-                    sColorHexWhite,
-                    sColorHexWhite,
-                    0);
-            }
-        }
-    }
+                    if (spell->m_runeCostID >= runeMinID && spell->m_runeCostID <= runeMaxID) {
+                        uint32_t runeIndex = spell->m_runeCostID - runeMinID;
+                        SpellRuneCostRow** table =
+                            *reinterpret_cast<SpellRuneCostRow***>(runeCostDB + 0x20);
+                        
+                        SpellRuneCostRow* runeRow = nullptr;
+                        if (table)
+                            runeRow = table[runeIndex];
 
-    // Range information.
-    {
-        float minRange = 0.0f;
-        float maxRange = 0.0f;
-        float minRangeFriendly = 0.0f;
-        float maxRangeFriendly = 0.0f;
+                        if (runeRow) {
+                            LOG_DEBUG << "RowID=" << runeRow->m_ID
+                                << " blood=" << runeRow->m_blood
+                                << " unholy=" << runeRow->m_unholy
+                                << " frost=" << runeRow->m_frost;
 
-        Spell_C::GetMinMaxRange(unit, spell, &minRange, &maxRange, 0, 0);
-        Spell_C::GetMinMaxRange(unit, spell, &minRangeFriendly, &maxRangeFriendly, 1, 0);
+                            char runeBuff[128] = {};
+                            if (runeRow->m_blood) {
+                                char* txt = FrameScript::GetText(const_cast<char*>("RUNE_COST_DEATH"), -1, 0);
+                                SStr::Printf(runeBuff, 128, txt, runeRow->m_blood);
+                                SStr::Append(costStr, runeBuff, 0x7FFFFFFF);
+                                if (runeRow->m_blood > 1)
+                                    SStr::Append(costStr, sPluralS, 0x7FFFFFFF);
 
-        bool hasRange = maxRange > 0.0f;
-        if (hasRange) {
-            char rangeText[32] = {};
-            if (minRange > 0.0f) {
-                SStr::Printf(rangeText, sizeof(rangeText), "%d-%d",
-                             static_cast<int>(minRange),
-                             static_cast<int>(maxRange));
+                                if (runeRow->m_runicPower < 0) {
+                                    int32_t m_Amount = -runeRow->m_runicPower / 10;
+                                    SStr::Append(costStr, sConnectorPlus, 0x7FFFFFFF);
+                                    char* txt = FrameScript::GetText(const_cast<char*>("RUNIC_POWER_COST"), -1, 0);
+                                    SStr::Printf(runeBuff, 128, txt, m_Amount);
+                                    SStr::Append(costStr, runeBuff, 0x7FFFFFFF);
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
-                SStr::Printf(rangeText, sizeof(rangeText), "%d", static_cast<int>(maxRange));
+                // Non-rune: PowerCost > 0 and v34<=0 -> one-off (POWER_DISPLAY_COST or v35); else per-time or skip (disas 291-328).
+                // PowerDisplay: index = m_powerDisplayID - minID (disas 269-276).
+                if (powerCost > 0 || powerCostPerSec > 0) {
+                    const uintptr_t powerDisplayDB = 0x00AD43A0;
+                    const uintptr_t powerBase = powerDisplayDB + 4;
+                    uint32_t powerMinID = *reinterpret_cast<uint32_t*>(powerBase + 16);
+                    uint32_t powerMaxID = *reinterpret_cast<uint32_t*>(powerBase + 12);
+                    PowerDisplayRow* powerDisplayRow = nullptr;
+                    if (spell->m_powerDisplayID >= powerMinID && spell->m_powerDisplayID <= powerMaxID) {
+                        uint32_t powerIndex = spell->m_powerDisplayID - powerMinID;
+                        powerDisplayRow = reinterpret_cast<PowerDisplayRow*>(
+                            ClientDB::GetRow(reinterpret_cast<void*>(powerDisplayDB), powerIndex));
+                    }
+                    const char* powerStringKey = "HEALTH_COST";
+                    if (spell->m_powerType <= POWER_RUNIC_POWER) {
+                        static const char* powerKeys[] = {
+                            "MANA_COST", "RAGE_COST", "FOCUS_COST", "ENERGY_COST",
+                            "HAPPINESS_COST", "RUNE_COST", "RUNIC_POWER_COST", "UNKNOWN",
+                        };
+                        powerStringKey = powerKeys[spell->m_powerType];
+                    }
+                    SetPowerCostTooltip(
+                        costStr,
+                        spell,
+                        powerCost,
+                        powerCostPerSec,
+                        const_cast<char*>(powerStringKey),
+                        powerDisplayRow);
+                }
             }
-
-            char format[128] = {};
-            SStr::Copy(format, FrameScript::GetText("SPELL_RANGE", -1, 0), sizeof(format));
-            SStr::Printf(lineLeft, sizeof(lineLeft), format, rangeText);
-
-            sub_61FEC0(
-                tooltip,
-                lineLeft,
-                nullptr,
-                sColorHexWhite,
-                sColorHexWhite,
-                0);
         }
-    }
 
-    // Cooldown and cast time – reuse existing cooldown helper for consistency.
+        // Build range in rangeStr. Skip when a3 or certain attributes; use MELEE_RANGE for range index 1 (5 yd).
+        bool skipRange = a3 || (spell->m_attributes & 0x404) != 0 || (spell->m_attributesExC & 0x40000000) != 0;
+        if (!skipRange) {
+            if (SpellRec_RangeHasFlag_0x1(spell) && !SpellRec_IsModifiedStat(spell, 5)) {
+                const char* melee = FrameScript::GetText(const_cast<char*>("MELEE_RANGE"), -1, 0);
+                if (melee) SStr::Copy(rangeStr, const_cast<char*>(melee), sizeof(rangeStr));
+            } else {
+                float minRange = 0.0f, maxRange = 0.0f;
+                float minRangeFriendly = 0.0f, maxRangeFriendly = 0.0f;
+                Spell_C::GetMinMaxRange(unit, spell, &minRange, &maxRange, 0, 0);
+                Spell_C::GetMinMaxRange(unit, spell, &minRangeFriendly, &maxRangeFriendly, 1, 0);
+                if (Spell_C::UsesDefaultMinRange(spell)) {
+                    Spell_C::GetDefaultMinRange(spell, &minRange);
+                    Spell_C::GetDefaultMinRange(spell, &minRangeFriendly);
+                }
+
+                char rangeNum[32] = {};
+                const float unlim = 50000.0f;
+                bool sameRange = (minRange == minRangeFriendly && maxRange == maxRangeFriendly);
+
+                if (sameRange) {
+                    if (maxRange > 0.0f && maxRange < unlim) {
+                        if (minRange <= 0.0f)
+                            SStr::Printf(rangeNum, sizeof(rangeNum), "%d", static_cast<int>(maxRange));
+                        else
+                            SStr::Printf(rangeNum, sizeof(rangeNum), "%d-%d", static_cast<int>(minRange), static_cast<int>(maxRange));
+                        const char* fmt = FrameScript::GetText(const_cast<char*>("SPELL_RANGE"), -1, 0);
+                        if (fmt) SStr::Printf(rangeStr, sizeof(rangeStr), const_cast<char*>(fmt), rangeNum);
+                    } else if (maxRange >= unlim) {
+                        const char* u = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_UNLIMITED"), -1, 0);
+                        if (u) SStr::Copy(rangeStr, const_cast<char*>(u), sizeof(rangeStr));
+                    }
+                } else {
+                    if (maxRange > 0.0f && maxRange < unlim) {
+                        if (minRange <= 0.0f)
+                            SStr::Printf(rangeNum, sizeof(rangeNum), "%d", static_cast<int>(maxRange));
+                        else
+                            SStr::Printf(rangeNum, sizeof(rangeNum), "%d-%d", static_cast<int>(minRange), static_cast<int>(maxRange));
+                        const char* dualFmt = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_DUAL"), -1, 0);
+                        const char* enemy = FrameScript::GetText(const_cast<char*>("ENEMY"), -1, 0);
+                        if (dualFmt && enemy) {
+                            SStr::Printf(rangeStr, sizeof(rangeStr), const_cast<char*>(dualFmt), enemy, rangeNum);
+                            sub_61FEC0(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
+                            rangeStr[0] = '\0';
+                        }
+                    } else if (maxRange >= unlim) {
+                        const char* u = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_UNLIMITED"), -1, 0);
+                        if (u) {
+                            SStr::Copy(rangeStr, const_cast<char*>(u), sizeof(rangeStr));
+                            sub_61FEC0(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
+                            rangeStr[0] = '\0';
+                        }
+                    }
+                    if (maxRangeFriendly > 0.0f && maxRangeFriendly < unlim) {
+                        rangeNum[0] = '\0';
+                        if (minRangeFriendly <= 0.0f)
+                            SStr::Printf(rangeNum, sizeof(rangeNum), "%d", static_cast<int>(maxRangeFriendly));
+                        else
+                            SStr::Printf(rangeNum, sizeof(rangeNum), "%d-%d", static_cast<int>(minRangeFriendly), static_cast<int>(maxRangeFriendly));
+                        const char* dualFmt = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_DUAL"), -1, 0);
+                        const char* friendly = FrameScript::GetText(const_cast<char*>("FRIENDLY"), -1, 0);
+                        if (dualFmt && friendly) SStr::Printf(rangeStr, sizeof(rangeStr), const_cast<char*>(dualFmt), friendly, rangeNum);
+                    } else if (maxRangeFriendly >= unlim) {
+                        const char* u = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_UNLIMITED"), -1, 0);
+                        if (u) SStr::Copy(rangeStr, const_cast<char*>(u), sizeof(rangeStr));
+                    }
+                }
+            }
+        }
+
+        // When no cost, range goes on the left (original: SStrCopy(a1, src, 128); src[0]=0).
+        char* lineLeftFinal = costStr;
+        char* lineRightFinal = rangeStr[0] ? rangeStr : nullptr;
+        if (!costStr[0] && rangeStr[0]) {
+            lineLeftFinal = rangeStr;
+            lineRightFinal = nullptr;
+        }
+        sub_61FEC0(
+            tooltip,
+            lineLeftFinal,
+            lineRightFinal,
+            sColorHexWhite,
+            sColorHexWhite,
+            0);
+    }
     {
-        // SetSpellCooldownTooltip already formats and adds the line to the tooltip
-        // via sub_61FEC0, matching the original client behavior. We just provide
-        // temporary buffers for it to use.
         char castBuf[128] = {};
         char cdBuf[128] = {};
         uintptr_t flag = 0;

@@ -64,7 +64,7 @@ LUA_FUNCTION(UpdateMasteryAmount, (lua_State* L)) {
     return 0;
 }
 
-LUA_FUNCTION(UpdateSpellChargeMap, (lua_State* L)) {
+LUA_FUNCTION(UpdateChargeInfoForSpell, (lua_State* L)) {
     uint32_t spellID = ClientLua::GetNumber(L, 1);
     CharacterDefines::SpellCharge temp;
 
@@ -72,7 +72,7 @@ LUA_FUNCTION(UpdateSpellChargeMap, (lua_State* L)) {
     temp.maxCharges = ClientLua::GetNumber(L, 3);
     temp.async = OsGetAsyncTimeMs();
     temp.remainingCooldown = ClientLua::GetNumber(L, 4);
-    temp.cooldown = ClientLua::GetNumber(L, 4);
+    temp.cooldown = ClientLua::GetNumber(L, 5);
 
     auto it = CharacterDefines::spellChargeMap.find(spellID);
 
@@ -88,6 +88,21 @@ LUA_FUNCTION(UpdateSpellChargeMap, (lua_State* L)) {
         CharacterDefines::spellChargeMap.insert(std::make_pair(spellID, temp));
 
     return 0;
+}
+
+LUA_FUNCTION(GetChargeInfoForSpell, (lua_State* L)) {
+    uint32_t spellID = ClientLua::GetNumber(L, 1);
+    auto it = CharacterDefines::spellChargeMap.find(spellID);
+    if (it == CharacterDefines::spellChargeMap.end()) {
+        ClientLua::PushNil(L);
+        return 1;
+    }
+    CharacterDefines::SpellCharge const& row = it->second;
+    ClientLua::PushNumber(L, row.currentCharges);
+    ClientLua::PushNumber(L, row.maxCharges);
+    ClientLua::PushNumber(L, row.remainingCooldown);
+    ClientLua::PushNumber(L, row.cooldown);
+    return 4;
 }
 
 LUA_FUNCTION(GetCombatRatingMult, (lua_State* L)) {

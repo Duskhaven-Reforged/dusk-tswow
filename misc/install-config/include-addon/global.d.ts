@@ -85,7 +85,9 @@ declare function GetShapeshiftFormID(): number;
 
 declare function GetSpellDescription(spellID: number): string;
 declare function GetSpellNameById(spellID: number): LuaMultiReturn<[string, string]>
-declare function UpdateSpellChargeMap(spellID: number, charges: number, maxCharges: number, cooldown: number): void;
+declare function UpdateChargeInfoForSpell(spellID: number, currentCharges: number, maxCharges: number, remainingCooldown: number, cooldown: number): void;
+declare function GetChargeInfoForSpell(spellID: number): LuaMultiReturn<[number | null, number, number, number]>;
+
 
 declare function GetMasteryRating(): LuaMultiReturn<[number, number]>
 declare function SetMasteryRatings(spec1: number, spec2: number, spec3: number, spec4: number): void;
