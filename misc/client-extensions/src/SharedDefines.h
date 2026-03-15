@@ -425,6 +425,32 @@ struct ItemSubClassRow {
     int32_t m_generatedID;
 };
 
+struct FactionRec {
+    int32_t m_ID;
+    int32_t m_reputationIndex;
+    int32_t m_reputationRaceMask[4];
+    int32_t m_reputationClassMask[4];
+    int32_t m_reputationBase[4];
+    int32_t m_reputationFlags[4];
+    int32_t m_parentFactionID;
+    float m_parentFactionMod[2];
+    int32_t m_parentFactionCap[2];
+    const char* m_name;
+    const char* m_description;
+};
+
+struct SpellShapeshiftFormRow {
+    int32_t m_ID;
+    int32_t m_bonusActionBar;
+    const char* m_name;
+    int32_t m_flags;
+    int32_t m_creatureType;
+    int32_t m_attackIconID;
+    int32_t m_combatRoundTime;
+    int32_t m_creatureDisplayID[4];
+    int32_t m_presetSpellID[8];
+};
+
 struct SpellRow {
     uint32_t m_ID;
     uint32_t m_category;
@@ -830,10 +856,34 @@ CLIENT_FUNCTION(TraceLine, 0x007A3B70, __cdecl, char, (C3Vector* start, C3Vector
 namespace CGTooltipInternal {
     CLIENT_FUNCTION(ClearTooltip, 0x61C620, __thiscall, void, (void*))
     CLIENT_FUNCTION(CalculateSize, 0x61CAF0, __thiscall, void, (void*))
-    CLIENT_FUNCTION(SetItem, 0x6277F0, __thiscall, void, (void*, int, unsigned int, void*, int, int, int, int, int, int, int, int, int, int, int, int))
+    CLIENT_FUNCTION(SetItem, 0x6277F0, __thiscall, void, (void*, int, unsigned int, void*, void*, int, int, int, int, int, int, int, int, int, int, int))
 }
 
 namespace CSimpleFrame {
     CLIENT_FUNCTION(Hide, 0x0048F620, __thiscall, void, (void*))
     CLIENT_FUNCTION(Show, 0x0048F660, __thiscall, void, (void*))
 }
+
+// Spell tooltip replacement: item load callback (pass to DBItemCache_GetInfoBlockByID).
+CLIENT_FUNCTION(CGTooltip_HandleItemLoad, 0x61DD60, __cdecl, void, (void*, void*))
+
+// Spell tooltip: target unit when a7; read *(uint64_t*)kStruC24220.
+static constexpr uintptr_t kStruC24220 = 0xC24220;
+// Reputation threshold table; index by m_minReputation.
+static constexpr uintptr_t kDwordA2D2FC = 0xA2D2FC;
+// Faction DB; m_recordsById at +0x1C, minID/maxID in base.
+static constexpr uintptr_t kGFactionDB = 0xAD3860;
+// Spell shapeshift form DB; m_numRecords at +8, m_records at +0x1C.
+static constexpr uintptr_t kGSpellShapeshiftFormDB = 0xAD49F4;
+
+CLIENT_FUNCTION(Player_CanCastSpellInCurrentForm, 0x800D60, __cdecl, int, (int, int))
+CLIENT_FUNCTION(SpellRec__UsableInShapeshift, 0x7FE850, __cdecl, uint8_t, (SpellRow*, int))
+CLIENT_FUNCTION(CGUnit_C__GetShapeshiftFormId, 0x71AF70, __thiscall, int, (CGUnit*))
+CLIENT_FUNCTION(CGUnit_C__IsShapeShifted, 0x721CA0, __thiscall, uint8_t, (CGUnit*))
+CLIENT_FUNCTION(CGUnit_C__AffectedByAura, 0x7283A0, __thiscall, uint8_t, (CGUnit*, uint32_t, SpellRow*))
+CLIENT_FUNCTION(GetRepListRepValue, 0x5D05B0, __cdecl, int32_t, (uint32_t))
+CLIENT_FUNCTION(FrameScript__GetLocalizedText, 0x7225E0, __cdecl, const char*, (const char*, int))
+CLIENT_FUNCTION(TalentTooltip_AddActionLines, 0x622800, __cdecl, void, (uint32_t*, int, int, int, int, int, int, int, int))
+CLIENT_FUNCTION(CGTooltipItemData_Reset, 0x50F590, __cdecl, void, (void*))
+CLIENT_FUNCTION(FrameScript_Object__RunScript, 0x81A2C0, __cdecl, void, (void*, int, int))
+CLIENT_FUNCTION(CGBag_C__GetItemTypeCount, 0x754D00, __thiscall, uint32_t, (void*, uint32_t, int))

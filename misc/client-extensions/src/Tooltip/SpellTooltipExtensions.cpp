@@ -414,6 +414,8 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     // Clear tooltip if this is not an update call.
     if (!a11) {
         CGTooltipInternal::ClearTooltip(tooltip);
+        *reinterpret_cast<uint32_t*>(static_cast<char*>(tooltip) + 217) = static_cast<uint32_t>(spellId);
+        *reinterpret_cast<uint32_t*>(static_cast<char*>(tooltip) + 242) = 0;
     }
 
     // Resolve active player and unit context.
@@ -426,8 +428,10 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
 
     CGUnit* unit = &activePlayer->unitBase;
     if (a7) {
-        // target unit from stru_C24220 – not currently exposed; fall back to player.
-        unit = &activePlayer->unitBase;
+        uint64_t targetGuid = *reinterpret_cast<uint64_t*>(kStruC24220);
+        CGUnit* targetUnit = reinterpret_cast<CGUnit*>(ClntObjMgr::ObjectPtr(targetGuid, TYPEMASK_UNIT));
+        if (targetUnit)
+            unit = targetUnit;
     } else if (a5) {
         uint64_t petGuid = CGPetInfo_C::GetPet(0);
         unit = reinterpret_cast<CGUnit*>(ClntObjMgr::ObjectPtr(petGuid, TYPEMASK_UNIT));
@@ -453,14 +457,30 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     char lineRight[128] = {};
 
     // Ability/talent header flag: SPELL_ATTR_ABILITY (0x20) or effect in {53, 24, 157, 59} (disas 200-218).
+    // v136: set if any effect is 24, 157, or 59 (used later for embedded item tooltip).
     int v141 = 0;
+    int v136 = 0;
     if ((spell->m_attributes & 0x20) != 0) {
         v141 = 1;
+        for (unsigned int i = 0; i < 3; ++i) {
+            uint32_t eff = spell->m_effect[i];
+            if (eff == 24 || eff == 157 || eff == 59) {
+                v136 = 1;
+                break;
+            }
+        }
     } else {
         for (unsigned int i = 0; i < 3; ++i) {
             uint32_t eff = spell->m_effect[i];
             if (eff == 53 || eff == 24 || eff == 157 || eff == 59) {
                 v141 = 1;
+                break;
+            }
+        }
+        for (unsigned int i = 0; i < 3; ++i) {
+            uint32_t eff = spell->m_effect[i];
+            if (eff == 24 || eff == 157 || eff == 59) {
+                v136 = 1;
                 break;
             }
         }
@@ -475,6 +495,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
             CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
         }
     } else if (v141) {
+        bool addedAbilityLine = false;
         uint8_t raceId = unit->unitData->unitBytes0.raceID;
         uint8_t classId = unit->unitData->unitBytes0.classID;
         SkillLineAbilityRow* abilityRow = sub_812410(raceId, classId, static_cast<uint32_t>(spellId));
@@ -491,8 +512,16 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
                     SStr::Printf(lineLeft, sizeof(lineLeft), "%s: %s",
                         skillLineRow->m_displayName_lang, spell->m_name_lang);
                     CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 0);
+                    addedAbilityLine = true;
                 }
             }
+        }
+        if (!addedAbilityLine && spell->m_name_lang && *spell->m_name_lang) {
+            char* subText = (a3 || a6) ? spell->m_nameSubtext_lang : nullptr;
+            SStr::Copy(lineLeft, spell->m_name_lang, sizeof(lineLeft));
+            if (subText && *subText)
+                SStr::Copy(lineRight, subText, sizeof(lineRight));
+            CGTooltip::AddLine(tooltip, lineLeft, (subText && *subText) ? lineRight : nullptr, sColorHexWhite, sColorHexGrey0, 0);
         }
     } else {
         char* name = spell->m_name_lang;
@@ -706,6 +735,13 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
         SetSpellCooldownTooltip(castBuf, spell, &flag, a5, a7, cdBuf, tooltip, Spell_C::GetPowerCost(spell, unit));
     }
 
+    // v155: gates min level line, reagents block, dodge/parry/block/crit (disas 476, 492-495).
+    int v155 = 0;
+    if (!a3 && !v141 && (spell->m_effect[0] == 47 || (spell->m_attributes & 0x40) != 0))
+        v155 = 1;
+
+    int v112 = 0;
+
     // Totems line (disas 559-634): only when not pet; show required totems and totem categories.
     const uint32_t WDB_CACHE_ITEM = 0;
     const char* totemRedPrefix = reinterpret_cast<const char*>(0xAD2A5C);
@@ -718,7 +754,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
             uint32_t totemId = spell->m_totem0[i];
             if (totemId == 0) continue;
             uint64_t guid = spell->m_ID | 0x1FE0000000000000ULL;
-            void* itemBlock = DBItemCache_GetInfoBlockByID(WDB_CACHE_ITEM, totemId, &guid, nullptr, tooltip, 1);
+            void* itemBlock = DBItemCache_GetInfoBlockByID(WDB_CACHE_ITEM, totemId, &guid, CGTooltip_HandleItemLoad, tooltip, 1);
             if (itemBlock) {
                 if (firstEntry) {
                     firstEntry = 0;
@@ -737,6 +773,8 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
                 if (itemName) SStr::Append(totemBuf, const_cast<char*>(itemName), sizeof(totemBuf));
                 if (!found)
                     SStr::Append(totemBuf, const_cast<char*>("|r"), sizeof(totemBuf));
+            } else {
+                (*reinterpret_cast<uint32_t*>(static_cast<char*>(tooltip) + 242))++;
             }
         }
 
@@ -849,6 +887,193 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
         }
     }
 
+    // Shapeshift "Required form" block (disas 794-853).
+    if (spell->m_shapeshiftMask[0] || spell->m_shapeshiftMask[1]) {
+        char formBuf[512] = {};
+        int v159 = 1;
+        int attrExBFormFlag = (spell->m_attributesExB & 0x80000) != 0;
+        if (!attrExBFormFlag) {
+            const uintptr_t db = kGSpellShapeshiftFormDB;
+            uint32_t numRecords = *reinterpret_cast<uint32_t*>(db + 8);
+            if (numRecords > 64)
+                numRecords = 64;
+            SpellShapeshiftFormRow* records = *reinterpret_cast<SpellShapeshiftFormRow**>(db + 0x1C);
+            if (records && numRecords > 0) {
+                for (uint32_t idx = 0; idx < numRecords; ++idx) {
+                    if (SpellRec__UsableInShapeshift(spell, static_cast<int>(idx))) {
+                        SpellShapeshiftFormRow* row = &records[idx];
+                        if (row->m_name && *row->m_name) {
+                            if (v159) {
+                                SStr::Copy(formBuf, const_cast<char*>(row->m_name), sizeof(formBuf));
+                                v159 = 0;
+                            } else {
+                                SStr::Append(formBuf, const_cast<char*>(", "), sizeof(formBuf));
+                                SStr::Append(formBuf, const_cast<char*>(row->m_name), sizeof(formBuf));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        int v96 = 0;
+        if (unit) {
+            int formId = CGUnit_C__GetShapeshiftFormId(unit);
+            int formIndex = formId - 1;
+            if (SpellRec__UsableInShapeshift(spell, formIndex))
+                v96 = 1;
+            else if (attrExBFormFlag && !CGUnit_C__IsShapeShifted(unit))
+                v96 = 1;
+            else if (CGUnit_C__AffectedByAura(unit, 275, spell))
+                v96 = 1;
+        } else {
+            v96 = 1;
+        }
+        if (!v159) {
+            const char* key = v96 ? "SPELL_REQUIRED_FORM" : "SPELL_REQUIRED_FORM_NOSPACE";
+            if (!v96 || !a3) {
+                const char* fmt = FrameScript::GetText(const_cast<char*>(key), -1, 0);
+                if (fmt) {
+                    char formLineBuf[128] = {};
+                    SStr::Printf(formLineBuf, sizeof(formLineBuf), const_cast<char*>(fmt), formBuf);
+                    void* color = v96 ? sColorHexWhite : sColorHexRed0;
+                    CGTooltip::AddLine(tooltip, formLineBuf, nullptr, color, color, 0);
+                }
+            }
+        }
+    }
+
+    // // Faction / reputation requirement (disas 854-865).
+    // if (spell->m_minFactionID != 0) {
+    //     int32_t repValue = GetRepListRepValue(spell->m_minFactionID);
+    //     int32_t* repThresholds = reinterpret_cast<int32_t*>(kDwordA2D2FC);
+    //     int repMet = (spell->m_minReputation < 8 && repValue >= repThresholds[spell->m_minReputation]);
+    //     if (!repMet || !a3) {
+    //         FactionRec* factionRow = nullptr;
+    //         uint32_t minID = *reinterpret_cast<uint32_t*>(kGFactionDB + 16);
+    //         uint32_t maxID = *reinterpret_cast<uint32_t*>(kGFactionDB + 12);
+    //         if (spell->m_minFactionID >= minID && spell->m_minFactionID <= maxID) {
+    //             FactionRec** byId = *reinterpret_cast<FactionRec***>(kGFactionDB + 0x1C);
+    //             if (byId)
+    //                 factionRow = byId[spell->m_minFactionID - minID];
+    //         }
+    //         const char* factionName = factionRow && factionRow->m_name ? factionRow->m_name : "UNKNOWN";
+    //         char standingKey[64] = {};
+    //         SStr::Printf(standingKey, sizeof(standingKey), "FACTION_STANDING_LABEL%d", spell->m_minReputation + 1);
+    //         const char* standingText = FrameScript__GetLocalizedText(standingKey, -1);
+    //         const char* reqFmt = FrameScript::GetText(const_cast<char*>("ITEM_REQ_REPUTATION"), -1, 0);
+    //         if (reqFmt) {
+    //             SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(reqFmt), factionName, standingText ? standingText : "");
+    //             void* color = repMet ? sColorHexWhite : sColorHexRed0;
+    //             CGTooltip::AddLine(tooltip, lineLeft, nullptr, color, color, 0);
+    //         }
+    //     }
+    // }
+
+    // Item min level (disas 855-872). Show when unit level < baseLevel; original also required v155.
+    if (spell->m_baseLevel > 0 && unit && unit->unitData && unit->unitData->level < spell->m_baseLevel) {
+        const char* minLevelFmt = FrameScript::GetText(const_cast<char*>("ITEM_MIN_LEVEL"), -1, 0);
+        if (minLevelFmt) {
+            SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(minLevelFmt), spell->m_baseLevel);
+            CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexRed0, sColorHexRed0, 0);
+        }
+    }
+
+    // Reagents (disas 873-916).
+    if (!a5 && !Player_CanCastSpellInCurrentForm(reinterpret_cast<int>(activePlayer), reinterpret_cast<int>(spell))) {
+        char reagentBuf[4096] = {};
+        int firstReagent = 1;
+        int allMet = 1;
+        for (int k = 0; k < 8; ++k) {
+            uint32_t reagentId = spell->m_reagent[k];
+            if (reagentId == 0) continue;
+            uint64_t guid = spell->m_ID | 0x1FE0000000000000ULL;
+            void* itemBlock = DBItemCache_GetInfoBlockByID(WDB_CACHE_ITEM, reagentId, &guid, CGTooltip_HandleItemLoad, tooltip, 1);
+            if (!itemBlock) {
+                (*reinterpret_cast<uint32_t*>(static_cast<char*>(tooltip) + 242))++;
+                continue;
+            }
+            if (firstReagent) {
+                firstReagent = 0;
+                const char* label = FrameScript::GetText(const_cast<char*>("SPELL_REAGENTS"), -1, 0);
+                if (label) SStr::Copy(reagentBuf, const_cast<char*>(label), sizeof(reagentBuf));
+            } else {
+                SStr::Append(reagentBuf, const_cast<char*>(", "), sizeof(reagentBuf));
+            }
+            const char* itemName = reinterpret_cast<ItemCacheNameView*>(itemBlock)->namePtr;
+            if (!itemName) itemName = "";
+            char partBuf[128] = {};
+            if (spell->m_reagentCount[k] <= 1)
+                SStr::Copy(partBuf, const_cast<char*>(itemName), sizeof(partBuf));
+            else
+                SStr::Printf(partBuf, sizeof(partBuf), const_cast<char*>("%s (%d)"), const_cast<char*>(itemName), spell->m_reagentCount[k]);
+            void* bagBase = reinterpret_cast<char*>(activePlayer) + sizeof(CGUnit);
+            uint32_t haveCount = CGBag_C__GetItemTypeCount(bagBase, reagentId, 0);
+            if (haveCount >= spell->m_reagentCount[k]) {
+                SStr::Append(reagentBuf, partBuf, sizeof(reagentBuf));
+            } else {
+                const char* redPrefix = reinterpret_cast<const char*>(0xAD2A5C);
+                SStr::Append(reagentBuf, const_cast<char*>(redPrefix), sizeof(reagentBuf));
+                SStr::Append(reagentBuf, partBuf, sizeof(reagentBuf));
+                SStr::Append(reagentBuf, const_cast<char*>("|r"), sizeof(reagentBuf));
+                allMet = 0;
+            }
+        }
+        if (!firstReagent && (!allMet || !a3))
+            CGTooltip::AddLine(tooltip, reagentBuf, nullptr, sColorHexWhite, sColorHexWhite, 1);
+    }
+
+    // Item cooldown line when a4 (disas 917-922).
+    if (a4) {
+        CGTooltip::GetDurationString(lineLeft, 128, static_cast<uint64_t>(a4), const_cast<char*>("ITEM_COOLDOWN_TIME"), 0, 1, 0);
+        CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+        v112 = 1;
+    }
+
+    // // Dodge / Parry / Block / Crit (disas 923-949): when !a3 and (effect 78 or v155+effect 20/22/23).
+    // if (!a3 && (spell->m_effect[0] == 78 || (v155 && (spell->m_effect[0] == 20 || spell->m_effect[0] == 22 || spell->m_effect[0] == 23)))) {
+    //     float* stats = reinterpret_cast<float*>(reinterpret_cast<char*>(activePlayer) + 0x7D4);
+    //     const char* keys[] = { "CHANCE_TO_DODGE", "CHANCE_TO_PARRY", "CHANCE_TO_BLOCK", "CHANCE_TO_CRIT" };
+    //     for (int s = 0; s < 4; ++s) {
+    //         if (stats[s] <= 0.0f) continue;
+    //         const char* lbl = FrameScript::GetText(const_cast<char*>(keys[s]), -1, 0);
+    //         if (lbl) {
+    //             SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(lbl), stats[s]);
+    //             CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+    //             v112 = 1;
+    //         }
+    //     }
+    // }
+
+    // "Use all power" line (disas 950-955).
+    if (!a3 && (spell->m_attributesEx & 2) != 0) {
+        PowerDisplayRow* v134 = nullptr;
+        const uintptr_t powerDisplayDB = 0x00AD43A0;
+        uint32_t powerMinID = *reinterpret_cast<uint32_t*>(powerDisplayDB + 4 + 16);
+        uint32_t powerMaxID = *reinterpret_cast<uint32_t*>(powerDisplayDB + 4 + 12);
+        if (spell->m_powerDisplayID >= powerMinID && spell->m_powerDisplayID <= powerMaxID) {
+            uint32_t powerIndex = spell->m_powerDisplayID - powerMinID;
+            v134 = reinterpret_cast<PowerDisplayRow*>(ClientDB::GetRow(reinterpret_cast<void*>(powerDisplayDB), powerIndex));
+        }
+        if (v134 && v134->m_globalStringBaseTag) {
+            const char* powerStr = FrameScript::GetText(v134->m_globalStringBaseTag, -1, 0);
+            if (powerStr) {
+                char buf[256] = {};
+                SStr::Copy(buf, const_cast<char*>(powerStr), sizeof(buf));
+                const char* fmt = FrameScript::GetText(const_cast<char*>("SPELL_USE_ALL_POWER_DISPLAY"), -1, 0);
+                if (fmt) SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(fmt), buf);
+                else SStr::Copy(lineLeft, buf, sizeof(lineLeft));
+                CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+            }
+        } else {
+            const char* useKey = (spell->m_powerType > 6) ? "SPELL_USE_ALL_HEALTH" : (spell->m_powerType == 0) ? "SPELL_USE_ALL_MANA" : "SPELL_USE_ALL_POWER";
+            const char* txt = FrameScript::GetText(const_cast<char*>(useKey), -1, 0);
+            if (txt) {
+                SStr::Copy(lineLeft, const_cast<char*>(txt), sizeof(lineLeft));
+                CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+            }
+        }
+    }
+
     // Description text.
     if (spell->m_description_lang && *spell->m_description_lang) {
         char desc[2048] = {};
@@ -857,10 +1082,35 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
         CGTooltip::AddLine(tooltip, desc, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 1);
     }
 
+    // TalentTooltip_AddActionLines (disas 961-962).
+    if (a9 && !a7 && a16)
+        TalentTooltip_AddActionLines(a9, a10, v137, a14, a15, 0, a8, a5, a12);
+
+    // Embedded item tooltip (disas 963-971). Use first non-zero effect item (recipe can be in any effect slot).
+    if (v136) {
+        uint32_t embedItemId = 0;
+        for (int e = 0; e < 3; ++e) {
+            if (spell->m_effectItemType[e] != 0) {
+                embedItemId = spell->m_effectItemType[e];
+                break;
+            }
+        }
+        if (embedItemId != 0) {
+            // CGTooltipItemData_Reset(static_cast<char*>(tooltip) + 250);
+            int v135 = 0;
+            uint64_t v139 = 0;
+            CGTooltipInternal::SetItem(tooltip, static_cast<int>(embedItemId), reinterpret_cast<unsigned int>(&v135), reinterpret_cast<void*>(&v139), 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1);
+        }
+    }
+
+    // Tooltip script at +319 (disas 996-997).
+    void* scriptPtr = *reinterpret_cast<void**>(static_cast<char*>(tooltip) + 319);
+    if (scriptPtr)
+        FrameScript_Object__RunScript(static_cast<char*>(tooltip) + 319, 0, 0);
+
     // Finalize: show and size tooltip.
     CSimpleFrame::Show(tooltip);
     CGTooltipInternal::CalculateSize(tooltip);
 
-    LOG_DEBUG << "Tooltip finalized";
-    return 1;
+    return v112;
 }
