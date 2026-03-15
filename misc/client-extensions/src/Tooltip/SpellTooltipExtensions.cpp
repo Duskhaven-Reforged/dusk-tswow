@@ -337,8 +337,7 @@ void TooltipExtensions::SetSpellCooldownTooltip(char* dest, SpellRow* spell, uin
         *src = 0;
     }
 
-    void* ptr = reinterpret_cast<void*>(0xAD2D30);
-    sub_61FEC0(_this, dest, src, ptr, ptr, 0);
+    CGTooltip::AddLine(_this, dest, src, sColorHexWhite, sColorHexWhite, 0);
 }
 
 void TooltipExtensions::SpellTooltipRemainingCooldownExtension() {
@@ -353,7 +352,6 @@ void TooltipExtensions::SpellTooltipRemainingCooldownExtension() {
 }
 
 void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* spell, void* _this, uint32_t currentCooldown) {
-    void* ptr = reinterpret_cast<void*>(0xAD2D30);
     uint32_t recoveryTime = 0;
     auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
 
@@ -380,7 +378,7 @@ void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* s
 
     if (recoveryTime) {
         CGTooltip::GetDurationString(dest, 128, recoveryTime, "ITEM_COOLDOWN_TIME", 0, 1, 0);
-        sub_61FEC0(_this, dest, 0, ptr, ptr, 0);
+        CGTooltip::AddLine(_this, dest, 0, sColorHexWhite, sColorHexWhite, 0);
     }
 }
 
@@ -402,61 +400,12 @@ void TooltipExtensions::SpellTooltipSetSpellExtension() {
         Util::CalculateAddress(reinterpret_cast<uint32_t>(&SetSpellTooltipHook), 0x6238A5));
 }
 
-int __fastcall TooltipExtensions::SetSpellTooltipHook(
-    void* thisPtr,
-    void* edx,
-    int spellId,
-    int a3,
-    int a4,
-    int a5,
-    int a6,
-    int a7,
-    int a8,
-    uint32_t* a9,
-    int a10,
-    int a11,
-    int a12,
-    int a13,
-    int a14,
-    int a15,
-    int a16)
+int __fastcall TooltipExtensions::SetSpellTooltipHook(void* thisPtr, void* edx, int spellId, int a3, int a4, int a5, int a6, int a7, int a8, uint32_t* a9, int a10, int a11, int a12, int a13, int a14, int a15, int a16)
 {
-    return SetSpellTooltipImpl(
-        thisPtr,
-        spellId,
-        a3,
-        a4,
-        a5,
-        a6,
-        a7,
-        a8,
-        a9,
-        a10,
-        a11,
-        a12,
-        a13,
-        a14,
-        a15,
-        a16);
+    return SetSpellTooltipImpl(thisPtr, spellId, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16);
 }
 
-int TooltipExtensions::SetSpellTooltipImpl(
-    void* tooltip,
-    int spellId,
-    int a3,
-    int a4,
-    int a5,
-    int a6,
-    int a7,
-    int a8,
-    uint32_t* a9,
-    int a10,
-    int a11,
-    int a12,
-    int a13,
-    int a14,
-    int a15,
-    int a16)
+int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, int a4, int a5, int a6, int a7, int a8, uint32_t* a9, int a10, int a11, int a12, int a13, int a14, int a15, int a16)
 {
     // Early out if we do not have a tooltip object.
     if (!tooltip)
@@ -523,7 +472,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
         if (nextRankText) {
             const char* fmt = reinterpret_cast<const char*>(0xA25978);
             SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(fmt), nextRankText);
-            sub_61FEC0(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+            CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
         }
     } else if (v141) {
         uint8_t raceId = unit->unitData->unitBytes0.raceID;
@@ -541,7 +490,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
                 if (skillLineRow && skillLineRow->m_displayName_lang && spell->m_name_lang) {
                     SStr::Printf(lineLeft, sizeof(lineLeft), "%s: %s",
                         skillLineRow->m_displayName_lang, spell->m_name_lang);
-                    sub_61FEC0(tooltip, lineLeft, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 0);
+                    CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 0);
                 }
             }
         }
@@ -555,8 +504,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
             } else {
                 lineRight[0] = 0;
             }
-            sub_61FEC0(tooltip, lineLeft, lineRight[0] ? lineRight : nullptr,
-                sColorHexWhite, sColorHexGrey0, 0);
+            CGTooltip::AddLine(tooltip, lineLeft, lineRight[0] ? lineRight : nullptr, sColorHexWhite, sColorHexGrey0, 0);
         }
     }
 
@@ -567,7 +515,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
             const char* rankFmt = FrameScript::GetText(const_cast<char*>("TOOLTIP_TALENT_RANK"), -1, 0);
             if (rankFmt) {
                 SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(rankFmt), a14 + 1, a15 + 1);
-                sub_61FEC0(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+                CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
             }
         }
         if (a14 < 0)
@@ -707,14 +655,14 @@ int TooltipExtensions::SetSpellTooltipImpl(
                         const char* enemy = FrameScript::GetText(const_cast<char*>("ENEMY"), -1, 0);
                         if (dualFmt && enemy) {
                             SStr::Printf(rangeStr, sizeof(rangeStr), const_cast<char*>(dualFmt), enemy, rangeNum);
-                            sub_61FEC0(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
+                            CGTooltip::AddLine(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
                             rangeStr[0] = '\0';
                         }
                     } else if (maxRange >= unlim) {
                         const char* u = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_UNLIMITED"), -1, 0);
                         if (u) {
                             SStr::Copy(rangeStr, const_cast<char*>(u), sizeof(rangeStr));
-                            sub_61FEC0(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
+                            CGTooltip::AddLine(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
                             rangeStr[0] = '\0';
                         }
                     }
@@ -742,7 +690,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
             lineLeftFinal = rangeStr;
             lineRightFinal = nullptr;
         }
-        sub_61FEC0(
+        CGTooltip::AddLine(
             tooltip,
             lineLeftFinal,
             lineRightFinal,
@@ -755,15 +703,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
         char cdBuf[128] = {};
         uintptr_t flag = 0;
 
-        SetSpellCooldownTooltip(
-            castBuf,
-            spell,
-            &flag,
-            a5,
-            a7,
-            cdBuf,
-            tooltip,
-            Spell_C::GetPowerCost(spell, unit));
+        SetSpellCooldownTooltip(castBuf, spell, &flag, a5, a7, cdBuf, tooltip, Spell_C::GetPowerCost(spell, unit));
     }
 
     // Totems line (disas 559-634): only when not pet; show required totems and totem categories.
@@ -839,7 +779,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
         }
 
         if (!firstEntry && (!spellIdb || !a3))
-            sub_61FEC0(tooltip, totemBuf, nullptr, sColorHexWhite, sColorHexWhite, 0);
+            CGTooltip::AddLine(tooltip, totemBuf, nullptr, sColorHexWhite, sColorHexWhite, 0);
     }
 
     // Equipped item requirement (pseudo 637-733).
@@ -903,7 +843,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
                     char printedBuf[512] = {};
                     SStr::Printf(printedBuf, sizeof(printedBuf), const_cast<char*>(fmt), equipBuf);
                     void* color = requirementMet ? sColorHexWhite : sColorHexRed0;
-                    sub_61FEC0(tooltip, printedBuf, nullptr, color, color, 1);
+                    CGTooltip::AddLine(tooltip, printedBuf, nullptr, color, color, 1);
                 }
             }
         }
@@ -912,24 +852,9 @@ int TooltipExtensions::SetSpellTooltipImpl(
     // Description text.
     if (spell->m_description_lang && *spell->m_description_lang) {
         char desc[2048] = {};
-        SpellParser::ParseText(
-            spell,
-            desc,
-            sizeof(desc),
-            a5,
-            a7,
-            0,
-            0,
-            1,
-            0);
+        SpellParser::ParseText(spell, desc, sizeof(desc), a5, a7, 0, 0, 1, 0);
 
-        sub_61FEC0(
-            tooltip,
-            desc,
-            nullptr,
-            sColorHexDarkYellow,
-            sColorHexDarkYellow,
-            1);
+        CGTooltip::AddLine(tooltip, desc, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 1);
     }
 
     // Finalize: show and size tooltip.

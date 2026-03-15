@@ -6,6 +6,7 @@ namespace CFormula {
 }
 
 namespace CGTooltip {
+    CLIENT_FUNCTION(AddLine, 0x61FEC0, __thiscall, void, (void*, char*, char*, void*, void*, uint32_t))
     CLIENT_FUNCTION(GetDurationString, 0x61A9E0, __cdecl, void, (char*, uint32_t, uint64_t, char*, uint32_t, uint32_t, uint32_t))
 }
 
