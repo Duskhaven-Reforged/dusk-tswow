@@ -336,8 +336,7 @@ void TooltipExtensions::SetSpellCooldownTooltip(char* dest, SpellRow* spell, uin
         *src = 0;
     }
 
-    void* ptr = reinterpret_cast<void*>(0xAD2D30);
-    sub_61FEC0(_this, dest, src, ptr, ptr, 0);
+    CGTooltip::AddLine(_this, dest, src, sColorHexWhite, sColorHexWhite, 0);
 }
 
 void TooltipExtensions::SpellTooltipRemainingCooldownExtension() {
@@ -352,7 +351,6 @@ void TooltipExtensions::SpellTooltipRemainingCooldownExtension() {
 }
 
 void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* spell, void* _this, uint32_t currentCooldown) {
-    void* ptr = reinterpret_cast<void*>(0xAD2D30);
     uint32_t recoveryTime = 0;
     auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
 
@@ -379,7 +377,7 @@ void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* s
 
     if (recoveryTime) {
         CGTooltip::GetDurationString(dest, 128, recoveryTime, "ITEM_COOLDOWN_TIME", 0, 1, 0);
-        sub_61FEC0(_this, dest, 0, ptr, ptr, 0);
+        CGTooltip::AddLine(_this, dest, 0, sColorHexWhite, sColorHexWhite, 0);
     }
 }
 
@@ -518,7 +516,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
                 lineRight[0] = 0;
             }
 
-            sub_61FEC0(
+            CGTooltip::AddLine(
                 tooltip,
                 lineLeft,
                 lineRight[0] ? lineRight : nullptr,
@@ -661,14 +659,14 @@ int TooltipExtensions::SetSpellTooltipImpl(
                         const char* enemy = FrameScript::GetText(const_cast<char*>("ENEMY"), -1, 0);
                         if (dualFmt && enemy) {
                             SStr::Printf(rangeStr, sizeof(rangeStr), const_cast<char*>(dualFmt), enemy, rangeNum);
-                            sub_61FEC0(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
+                            CGTooltip::AddLine(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
                             rangeStr[0] = '\0';
                         }
                     } else if (maxRange >= unlim) {
                         const char* u = FrameScript::GetText(const_cast<char*>("SPELL_RANGE_UNLIMITED"), -1, 0);
                         if (u) {
                             SStr::Copy(rangeStr, const_cast<char*>(u), sizeof(rangeStr));
-                            sub_61FEC0(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
+                            CGTooltip::AddLine(tooltip, const_cast<char*>(" "), rangeStr, sColorHexWhite, sColorHexWhite, 0);
                             rangeStr[0] = '\0';
                         }
                     }
@@ -696,7 +694,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
             lineLeftFinal = rangeStr;
             lineRightFinal = nullptr;
         }
-        sub_61FEC0(
+        CGTooltip::AddLine(
             tooltip,
             lineLeftFinal,
             lineRightFinal,
@@ -734,7 +732,7 @@ int TooltipExtensions::SetSpellTooltipImpl(
             1,
             0);
 
-        sub_61FEC0(
+        CGTooltip::AddLine(
             tooltip,
             desc,
             nullptr,
