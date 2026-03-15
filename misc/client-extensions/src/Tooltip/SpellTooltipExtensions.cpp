@@ -79,6 +79,7 @@ float ApplyScalarsForPlayer(CGPlayer* activePlayer, SpellRow* spell, int index, 
 static void* const sColorHexWhite      = reinterpret_cast<void*>(0xAD2D30);
 static void* const sColorHexGrey0      = reinterpret_cast<void*>(0xAD2D38);
 static void* const sColorHexDarkYellow = reinterpret_cast<void*>(0xAD2D2C);
+static void* const sColorHexRed0       = reinterpret_cast<void*>(0xAD2D34);
 
 int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t spellVariable, uint32_t a3, SpellRow* spell, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9) {
     uint32_t result = 0;
@@ -502,14 +503,51 @@ int TooltipExtensions::SetSpellTooltipImpl(
     char lineLeft[128] = {};
     char lineRight[128] = {};
 
-    // Top name line: spell name and optional subtext.
-    {
-        char* name = spell->m_name_lang;
-        char* subText = nullptr;
-        if (a3 || a6) {
-            subText = spell->m_nameSubtext_lang;
+    // Ability/talent header flag: SPELL_ATTR_ABILITY (0x20) or effect in {53, 24, 157, 59} (disas 200-218).
+    int v141 = 0;
+    if ((spell->m_attributes & 0x20) != 0) {
+        v141 = 1;
+    } else {
+        for (unsigned int i = 0; i < 3; ++i) {
+            uint32_t eff = spell->m_effect[i];
+            if (eff == 53 || eff == 24 || eff == 157 || eff == 59) {
+                v141 = 1;
+                break;
+            }
         }
+    }
 
+    // Top line: talent next rank, or ability (skill line) header, or normal name + subtext (disas 220-266).
+    if (a9 && a11) {
+        const char* nextRankText = FrameScript::GetText(const_cast<char*>("TOOLTIP_TALENT_NEXT_RANK"), -1, 0);
+        if (nextRankText) {
+            const char* fmt = reinterpret_cast<const char*>(0xA25978);
+            SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(fmt), nextRankText);
+            sub_61FEC0(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+        }
+    } else if (v141) {
+        uint8_t raceId = unit->unitData->unitBytes0.raceID;
+        uint8_t classId = unit->unitData->unitBytes0.classID;
+        SkillLineAbilityRow* abilityRow = sub_812410(raceId, classId, static_cast<uint32_t>(spellId));
+        if (abilityRow) {
+            uint32_t skillLineId = abilityRow->m_skillLine;
+            const uintptr_t skillLineDB = 0x00AD45E0;
+            const uintptr_t base = skillLineDB + 4;
+            uint32_t minID = *reinterpret_cast<uint32_t*>(base + 16);
+            uint32_t maxID = *reinterpret_cast<uint32_t*>(base + 12);
+            if (skillLineId >= minID && skillLineId <= maxID) {
+                SkillLineRow* skillLineRow = reinterpret_cast<SkillLineRow*>(
+                    ClientDB::GetRow(reinterpret_cast<void*>(skillLineDB), skillLineId - minID));
+                if (skillLineRow && skillLineRow->m_displayName_lang && spell->m_name_lang) {
+                    SStr::Printf(lineLeft, sizeof(lineLeft), "%s: %s",
+                        skillLineRow->m_displayName_lang, spell->m_name_lang);
+                    sub_61FEC0(tooltip, lineLeft, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 0);
+                }
+            }
+        }
+    } else {
+        char* name = spell->m_name_lang;
+        char* subText = (a3 || a6) ? spell->m_nameSubtext_lang : nullptr;
         if (name && *name) {
             SStr::Copy(lineLeft, name, sizeof(lineLeft));
             if (subText && *subText) {
@@ -517,15 +555,23 @@ int TooltipExtensions::SetSpellTooltipImpl(
             } else {
                 lineRight[0] = 0;
             }
-
-            sub_61FEC0(
-                tooltip,
-                lineLeft,
-                lineRight[0] ? lineRight : nullptr,
-                sColorHexWhite,
-                sColorHexGrey0,
-                0);
+            sub_61FEC0(tooltip, lineLeft, lineRight[0] ? lineRight : nullptr,
+                sColorHexWhite, sColorHexGrey0, 0);
         }
+    }
+
+    // v137 = 1; if (a9 && !a11) { TOOLTIP_TALENT_RANK when a15 >= 0; if (a14 < 0) v137 = LookupEntryById(...); } (pseudo 255-265)
+    int v137 = 1;
+    if (a9 && !a11) {
+        if (a15 >= 0) {
+            const char* rankFmt = FrameScript::GetText(const_cast<char*>("TOOLTIP_TALENT_RANK"), -1, 0);
+            if (rankFmt) {
+                SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(rankFmt), a14 + 1, a15 + 1);
+                sub_61FEC0(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+            }
+        }
+        if (a14 < 0)
+            v137 = LookupEntryById(tooltip, a9, a10, a7, a5, a12);
     }
 
     // Cost and range on the same row (left = cost, right = range). Matches disas.txt lines 280-364.
@@ -718,6 +764,149 @@ int TooltipExtensions::SetSpellTooltipImpl(
             cdBuf,
             tooltip,
             Spell_C::GetPowerCost(spell, unit));
+    }
+
+    // Totems line (disas 559-634): only when not pet; show required totems and totem categories.
+    const uint32_t WDB_CACHE_ITEM = 0;
+    const char* totemRedPrefix = reinterpret_cast<const char*>(0xAD2A5C);
+    if (!a5) {
+        char totemBuf[4096] = {};
+        int spellIdb = 1;
+        int firstEntry = 1;
+
+        for (int i = 0; i < 2; ++i) {
+            uint32_t totemId = spell->m_totem0[i];
+            if (totemId == 0) continue;
+            uint64_t guid = spell->m_ID | 0x1FE0000000000000ULL;
+            void* itemBlock = DBItemCache_GetInfoBlockByID(WDB_CACHE_ITEM, totemId, &guid, nullptr, tooltip, 1);
+            if (itemBlock) {
+                if (firstEntry) {
+                    firstEntry = 0;
+                    const char* label = FrameScript::GetText(const_cast<char*>("SPELL_TOTEMS"), -1, 0);
+                    if (label) SStr::Copy(totemBuf, const_cast<char*>(label), sizeof(totemBuf));
+                } else {
+                    SStr::Append(totemBuf, const_cast<char*>(", "), sizeof(totemBuf));
+                }
+                void* bagBase = reinterpret_cast<char*>(unit) + sizeof(CGUnit);
+                void* found = CGBag_C__FindItemOfType(bagBase, totemId, 0);
+                if (!found) {
+                    SStr::Append(totemBuf, const_cast<char*>(totemRedPrefix), sizeof(totemBuf));
+                    spellIdb = 0;
+                }
+                const char* itemName = reinterpret_cast<ItemCacheNameView*>(itemBlock)->namePtr;
+                if (itemName) SStr::Append(totemBuf, const_cast<char*>(itemName), sizeof(totemBuf));
+                if (!found)
+                    SStr::Append(totemBuf, const_cast<char*>("|r"), sizeof(totemBuf));
+            }
+        }
+
+        const uintptr_t totemCategoryDB = 0x00AD4C7C;
+        const uintptr_t b_base_01 = totemCategoryDB;                          // WowClientDB_Common: m_minID/m_maxID inside here
+        const uintptr_t m_recordsById_ptr = totemCategoryDB + 0x18 + 0x08;     // b_base_02.m_recordsById at +0x20
+        uint32_t tmin = *reinterpret_cast<uint32_t*>(b_base_01 + 16);
+        uint32_t tmax = *reinterpret_cast<uint32_t*>(b_base_01 + 12);
+        TotemCategoryRow** tcatRecordsById = *reinterpret_cast<TotemCategoryRow***>(m_recordsById_ptr);
+        for (int j = 0; j < 2; ++j) {
+            uint32_t catId = spell->m_requiredTotemCategoryID[j];
+            const uintptr_t totemCategoryDB = 0x00AD4C7C;
+
+            uint32_t tmax = *reinterpret_cast<uint32_t*>(totemCategoryDB + 0x0C);
+            uint32_t tmin = *reinterpret_cast<uint32_t*>(totemCategoryDB + 0x10);
+            if (catId < tmin || catId > tmax)
+                continue;
+
+            uint32_t tcatIndex = catId - tmin;
+            TotemCategoryRow* tcatRow = tcatRecordsById[tcatIndex];
+            if (!tcatRow || !tcatRow->m_name) continue;
+            
+            if (firstEntry) {
+                firstEntry = 0;
+                const char* label = FrameScript::GetText(const_cast<char*>("SPELL_TOTEMS"), -1, 0);
+                if (label) 
+                    SStr::Copy(totemBuf, const_cast<char*>(label), sizeof(totemBuf));
+            } else {
+                SStr::Append(totemBuf, const_cast<char*>(", "), sizeof(totemBuf));
+            }
+            void* hasTotemThis = reinterpret_cast<char*>(activePlayer) + 0x18F0;
+            if (Player_HasTotemCategory(hasTotemThis, catId, 0)) {
+                SStr::Append(totemBuf, const_cast<char*>(tcatRow->m_name), sizeof(totemBuf));
+            } else {
+                SStr::Append(totemBuf, const_cast<char*>("|cffff2020"), sizeof(totemBuf));
+                SStr::Append(totemBuf, const_cast<char*>(tcatRow->m_name), sizeof(totemBuf));
+                SStr::Append(totemBuf, const_cast<char*>("|r"), sizeof(totemBuf));
+                spellIdb = 0;
+            }
+        }
+
+        if (!firstEntry && (!spellIdb || !a3))
+            sub_61FEC0(tooltip, totemBuf, nullptr, sColorHexWhite, sColorHexWhite, 0);
+    }
+
+    // Equipped item requirement (pseudo 637-733).
+    if ((spell->m_targets & 0x10) == 0 && (int32_t)spell->m_equippedItemClass >= 0 && spell->m_equippedItemSubclass != 0) {
+        char equipBuf[512] = {};
+        int foundMaskName = 0;
+        const uintptr_t itemSubClassMaskDB = 0xAD3F20;
+        const uintptr_t itemSubClassDB = 0xAD3F44;
+        uint32_t maskNumRecords = *reinterpret_cast<uint32_t*>(itemSubClassMaskDB + 8);
+        if (maskNumRecords > 0) {
+            ItemSubClassMaskRow* maskRecords = *reinterpret_cast<ItemSubClassMaskRow**>(itemSubClassMaskDB + 0x1C);
+            if (maskRecords) {
+                for (uint32_t i = 0; i < maskNumRecords; ++i) {
+                    ItemSubClassMaskRow* row = &maskRecords[i];
+                    if (row->m_classID == spell->m_equippedItemClass && row->m_mask == spell->m_equippedItemSubclass) {
+                        if (row->m_name)
+                            SStr::Copy(equipBuf, row->m_name, sizeof(equipBuf));
+                        foundMaskName = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        int requirementMet = 1;
+        int itemSlotMask = (spell->m_attributesExC & 0x400) != 0 ? 0x8000
+            : (spell->m_attributesExC & 0x1000000) != 0 ? 0x10000 : -1;
+        if (!CGUnit_C__EquippedItemMeetSpellRequirements(unit, spell, itemSlotMask))
+            requirementMet = 0;
+        if ((spell->m_attributesExC & 0x1000400) == 0x1000400 && !CGUnit_C__EquippedItemMeetSpellRequirements(unit, spell, 0x10000))
+            requirementMet = 0;
+        uint32_t subNumRecords = *reinterpret_cast<uint32_t*>(itemSubClassDB + 8);
+        if (subNumRecords > 0) {
+            ItemSubClassRow* subRecords = *reinterpret_cast<ItemSubClassRow**>(itemSubClassDB + 0x1C);
+            if (subRecords) {
+                int firstSubclass = 1;
+                for (uint32_t j = 0; j < subNumRecords; ++j) {
+                    ItemSubClassRow* subRow = &subRecords[j];
+                    if (subRow) {
+                        if (subRow->m_classID != spell->m_equippedItemClass)
+                            continue;
+                            if (!((1u << subRow->m_subClassID) & spell->m_equippedItemSubclass) || foundMaskName)
+                                continue;
+                            if (firstSubclass)
+                                firstSubclass = 0;
+                            else
+                                SStr::Append(equipBuf, const_cast<char*>(", "), sizeof(equipBuf));
+                            const char* name = (subRow->m_verboseName && *subRow->m_verboseName) ? subRow->m_verboseName : subRow->m_displayName;
+                            if (name)
+                                SStr::Append(equipBuf, const_cast<char*>(name), sizeof(equipBuf));
+                    }
+                }
+            }
+        }
+        if (a5)
+            requirementMet = 1;
+        if (equipBuf[0] != 0) {
+            if (!(requirementMet && a3)) {
+                const char* key = requirementMet ? "SPELL_EQUIPPED_ITEM" : "SPELL_EQUIPPED_ITEM_NOSPACE";
+                const char* fmt = FrameScript::GetText(const_cast<char*>(key), -1, 0);
+                if (fmt) {
+                    char printedBuf[512] = {};
+                    SStr::Printf(printedBuf, sizeof(printedBuf), const_cast<char*>(fmt), equipBuf);
+                    void* color = requirementMet ? sColorHexWhite : sColorHexRed0;
+                    sub_61FEC0(tooltip, printedBuf, nullptr, color, color, 1);
+                }
+            }
+        }
     }
 
     // Description text.

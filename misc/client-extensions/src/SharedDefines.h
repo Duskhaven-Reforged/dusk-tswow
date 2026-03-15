@@ -391,6 +391,40 @@ struct SkillLineRow {
     uint32_t m_canLink;
 };
 
+struct TotemCategoryRow {
+    int32_t m_ID;
+    char* m_name;
+    int32_t m_totemCategoryType;
+    int32_t m_totemCategoryMask;
+};
+
+// Minimal view of client item cache block for tooltip name (Name[0][0] in disas).
+struct ItemCacheNameView {
+    char* namePtr;
+};
+
+struct ItemSubClassMaskRow {
+    uint32_t m_classID;
+    uint32_t m_mask;
+    char* m_name;
+};
+
+struct ItemSubClassRow {
+    int32_t m_classID;
+    int32_t m_subClassID;
+    int32_t m_prerequisiteProficiency;
+    int32_t m_postrequisiteProficiency;
+    int32_t m_flags;
+    int32_t m_displayFlags;
+    int32_t m_weaponParrySeq;
+    int32_t m_weaponReadySeq;
+    int32_t m_weaponAttackSeq;
+    int32_t m_weaponSwingSize;
+    const char *m_displayName;
+    const char *m_verboseName;
+    int32_t m_generatedID;
+};
+
 struct SpellRow {
     uint32_t m_ID;
     uint32_t m_category;
@@ -784,6 +818,11 @@ CLIENT_FUNCTION(sub_61FEC0, 0x61FEC0, __thiscall, void, (void*, char*, char*, vo
 CLIENT_FUNCTION(sub_6B1080, 0x6B1080, __cdecl, uint8_t, ())
 CLIENT_FUNCTION(sub_6E22C0, 0x6E22C0, __thiscall, uint32_t, (void*, uint32_t))
 CLIENT_FUNCTION(sub_812410, 0x812410, __cdecl, SkillLineAbilityRow*, (uint32_t, uint32_t, uint32_t))
+CLIENT_FUNCTION(DBItemCache_GetInfoBlockByID, 0x67CA30, __cdecl, void*, (uint32_t, uint32_t, void*, void*, void*, int))
+CLIENT_FUNCTION(CGBag_C__FindItemOfType, 0x754A20, __thiscall, void*, (void*, uint32_t, int))
+CLIENT_FUNCTION(Player_HasTotemCategory, 0x7548F0, __thiscall, char, (void*, uint32_t, int))
+CLIENT_FUNCTION(LookupEntryById, 0x6224F0, __thiscall, int, (void*, uint32_t*, int, int, int, int))
+CLIENT_FUNCTION(CGUnit_C__EquippedItemMeetSpellRequirements, 0x6DE230, __thiscall, void*, (CGUnit*, SpellRow*, int))
 CLIENT_FUNCTION(TerrainClick, 0x00527830, __cdecl, void, (TerrainClickEvent*))
 CLIENT_FUNCTION(SStrCmpI, 0x0076E780, __stdcall, int, (char* text1, const char* text2, int length))
 CLIENT_FUNCTION(TraceLine, 0x007A3B70, __cdecl, char, (C3Vector* start, C3Vector* end, C3Vector* hitPoint, float* distance, uint32_t flag, uint32_t optional))
