@@ -4,6 +4,7 @@
 
 #include <ClientArguments.h>
 #include <ClientDetours.h>
+#include <FileIntegrity/FileIntegrity.h>
 #include <ClientExtensions.h>
 #include <Clientlua.h>
 #include <ClientNetwork.h>
@@ -37,6 +38,8 @@ class Main
         LOG_INFO << "Client extensions initialized";
         ClientDetours::Apply();
         LOG_INFO << "Client detours applied";
+        FileIntegrity::RunStartupScan();
+        LOG_INFO << "FileIntegrity initalized";
         FrameXMLExtensions::Apply();
         LOG_INFO << "FrameXMLExtensions applied";
     }
