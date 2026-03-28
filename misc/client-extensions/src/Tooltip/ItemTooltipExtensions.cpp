@@ -51,10 +51,10 @@ void ItemTooltipExtensions::Apply() {
         0xE9, 0, 0, 0, 0
     };
 
-    Util::OverwriteBytesAtAddress(0x6277F0, patchBytes, sizeof(patchBytes));
-    Util::OverwriteUInt32AtAddress(
-        0x6277F1,
-        Util::CalculateAddress(reinterpret_cast<uint32_t>(&SetItemTooltipHook), 0x6277F5));
+    // Util::OverwriteBytesAtAddress(0x6277F0, patchBytes, sizeof(patchBytes));
+    // Util::OverwriteUInt32AtAddress(
+    //     0x6277F1,
+    //     Util::CalculateAddress(reinterpret_cast<uint32_t>(&SetItemTooltipHook), 0x6277F5));
 }
 
 void __declspec(naked) ItemTooltipExtensions::SetItemTooltipHook() {
