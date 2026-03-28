@@ -25,6 +25,8 @@ import { finish } from "../../../data/index";
 import { Table } from "../../../data/table/Table";
 import { ItemRow } from "../../dbc/Item";
 import { DBC } from "../../DBCFiles";
+import { CDBC } from "../../CDBCFiles";
+import { ItemDifficultyTextRow } from "../../cdbc/ItemDifficultyText";
 import { item_templateQuery, item_templateRow } from "../../sql/item_template";
 import { SQL } from "../../SQLFiles";
 import { ClassMask } from "../Class/ClassRegistry";
@@ -672,10 +674,50 @@ export class ItemDBCRow extends CellSystem<ItemTemplate> {
     }
 }
 
+class ItemDifficultyTextEntity extends MaybeDBCEntity<ItemTemplate, ItemDifficultyTextRow> {
+    protected createDBC(): ItemDifficultyTextRow {
+        return CDBC.ItemDifficultyText.add(this.owner.ID);
+    }
+
+    protected findDBC(): ItemDifficultyTextRow {
+        return CDBC.ItemDifficultyText.findByID(this.owner.ID);
+    }
+
+    protected isValidDBC(dbc: ItemDifficultyTextRow): boolean {
+        return dbc !== undefined;
+    }
+
+    get Text() {
+        return this.wrapDBC('', dbc => dbc.Text);
+    }
+
+    get Red() {
+        return this.wrapDBC(0, dbc => dbc.Red);
+    }
+
+    get Green() {
+        return this.wrapDBC(0, dbc => dbc.Green);
+    }
+
+    get Blue() {
+        return this.wrapDBC(0, dbc => dbc.Blue);
+    }
+
+    set(text: string, red: number, green: number, blue: number) {
+        const row = this.getOrCreateDBC();
+        row.Text.set(text);
+        row.Red.set(red);
+        row.Green.set(green);
+        row.Blue.set(blue);
+        return this.owner;
+    }
+}
+
 export class ItemTemplate extends MainEntityID<item_templateRow> {
     @Transient
     protected get dbc() { return ItemDBCRow.dbc(this); }
     readonly DBCRow = new ItemDBCRow(this);
+    readonly DifficultyText = new ItemDifficultyTextEntity(this);
     protected ItemSetNameRow = new ItemSetNameRow(this);
     static ItemSetNameRow(template: ItemTemplate) {
         return template.ItemSetNameRow;
@@ -854,13 +896,18 @@ export class ItemTemplate extends MainEntityID<item_templateRow> {
                 {
                     code.line(`.Name.enGB.set('${this.Name.enGB.get().split("'").join("\\'")}')`)
                 }
-                if(this.Description.enGB.get().length > 0)
-                {
-                    code.line(`.Description.enGB.set('${this.Description.enGB.get().split("'").join("\\'")}')`)
-                }
-                if(this.ItemSetName.enGB.get().length > 0)
-                {
-                    code.line(`.ItemSetName.enGB.set('${this.ItemSetName.enGB.get().split("'").join("\\'")}')`)
+            if(this.Description.enGB.get().length > 0)
+            {
+                code.line(`.Description.enGB.set('${this.Description.enGB.get().split("'").join("\\'")}')`)
+            }
+            if(this.DifficultyText.exists())
+            {
+                const text = this.DifficultyText.Text.get().split("'").join("\\'");
+                code.line(`.DifficultyText.set('${text}',${this.DifficultyText.Red.get()},${this.DifficultyText.Green.get()},${this.DifficultyText.Blue.get()})`)
+            }
+            if(this.ItemSetName.enGB.get().length > 0)
+            {
+                code.line(`.ItemSetName.enGB.set('${this.ItemSetName.enGB.get().split("'").join("\\'")}')`)
                 }
             }
             code.non_zero_enum('Bonding',this.Bonding)

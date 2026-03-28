@@ -62,6 +62,60 @@ export class Process {
         stdout: {value: '', idx: 0},
     }
 
+    private formatExitCode(code: number) {
+        const unsigned = code >>> 0;
+        const hex = `0x${unsigned.toString(16).toUpperCase().padStart(8, '0')}`;
+        let explanation = '';
+        switch(unsigned) {
+            case 0xC0000005:
+                explanation = 'STATUS_ACCESS_VIOLATION (access violation / invalid memory access)';
+                break;
+            case 0xC000001D:
+                explanation = 'STATUS_ILLEGAL_INSTRUCTION (illegal CPU instruction)';
+                break;
+            case 0xC0000135:
+                explanation = 'STATUS_DLL_NOT_FOUND (missing DLL or dependency)';
+                break;
+            case 0xC0000142:
+                explanation = 'STATUS_DLL_INIT_FAILED (DLL initialization failed)';
+                break;
+            case 0xC0000409:
+                explanation = 'STATUS_STACK_BUFFER_OVERRUN (stack corruption / fast-fail)';
+                break;
+        }
+        return explanation.length > 0
+            ? `${code} (${hex}, ${explanation})`
+            : `${code} (${hex})`;
+    }
+
+    private recentOutput() {
+        const lines = [
+            ...this._curString.split('\n').map(x => x.trimEnd()),
+            this._lineBuffers.stdout.value.trimEnd(),
+            this._lineBuffers.stderr.value.trimEnd(),
+        ].filter(x => x.length > 0);
+
+        if(lines.length === 0) {
+            return '';
+        }
+
+        return lines.slice(-20).join('\n');
+    }
+
+    private describeExit(code: number) {
+        let message = `Process exited with code ${this.formatExitCode(code)}`;
+        if(this._lastStart) {
+            message += ` while running ${this._lastStart.program}`;
+        }
+
+        const output = this.recentOutput();
+        if(output.length > 0) {
+            message += `\nRecent process output:\n${output}`;
+        }
+
+        return message;
+    }
+
     /**
      * Creates a new process instance.
      * Call Process#start or Process#startIn to start it.
@@ -241,7 +295,7 @@ export class Process {
             proc.on('exit', (code) => {
                 let failed = code !== 0 && code !== null
                 if(failed) {
-                    this.fail(new Error('Process error code '+code))
+                    this.fail(new Error(this.describeExit(code as number)))
                 }
                 onDestroyed()
                 if(failed) {

@@ -13,6 +13,8 @@ void ClientExtensions::initialize() {
     LOG_INFO << "Character extensions applied";
     WorldDataExtensions::Apply();
     LOG_INFO << "World data extensions applied";
+    ItemTooltipExtensions::Apply();
+    LOG_INFO << "Item tooltip extensions applied";
     TooltipExtensions::Apply();
     LOG_INFO << "Tooltip extensions applied";
     MiscFixes::Apply();

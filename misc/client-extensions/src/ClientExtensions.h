@@ -4,6 +4,7 @@
 #include <Character/CharacterFixes.h>
 #include <Misc/MiscFixes.h>
 #include <Spells/Spells.h>
+#include <Tooltip/ItemTooltipExtensions.h>
 #include <Tooltip/SpellTooltipExtensions.h>
 #include <World/WorldData.h>
 

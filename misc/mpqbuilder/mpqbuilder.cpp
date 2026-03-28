@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <boost/filesystem.hpp>
 
 inline bool exists(std::string const& name) {
     std::ifstream f(name.c_str());
@@ -95,11 +96,246 @@ size_t progressInterval(size_t totalFiles)
     return std::max<size_t>(1, static_cast<size_t>(std::ceil(totalFiles / 100.0)));
 }
 
+std::string normalizeArchivePath(const std::string& input)
+{
+    std::string normalized = input;
+    std::replace(normalized.begin(), normalized.end(), '/', '\\');
+    while (!normalized.empty() && (normalized.front() == '\\' || normalized.front() == '/'))
+    {
+        normalized.erase(0, 1);
+    }
+    return normalized;
+}
+
+bool isSafeArchivePath(const std::string& archivePath)
+{
+    if (archivePath.empty())
+    {
+        return false;
+    }
+
+    if (archivePath.find(':') != std::string::npos)
+    {
+        return false;
+    }
+
+    boost::filesystem::path archiveFsPath(archivePath);
+    for (const auto& part : archiveFsPath)
+    {
+        const auto segment = part.string();
+        if (segment == "..")
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool isGeneratedInternalFile(const std::string& archivePath)
+{
+    return archivePath == "(attributes)" || archivePath == "(listfile)";
+}
+
+std::string manifestFileName()
+{
+    return ".tswow-manifest.txt";
+}
+
+int extractArchive(const std::string& archivePath, const std::string& outputDir)
+{
+    HANDLE archiveHandle = NULL;
+    if (!SFileOpenArchive(archivePath.c_str(), 0, STREAM_FLAG_READ_ONLY, &archiveHandle))
+    {
+        std::cerr << "Failed to open archive " << archivePath << ", error=" << GetLastError() << "\n";
+        return -1;
+    }
+
+    boost::filesystem::create_directories(outputDir);
+
+    SFILE_FIND_DATA findData = {};
+    HANDLE findHandle = SFileFindFirstFile(archiveHandle, "*", &findData, NULL);
+    if (findHandle == NULL)
+    {
+        const auto error = GetLastError();
+        std::cerr
+            << "Failed to enumerate files in archive " << archivePath
+            << ", error=" << error
+            << ". The archive may be missing a usable (listfile).\n";
+        SFileCloseArchive(archiveHandle);
+        return -1;
+    }
+
+    std::vector<std::string> files;
+    do
+    {
+        const std::string archiveFile = normalizeArchivePath(findData.cFileName);
+        if (archiveFile.empty())
+        {
+            continue;
+        }
+        if (isGeneratedInternalFile(archiveFile))
+        {
+            continue;
+        }
+        files.push_back(archiveFile);
+    }
+    while (SFileFindNextFile(findHandle, &findData));
+
+    SFileFindClose(findHandle);
+    std::sort(files.begin(), files.end());
+    files.erase(std::unique(files.begin(), files.end()), files.end());
+
+    const size_t totalFiles = files.size();
+    const size_t reportEvery = progressInterval(totalFiles);
+    size_t processedFiles = 0;
+    size_t skippedFiles = 0;
+    std::vector<std::string> extractedFiles;
+    std::cout << "Extracting files from MPQ: 0/" << totalFiles << "\n";
+
+    for (const auto& archivedFile : files)
+    {
+        if (!isSafeArchivePath(archivedFile))
+        {
+            std::cerr << "Skipping unsafe archive path " << archivedFile << "\n";
+            continue;
+        }
+
+        boost::filesystem::path destinationPath = boost::filesystem::path(outputDir) / boost::filesystem::path(archivedFile);
+        boost::filesystem::create_directories(destinationPath.parent_path());
+
+        HANDLE fileHandle = NULL;
+        if (!SFileOpenFileEx(archiveHandle, archivedFile.c_str(), SFILE_OPEN_FROM_MPQ, &fileHandle))
+        {
+            std::cerr
+                << "Warning: failed to open file in MPQ, skipping:"
+                << " archive=" << archivePath
+                << " file=" << archivedFile
+                << " error=" << GetLastError()
+                << "\n";
+            ++skippedFiles;
+            continue;
+        }
+
+        DWORD highSize = 0;
+        DWORD lowSize = SFileGetFileSize(fileHandle, &highSize);
+        if (lowSize == SFILE_INVALID_SIZE && GetLastError() != ERROR_SUCCESS)
+        {
+            std::cerr
+                << "Warning: failed to read file size from MPQ, skipping:"
+                << " archive=" << archivePath
+                << " file=" << archivedFile
+                << " error=" << GetLastError()
+                << "\n";
+            SFileCloseFile(fileHandle);
+            ++skippedFiles;
+            continue;
+        }
+
+        std::ofstream output(destinationPath.string(), std::ios::binary | std::ios::trunc);
+        if (!output.is_open())
+        {
+            std::cerr << "Failed to create output file " << destinationPath.string() << "\n";
+            SFileCloseFile(fileHandle);
+            SFileCloseArchive(archiveHandle);
+            return -1;
+        }
+
+        bool readFailed = false;
+        std::vector<char> buffer(1024 * 1024);
+        while (true)
+        {
+            DWORD bytesRead = 0;
+            if (!SFileReadFile(fileHandle, buffer.data(), static_cast<DWORD>(buffer.size()), &bytesRead, NULL))
+            {
+                const auto error = GetLastError();
+                if (error != ERROR_HANDLE_EOF)
+                {
+                    std::cerr
+                        << "Warning: failed to read file contents from MPQ, skipping:"
+                        << " archive=" << archivePath
+                        << " file=" << archivedFile
+                        << " error=" << error
+                        << "\n";
+                    readFailed = true;
+                    break;
+                }
+            }
+
+            if (bytesRead == 0)
+            {
+                break;
+            }
+
+            output.write(buffer.data(), bytesRead);
+            if (!output.good())
+            {
+                std::cerr << "Failed to write extracted file " << destinationPath.string() << "\n";
+                output.close();
+                SFileCloseFile(fileHandle);
+                SFileCloseArchive(archiveHandle);
+                return -1;
+            }
+        }
+
+        output.close();
+        SFileCloseFile(fileHandle);
+        if (readFailed)
+        {
+            remove(destinationPath.string().c_str());
+            ++skippedFiles;
+            continue;
+        }
+        extractedFiles.push_back(archivedFile);
+
+        ++processedFiles;
+        if (processedFiles == totalFiles || processedFiles % reportEvery == 0)
+        {
+            std::cout << "Extracting files from MPQ: " << processedFiles << "/" << totalFiles << "\n";
+        }
+    }
+
+    const boost::filesystem::path manifestPath = boost::filesystem::path(outputDir) / manifestFileName();
+    std::ofstream manifest(manifestPath.string(), std::ios::trunc);
+    if (!manifest.is_open())
+    {
+        std::cerr << "Failed to create extraction manifest " << manifestPath.string() << "\n";
+        SFileCloseArchive(archiveHandle);
+        return -1;
+    }
+
+    for (const auto& extractedFile : extractedFiles)
+    {
+        manifest << extractedFile << "\n";
+    }
+    manifest.close();
+
+    if (skippedFiles > 0)
+    {
+        std::cout << "Skipped unreadable files: " << skippedFiles << "\n";
+    }
+
+    SFileCloseArchive(archiveHandle);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
+    if (argc >= 2 && std::string(argv[1]) == "extract")
+    {
+        if (argc < 4)
+        {
+            std::cout << "Usage: mpqbuilder extract inputfile outputdir";
+            return -1;
+        }
+
+        return extractArchive(argv[2], argv[3]);
+    }
+
     if (argc < 3)
     {
-        std::cout << "Usage: mpqbuilder filelist outputfile [compression]";
+        std::cout << "Usage: mpqbuilder filelist outputfile [compression]\n";
+        std::cout << "   or: mpqbuilder extract inputfile outputdir";
         return -1;
     }
 

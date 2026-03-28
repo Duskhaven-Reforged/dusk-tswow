@@ -16,6 +16,7 @@
  */
 /* tslint:disable */
 import { CDBCFile } from "./cdbc/CDBCFile"
+import { ItemDifficultyTextCDBCFile } from "./cdbc/ItemDifficultyText";
 import { LFGRolesCDBCFile } from "./cdbc/LFGRoles";
 import { SpellAdditionalAttributesCDBCFile } from "./cdbc/SpellAdditionalAttributes";
 import { SpellAdditionalCostDataCDBCFile } from "./cdbc/SpellAdditionalCostData";
@@ -24,6 +25,7 @@ import { ZoneLightPointCDBCFile } from "./cdbc/ZoneLightPoint";
 import { SpellEffectScalarsCDBCFile } from "./cdbc/SpellEffectScalars";
 
 export const CDBC = {
+    ItemDifficultyText : new ItemDifficultyTextCDBCFile(),
     LFGRoles : new LFGRolesCDBCFile(),
     SpellAdditionalAttributes : new SpellAdditionalAttributesCDBCFile(),
     SpellAdditionalCostData : new SpellAdditionalCostDataCDBCFile(),
@@ -33,6 +35,7 @@ export const CDBC = {
 }
 
 export const CDBCLoader = {
+    ItemDifficultyText : (path: string) => ItemDifficultyTextCDBCFile.read(path),
     LFGRoles : (path: string) => LFGRolesCDBCFile.read(path),
     SpellAdditionalAttributes : (path: string) => SpellAdditionalAttributesCDBCFile.read(path),
     SpellAdditionalCostData : (path: string) => SpellAdditionalCostDataCDBCFile.read(path),
@@ -41,6 +44,6 @@ export const CDBCLoader = {
     SpellEffectScalars: (path: string) => SpellEffectScalarsCDBCFile.read(path),
 }
 
-export type CDBCNames = "LFGRoles" | "SpellAdditionalAttributes" | "SpellAdditionalCostData" | "ZoneLight" | "ZoneLightPoint" | "SpellEffectScalars"
+export type CDBCNames = "ItemDifficultyText" | "LFGRoles" | "SpellAdditionalAttributes" | "SpellAdditionalCostData" | "ZoneLight" | "ZoneLightPoint" | "SpellEffectScalars"
 
 export const CDBCFiles : CDBCFile<any,any,any>[] = Object.values(CDBC);

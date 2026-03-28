@@ -5,6 +5,59 @@ import { ipaths } from "../util/Paths";
 import { term } from "../util/Terminal";
 
 export class Crashes {
+    static latestCallStack(crashDir: string) {
+        try {
+            if(!fs.existsSync(crashDir)) {
+                return '';
+            }
+
+            const latest = fs.readdirSync(crashDir)
+                .filter(x => x.endsWith('.txt'))
+                .map(name => {
+                    const full = `${crashDir}\\${name}`;
+                    return { full, mtime: fs.statSync(full).mtimeMs };
+                })
+                .sort((a,b) => b.mtime - a.mtime)[0];
+
+            if(!latest) {
+                return '';
+            }
+
+            const content = fs.readFileSync(latest.full, 'utf8');
+            const callStackIndex = content.indexOf('Call stack:');
+            if(callStackIndex < 0) {
+                return '';
+            }
+
+            const afterHeader = content.slice(callStackIndex).split(/\r?\n/);
+            const collected: string[] = [];
+            let seenHeader = false;
+            for(const line of afterHeader) {
+                if(!seenHeader) {
+                    if(line.startsWith('Call stack:')) {
+                        seenHeader = true;
+                        collected.push(line);
+                    }
+                    continue;
+                }
+
+                if(line.startsWith('Call stack:')) {
+                    break;
+                }
+
+                if(collected.length > 0 && line.trim().length === 0) {
+                    break;
+                }
+
+                collected.push(line);
+            }
+
+            return collected.join('\n').trim();
+        } catch {
+            return '';
+        }
+    }
+
     static initialize() {
         if (process.argv.includes('nowatch') || process.argv.includes('nowatch-strict'))
         {

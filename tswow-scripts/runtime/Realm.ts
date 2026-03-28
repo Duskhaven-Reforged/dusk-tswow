@@ -9,6 +9,7 @@ import { wsys } from "../util/System";
 import { term } from "../util/Terminal";
 import { termCustom } from "../util/TerminalCategories";
 import { CreateCommand, ListCommand, StartCommand, StopCommand } from "./CommandActions";
+import { Crashes } from "./Crashes";
 import { Identifier } from "./Identifiers";
 import { Module, ModuleEndpoint } from "./Modules";
 import { Connection, mysql } from "./MySQL";
@@ -166,6 +167,10 @@ class RealmManager {
             .showOutput(true)
             .onFail(err=>{
                 term.error(termCustom('realm',name),err.message)
+                const crashText = Crashes.latestCallStack(ipaths.modules.join(`default/realms/realm/Crashes`).get());
+                if(crashText.length > 0) {
+                    term.error(termCustom('realm',name), crashText);
+                }
             })
     }
 }
