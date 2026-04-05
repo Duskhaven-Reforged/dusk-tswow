@@ -135,12 +135,14 @@ declare class ChargeData {
     Charges: uint8
     Max: uint8
     Timer: uint32
+    Cooldown: uint32
 
-    constructor(SpellId: uint32, Charges: uint8, Max: uint8, Timer: uint32) {
+    constructor(SpellId: uint32, Charges: uint8, Max: uint8, Timer: uint32, Cooldown: uint32) {
         this.SpellId = SpellId
         this.Charges = Charges
         this.Max = Max
         this.Timer = Timer
+        this.Cooldown = Cooldown
     }
 }
 

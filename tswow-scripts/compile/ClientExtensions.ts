@@ -18,7 +18,7 @@ export namespace ClientExtensions {
 
             wsys.exec(`${cmake}`
                 + ` --build "${bpaths.client_extensions.abs().get()}"`
-                + ` --config Release`
+                + ` --config RelWithDebInfo`
                 , 'inherit');
             bpaths.client_extensions.dll_path.copy(ipaths.bin.ClientExtensions_dll)
         }

@@ -1,6 +1,16 @@
 #include <Spells/Spells.h>
 #include <ClientDetours.h>
 #include <ClientLua.h>
+#include <SpellAttrDefines.h>
+
+namespace
+{
+    CLIENT_FUNCTION(GetMissileImpactPosition, 0x006FF320, __thiscall, C3Vector*, (void* self, C3Vector* outPosition))
+
+    constexpr uintptr_t CMISSILE_SPELL_ID_OFFSET = 0x1C;
+    constexpr uintptr_t CMISSILE_SPEED_OFFSET    = 0x24;
+    constexpr uintptr_t CMISSILE_BASE_SPEED_OFFSET = 0x28;
+}
 
 void Spells::Apply() {
     g_spell_min_clip_distance_percentage_cvar = CVar_C::Register("spellMinClipDistancePercentage", "Sets the minimum distance the clipping needs to be to activate", 1, "0.0", SpellMinClipDistancePercentage_CVarCallback, 5, 0, 0, 0);
@@ -230,4 +240,43 @@ CLIENT_DETOUR_THISCALL(GetLineSegment, 0x004F6450, int, (float a2, float a3, C3V
     }
 
     return ret;
+}
+
+CLIENT_DETOUR_THISCALL(MissileLaunchSetup, 0x007022D0, void, (C3Vector* launchPosition))
+{
+    if (self && launchPosition)
+    {
+        SpellRow spell{};
+        WoWClientDB* spellDB = reinterpret_cast<WoWClientDB*>(0x00AD49D0);
+        uint32_t spellId = *reinterpret_cast<uint32_t*>(reinterpret_cast<uintptr_t>(self) + CMISSILE_SPELL_ID_OFFSET);
+
+        if (spellId && ClientDB::GetLocalizedRow(spellDB, spellId, &spell) &&
+            HasAttribute(&spell, SPELL_ATTR1_CU_MISSILE_SPEED_IS_DELAY_IN_SEC))
+        {
+            float* missileSpeed = reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(self) + CMISSILE_SPEED_OFFSET);
+            float* missileBaseSpeed = reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(self) + CMISSILE_BASE_SPEED_OFFSET);
+            float delaySeconds = *missileSpeed;
+
+            if (delaySeconds > 0.0001f)
+            {
+                C3Vector impactPosition{};
+                if (GetMissileImpactPosition(self, &impactPosition))
+                {
+                    const float dx = impactPosition.x - launchPosition->x;
+                    const float dy = impactPosition.y - launchPosition->y;
+                    const float dz = impactPosition.z - launchPosition->z;
+                    const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+                    if (distance > 0.0001f)
+                    {
+                        const float convertedSpeed = distance / delaySeconds;
+                        *missileSpeed = convertedSpeed;
+                        *missileBaseSpeed = convertedSpeed;
+                    }
+                }
+            }
+        }
+    }
+
+    MissileLaunchSetup(self, launchPosition);
 }

@@ -73,7 +73,6 @@ LUA_FUNCTION(UpdateChargeInfoForSpell, (lua_State* L)) {
     temp.async = OsGetAsyncTimeMs();
     temp.remainingCooldown = ClientLua::GetNumber(L, 4);
     temp.cooldown = ClientLua::GetNumber(L, 5);
-
     auto it = CharacterDefines::spellChargeMap.find(spellID);
 
     if (it != CharacterDefines::spellChargeMap.end()) {
@@ -85,7 +84,25 @@ LUA_FUNCTION(UpdateChargeInfoForSpell, (lua_State* L)) {
         it->second = temp;
     }
     else
+    {
         CharacterDefines::spellChargeMap.insert(std::make_pair(spellID, temp));
+
+        auto inserted = CharacterDefines::spellChargeMap.find(spellID);
+        if (inserted != CharacterDefines::spellChargeMap.end())
+        {
+            LOG_DEBUG << "UpdateChargeInfoForSpell: inserted entry"
+                      << " spellID=" << spellID
+                      << " currentCharges=" << static_cast<uint32_t>(inserted->second.currentCharges)
+                      << " maxCharges=" << static_cast<uint32_t>(inserted->second.maxCharges)
+                      << " remainingCooldown=" << inserted->second.remainingCooldown
+                      << " cooldown=" << inserted->second.cooldown
+                      << " async=" << inserted->second.async;
+        }
+        else
+        {
+            LOG_ERROR << "UpdateChargeInfoForSpell: failed to insert entry for spellID=" << spellID;
+        }
+    }
 
     return 0;
 }

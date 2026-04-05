@@ -80,7 +80,7 @@ function mergeDatasetConfig(
     return {
         publishPrefix: normalizePrefix(
             override?.publishPrefix ?? base?.publishPrefix,
-            datasetName
+            ''
         ),
         localPackages,
         targets,

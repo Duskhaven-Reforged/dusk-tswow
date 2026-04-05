@@ -161,6 +161,7 @@ export namespace wsys {
 
         return new Promise(resolve => rl.question(query, ans => {
             rl.close();
+            process.stdin.resume();
             resolve(ans);
         }));
     }

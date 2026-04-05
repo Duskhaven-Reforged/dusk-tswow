@@ -81,6 +81,82 @@ static void* const sColorHexGrey0      = reinterpret_cast<void*>(0xAD2D38);
 static void* const sColorHexDarkYellow = reinterpret_cast<void*>(0xAD2D2C);
 static void* const sColorHexRed0       = reinterpret_cast<void*>(0xAD2D34);
 
+namespace
+{
+    bool SafeParseSpellTooltipDescription(SpellRow* spell, char* dest, size_t destSize, int a5, int a7)
+    {
+        if (!spell || !dest || destSize == 0) {
+            return false;
+        }
+
+        dest[0] = '\0';
+#ifdef _MSC_VER
+        __try {
+            SpellParser::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            LOG_ERROR << "SpellTooltip parse failed for spellId=" << spell->m_ID;
+            dest[0] = '\0';
+            return false;
+        }
+#else
+        SpellParser::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
+#endif
+        return dest[0] != '\0';
+    }
+
+    bool SpellTooltipContainsUnresolvedTokens(const char* text)
+    {
+        return text && strchr(text, '$') != nullptr;
+    }
+
+    uint32_t GetSpellChargeRemainingCooldown(uint32_t spellId, uint32_t fallbackCooldown)
+    {
+        auto it = CharacterDefines::spellChargeMap.find(spellId);
+        if (it == CharacterDefines::spellChargeMap.end())
+            return fallbackCooldown;
+
+        CharacterDefines::SpellCharge& charge = it->second;
+        uint32_t remainingCooldown = fallbackCooldown;
+
+        if (charge.remainingCooldown >= fallbackCooldown)
+        {
+            uint32_t currAsync = OsGetAsyncTimeMs();
+
+            if (charge.remainingCooldown > (currAsync - charge.async))
+                remainingCooldown = charge.remainingCooldown + (charge.async - currAsync);
+            else
+                remainingCooldown = 0;
+
+            charge.remainingCooldown = remainingCooldown;
+            charge.async = currAsync;
+        }
+
+        return remainingCooldown;
+    }
+
+    uint32_t GetSpellTooltipCooldown(SpellRow* spell, bool& isCharged)
+    {
+        uint32_t recoveryTime = spell->m_categoryRecoveryTime > spell->m_recoveryTime
+            ? spell->m_categoryRecoveryTime
+            : spell->m_recoveryTime;
+
+        isCharged = false;
+
+        auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
+        if (it == CharacterDefines::spellChargeMap.end())
+            return recoveryTime;
+
+        CharacterDefines::SpellCharge const& charge = it->second;
+        if (charge.cooldown)
+            recoveryTime = charge.cooldown;
+        else if (charge.remainingCooldown)
+            recoveryTime = charge.remainingCooldown;
+
+        isCharged = charge.maxCharges > 1;
+        return recoveryTime;
+    }
+}
+
 int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t spellVariable, uint32_t a3, SpellRow* spell, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9) {
     uint32_t result = 0;
 
@@ -307,17 +383,8 @@ void TooltipExtensions::SetSpellCooldownTooltip(char* dest, SpellRow* spell, uin
         SStr::Copy(dest, FrameScript::GetText(castFlag, -1, 0), 128);
     }
 
-    double recoveryTime = 0;
-    auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
-
-    auto isCharged = false;
-    if (it != CharacterDefines::spellChargeMap.end()) {
-        CharacterDefines::SpellCharge temp = it->second;
-        recoveryTime = temp.cooldown;
-        isCharged = temp.maxCharges > 1;
-    }
-    else
-        recoveryTime = spell->m_categoryRecoveryTime > spell->m_recoveryTime ? spell->m_categoryRecoveryTime : spell->m_recoveryTime;
+    bool isCharged = false;
+    double recoveryTime = GetSpellTooltipCooldown(spell, isCharged);
 
     if (recoveryTime > 0) {
         bool isLongRecovery = recoveryTime >= MILLISECONDS_IN_MINUTE;
@@ -352,29 +419,7 @@ void TooltipExtensions::SpellTooltipRemainingCooldownExtension() {
 }
 
 void TooltipExtensions::SetSpellRemainingCooldownTooltip(char* dest, SpellRow* spell, void* _this, uint32_t currentCooldown) {
-    uint32_t recoveryTime = 0;
-    auto it = CharacterDefines::spellChargeMap.find(spell->m_ID);
-
-    if (it != CharacterDefines::spellChargeMap.end())
-    {
-        CharacterDefines::SpellCharge temp = it->second;
-        if (temp.remainingCooldown >= currentCooldown) {
-            uint32_t currAsync = OsGetAsyncTimeMs();
-
-            if (temp.remainingCooldown > (currAsync - temp.async))
-                recoveryTime = temp.remainingCooldown + (temp.async - currAsync);
-            else
-                recoveryTime = 0;
-
-            temp.remainingCooldown = recoveryTime;
-            temp.async = currAsync;
-            it->second = temp;
-        }
-        else
-            recoveryTime = currentCooldown;
-    }
-    else
-        recoveryTime = currentCooldown;
+    uint32_t recoveryTime = GetSpellChargeRemainingCooldown(spell->m_ID, currentCooldown);
 
     if (recoveryTime) {
         CGTooltip::GetDurationString(dest, 128, recoveryTime, "ITEM_COOLDOWN_TIME", 0, 1, 0);
@@ -727,12 +772,16 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
             sColorHexWhite,
             0);
     }
+    int v112 = 0;
+
     {
         char castBuf[128] = {};
         char cdBuf[128] = {};
         uintptr_t flag = 0;
 
         SetSpellCooldownTooltip(castBuf, spell, &flag, a5, a7, cdBuf, tooltip, Spell_C::GetPowerCost(spell, unit));
+        if (cdBuf[0] != 0)
+            v112 = 1;
     }
 
     // v155: gates min level line, reagents block, dodge/parry/block/crit (disas 476, 492-495).
@@ -740,10 +789,8 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     if (!a3 && !v141 && (spell->m_effect[0] == 47 || (spell->m_attributes & 0x40) != 0))
         v155 = 1;
 
-    int v112 = 0;
-
     // Totems line (disas 559-634): only when not pet; show required totems and totem categories.
-    const uint32_t WDB_CACHE_ITEM = 0;
+    const uintptr_t WDB_CACHE_ITEM = 0x00C5D828;
     const char* totemRedPrefix = reinterpret_cast<const char*>(0xAD2A5C);
     if (!a5) {
         char totemBuf[4096] = {};
@@ -754,7 +801,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
             uint32_t totemId = spell->m_totem0[i];
             if (totemId == 0) continue;
             uint64_t guid = spell->m_ID | 0x1FE0000000000000ULL;
-            void* itemBlock = DBItemCache_GetInfoBlockByID(WDB_CACHE_ITEM, totemId, &guid, CGTooltip_HandleItemLoad, tooltip, 1);
+            void* itemBlock = DBItemCache_GetInfoBlockByID(reinterpret_cast<void*>(WDB_CACHE_ITEM), totemId, &guid, CGTooltip_HandleItemLoad, tooltip, 1);
             if (itemBlock) {
                 if (firstEntry) {
                     firstEntry = 0;
@@ -987,7 +1034,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
             uint32_t reagentId = spell->m_reagent[k];
             if (reagentId == 0) continue;
             uint64_t guid = spell->m_ID | 0x1FE0000000000000ULL;
-            void* itemBlock = DBItemCache_GetInfoBlockByID(WDB_CACHE_ITEM, reagentId, &guid, CGTooltip_HandleItemLoad, tooltip, 1);
+            void* itemBlock = DBItemCache_GetInfoBlockByID(reinterpret_cast<void*>(WDB_CACHE_ITEM), reagentId, &guid, CGTooltip_HandleItemLoad, tooltip, 1);
             if (!itemBlock) {
                 (*reinterpret_cast<uint32_t*>(static_cast<char*>(tooltip) + 242))++;
                 continue;
@@ -1022,9 +1069,10 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
             CGTooltip::AddLine(tooltip, reagentBuf, nullptr, sColorHexWhite, sColorHexWhite, 1);
     }
 
-    // Item cooldown line when a4 (disas 917-922).
-    if (a4) {
-        CGTooltip::GetDurationString(lineLeft, 128, static_cast<uint64_t>(a4), const_cast<char*>("ITEM_COOLDOWN_TIME"), 0, 1, 0);
+    // Item / spell remaining cooldown line when a4 (disas 917-922).
+    uint32_t remainingCooldown = GetSpellChargeRemainingCooldown(spell->m_ID, static_cast<uint32_t>(a4));
+    if (remainingCooldown) {
+        CGTooltip::GetDurationString(lineLeft, 128, static_cast<uint64_t>(remainingCooldown), const_cast<char*>("ITEM_COOLDOWN_TIME"), 0, 1, 0);
         CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
         v112 = 1;
     }
@@ -1077,9 +1125,14 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     // Description text.
     if (spell->m_description_lang && *spell->m_description_lang) {
         char desc[2048] = {};
-        SpellParser::ParseText(spell, desc, sizeof(desc), a5, a7, 0, 0, 1, 0);
+        if (!SafeParseSpellTooltipDescription(spell, desc, sizeof(desc), a5, a7) ||
+            SpellTooltipContainsUnresolvedTokens(desc)) {
+            desc[0] = '\0';
+        }
 
-        CGTooltip::AddLine(tooltip, desc, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 1);
+        if (desc[0]) {
+            CGTooltip::AddLine(tooltip, desc, nullptr, sColorHexDarkYellow, sColorHexDarkYellow, 1);
+        }
     }
 
     // TalentTooltip_AddActionLines (disas 961-962).

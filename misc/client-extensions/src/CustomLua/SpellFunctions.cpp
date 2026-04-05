@@ -4,20 +4,121 @@
 #include <SharedDefines.h>
 #include <SpellAttrDefines.h>
 
+#include <string>
+#include <unordered_map>
+
+namespace {
+std::unordered_map<uint32_t, std::string> s_cachedSpellDescriptions;
+
+bool SafeParseSpellDescription(SpellRow* row, char* dest, size_t destSize) {
+    if (!row || !dest || destSize == 0) {
+        return false;
+    }
+
+    dest[0] = '\0';
+#ifdef _MSC_VER
+    __try {
+        SpellParser::ParseText(row, dest, static_cast<uint32_t>(destSize), 0, 0, 0, 0, 1, 0);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        LOG_ERROR << "GetSpellDescription parse failed for spellId=" << row->m_ID;
+        dest[0] = '\0';
+        return false;
+    }
+#else
+    SpellParser::ParseText(row, dest, static_cast<uint32_t>(destSize), 0, 0, 0, 0, 1, 0);
+#endif
+    return dest[0] != '\0';
+}
+
+bool SafeCopySpellTextField(const char* src, char* dest, size_t destSize) {
+    if (!src || !dest || destSize == 0) {
+        return false;
+    }
+
+    dest[0] = '\0';
+#ifdef _MSC_VER
+    __try {
+        strncpy_s(dest, destSize, src, _TRUNCATE);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        dest[0] = '\0';
+        return false;
+    }
+#else
+    strncpy_s(dest, destSize, src, _TRUNCATE);
+#endif
+    return dest[0] != '\0';
+}
+
+bool ContainsUnresolvedSpellTokens(const char* text) {
+    return text && strchr(text, '$') != nullptr;
+}
+
+bool TryGetFormattedSpellDescription(uint32_t spellId, char* dest, size_t destSize) {
+    if (!dest || destSize == 0) {
+        return false;
+    }
+
+    dest[0] = '\0';
+#ifdef _MSC_VER
+    __try {
+        SpellRow row = {};
+        auto itr = s_cachedSpellDescriptions.find(spellId);
+        if (itr != s_cachedSpellDescriptions.end()) {
+            SafeCopySpellTextField(itr->second.c_str(), dest, destSize);
+            return dest[0] != '\0';
+        }
+
+        if (!ClientDB::GetLocalizedRow((void*)0xAD49D0, spellId, &row) || !row.m_description_lang) {
+            s_cachedSpellDescriptions.emplace(spellId, "");
+            return false;
+        }
+
+        SafeParseSpellDescription(&row, dest, destSize);
+        if (ContainsUnresolvedSpellTokens(dest)) {
+            dest[0] = '\0';
+        }
+
+        s_cachedSpellDescriptions.emplace(spellId, dest);
+        return dest[0] != '\0';
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        LOG_ERROR << "GetSpellDescription failed, returning empty string";
+        return false;
+    }
+#else
+    SpellRow row = {};
+    auto itr = s_cachedSpellDescriptions.find(spellId);
+    if (itr != s_cachedSpellDescriptions.end()) {
+        SafeCopySpellTextField(itr->second.c_str(), dest, destSize);
+        return dest[0] != '\0';
+    }
+
+    if (!ClientDB::GetLocalizedRow((void*)0xAD49D0, spellId, &row) || !row.m_description_lang) {
+        s_cachedSpellDescriptions.emplace(spellId, "");
+        return false;
+    }
+
+    SafeParseSpellDescription(&row, dest, destSize);
+    if (ContainsUnresolvedSpellTokens(dest)) {
+        dest[0] = '\0';
+    }
+
+    s_cachedSpellDescriptions.emplace(spellId, dest);
+    return dest[0] != '\0';
+#endif
+}
+}
+
 LUA_FUNCTION(GetSpellDescription, (lua_State* L)) {
     if (ClientLua::IsNumber(L, 1)) {
         uint32_t spellId = ClientLua::GetNumber(L, 1);
-        SpellRow row;
-        char dest[1024];
-
-        if (ClientDB::GetLocalizedRow((void*)0xAD49D0, spellId, &row)) { // hex address is g_SpellRec struct
-            SpellParser::ParseText(&row, &dest, 1024, 0, 0, 0, 0, 1, 0);
+        char dest[1024] = {};
+        if (TryGetFormattedSpellDescription(spellId, dest, sizeof(dest))) {
             ClientLua::PushString(L, dest);
             return 1;
         }
     }
 
-    ClientLua::PushNil(L);
+    ClientLua::PushString(L, "");
     return 1;
 }
 LUA_FUNCTION(GetSpellNameById, (lua_State* L)) {

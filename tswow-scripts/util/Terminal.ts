@@ -280,6 +280,14 @@ export namespace term {
         callback = callbackIn;
     }
 
+    export function suspendInput() {
+        t.grabInput(false);
+    }
+
+    export function resumeInput() {
+        t.grabInput({ mouse: 'button' });
+    }
+
     export function Initialize(
           historyPathIn: string
         , historyCountIn: number

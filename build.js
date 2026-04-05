@@ -42,7 +42,11 @@ child_process.execSync('npx swc --version', {stdio:'inherit'})
 fs.copyFileSync('package-lock.json', path.join(buildDir, 'package-lock.json'))
 fs.copyFileSync('package.json',path.join(buildDir,'package.json'))
 child_process.execSync('npm i', {cwd:buildDir,stdio:'inherit'});
-child_process.execSync('npm i source-map-support --no-save',{stdio:'inherit'})
+try {
+    require.resolve('source-map-support/register');
+} catch (error) {
+    child_process.execSync('npm i source-map-support --no-save',{stdio:'inherit'})
+}
 
 child_process.execSync(
       `node -r source-map-support/register`

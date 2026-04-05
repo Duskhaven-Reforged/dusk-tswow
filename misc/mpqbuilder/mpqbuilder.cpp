@@ -96,6 +96,30 @@ size_t progressInterval(size_t totalFiles)
     return std::max<size_t>(1, static_cast<size_t>(std::ceil(totalFiles / 100.0)));
 }
 
+void renderProgressBar(const std::string& targetFile, size_t current, size_t total)
+{
+    const int barWidth = 40;
+
+    double progress = total == 0 ? 0.0 : static_cast<double>(current) / total;
+    int pos = static_cast<int>(barWidth * progress);
+
+    std::cout << "\r\033[K" << targetFile << " ["; // \r = return, \033[K = clear line
+
+    for (int i = 0; i < barWidth; ++i)
+    {
+        if (i < pos) std::cout << "#";
+        else if (i == pos) std::cout << ">";
+        else std::cout << "-";
+    }
+
+    int percent = static_cast<int>(progress * 100.0);
+
+    std::cout << "] "
+              << percent << "% ("
+              << current << "/" << total << ")"
+              << std::flush;
+}
+
 std::string normalizeArchivePath(const std::string& input)
 {
     std::string normalized = input;
@@ -191,7 +215,7 @@ int extractArchive(const std::string& archivePath, const std::string& outputDir)
     size_t processedFiles = 0;
     size_t skippedFiles = 0;
     std::vector<std::string> extractedFiles;
-    std::cout << "Extracting files from MPQ: 0/" << totalFiles << "\n";
+    renderProgressBar(outputDir, processedFiles, totalFiles);
 
     for (const auto& archivedFile : files)
     {
@@ -291,7 +315,7 @@ int extractArchive(const std::string& archivePath, const std::string& outputDir)
         ++processedFiles;
         if (processedFiles == totalFiles || processedFiles % reportEvery == 0)
         {
-            std::cout << "Extracting files from MPQ: " << processedFiles << "/" << totalFiles << "\n";
+            renderProgressBar(outputDir, processedFiles, totalFiles);
         }
     }
 
@@ -314,6 +338,9 @@ int extractArchive(const std::string& archivePath, const std::string& outputDir)
     {
         std::cout << "Skipped unreadable files: " << skippedFiles << "\n";
     }
+
+    renderProgressBar(outputDir, totalFiles, totalFiles);
+    std::cout << std::endl;
 
     SFileCloseArchive(archiveHandle);
     return 0;
@@ -421,7 +448,8 @@ int main(int argc, char **argv)
     if (!clearFile(temp.m_file, "Failed to remove old temp file ")) return -1;
 
     HANDLE handle = NULL;
-    size_t power = 4;
+    size_t power    = 4;
+    auto outputfile = temp.m_file.c_str();
     while (power < files.size()) power <<= 1;
     if (!SFileCreateArchive(temp.m_file.c_str(), 0, power, &handle))
     {
@@ -439,7 +467,7 @@ int main(int argc, char **argv)
     const size_t totalFiles = files.size();
     const size_t reportEvery = progressInterval(totalFiles);
     size_t processedFiles = 0;
-    std::cout << "Adding files to MPQ: 0/" << totalFiles << "\n";
+    renderProgressBar(outputfile, processedFiles, totalFiles);
 
     for (auto const& pair : files)
     {
@@ -461,11 +489,14 @@ int main(int argc, char **argv)
         ++processedFiles;
         if (processedFiles == totalFiles || processedFiles % reportEvery == 0)
         {
-            std::cout << "Adding files to MPQ: " << processedFiles << "/" << totalFiles << "\n";
+            renderProgressBar(outputfile, processedFiles, totalFiles);
         }
     }
     SFileFlushArchive(handle);
     SFileCloseArchive(handle);
+
+    renderProgressBar(outputfile, totalFiles, totalFiles);
+    std::cout << std::endl;
 
     // 3. Save to real output file
     std::string outputFile = argv[2];

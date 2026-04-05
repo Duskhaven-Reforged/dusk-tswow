@@ -41,6 +41,8 @@ type UnpackedClientArchive = { folderName: string; archivePath: string };
 type ExcludeArgs = { args: string[]; patterns: string[] };
 type ConfigArgs = { args: string[]; configPath?: string };
 type MapArgs = { args: string[]; maps: string[] };
+type ClientDirArgs = { args: string[]; clientDir?: string };
+type PackageDirArgs = { args: string[]; packageDir?: string };
 type MapIncludeRule = {
     map: string;
     bounds?: {
@@ -49,6 +51,94 @@ type MapIncludeRule = {
         maxX?: number;
         maxY?: number;
     };
+};
+type AdtAssetKind = 'texture' | 'm2' | 'wmo';
+type AdtAssetReference = {
+    type: AdtAssetKind;
+    path: string;
+    adtPath: string;
+};
+type AdtAssetIntegrityRecord = {
+    type: AdtAssetKind;
+    path: string;
+    referencedBy: string[];
+    resolvedMatches: string[];
+};
+type WmoChunkInfo = {
+    id: string;
+    size: number;
+    offset: number;
+    dataOffset: number;
+    endOffset: number;
+};
+type WmoChunkWalkResult = {
+    chunks: WmoChunkInfo[];
+    valid: boolean;
+    malformedOffset?: number;
+    malformedChunkId?: string;
+    malformedChunkSize?: number;
+    endedAt: number;
+};
+type WmoInvalidGroupRecord = {
+    path: string;
+    reason: string;
+    chunkWalkValid: boolean;
+    hasMogp: boolean;
+    malformedOffset?: number;
+    malformedChunkId?: string;
+    malformedChunkSize?: number;
+    expectedEndOffset?: number;
+    fileSize: number;
+    overrunBytes?: number;
+};
+type AdtValidationRecord = {
+    path: string;
+    chunkWalkValid: boolean;
+    chunkCount: number;
+    chunkIds: string[];
+    issues: string[];
+    referencedM2s: string[];
+    referencedWmos: string[];
+};
+type WmoRootParserStage = {
+    stage: string;
+    expectedChunkId: string;
+    actualChunkId?: string;
+    chunkOffset?: number;
+    chunkSize?: number;
+    divisor?: number;
+    computedCount?: number;
+    ok: boolean;
+    issue?: string;
+};
+type WmoRootParserValidationResult = {
+    compatible: boolean;
+    stages: WmoRootParserStage[];
+    issues: string[];
+};
+type WmoIntegrityRecord = {
+    path: string;
+    referencedBy: string[];
+    resolvedRoot?: string;
+    exists: boolean;
+    rootChunkWalkValid: boolean;
+    rootChunkCount: number;
+    rootChunkIds: string[];
+    rootIssues: string[];
+    rootBufferSize?: number;
+    rootBufferHash?: string;
+    rootParserCompatible?: boolean;
+    rootParserIssues?: string[];
+    rootParserStages?: WmoRootParserStage[];
+    expectedGroupCount?: number;
+    mogiGroupCount?: number;
+    presentGroupCount: number;
+    presentGroups: string[];
+    missingGroups: string[];
+    extraGroups: string[];
+    invalidGroups: string[];
+    invalidGroupDetails: WmoInvalidGroupRecord[];
+    suspicious: boolean;
 };
 type ClientPackageConfig = {
     inputClientDir?: string;
@@ -124,6 +214,11 @@ function segmentOutputName(baseMpqName: string, segmentIndex: number, totalSegme
     const segmentNum = String(segmentIndex + 1).padStart(2, '0');
     const suffix = hasMpqSuffix ? '.MPQ' : '.MPQ';
     return `${base}${segmentNum}${suffix}`;
+}
+
+function canonicalArchiveOutputName(baseMpqName: string): string {
+    const base = ensurePatchPrefix(baseMpqName.replace(/\.mpq$/i, ''));
+    return `${base}.MPQ`;
 }
 
 export class Package {
@@ -431,6 +526,14 @@ export class Package {
         return relativePath.replace(/\\/g, '/').replace(/^\/+/, '');
     }
 
+    private static escapeRegex(value: string) {
+        return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    private static decodeChunkId(rawChunkId: string) {
+        return rawChunkId.split('').reverse().join('');
+    }
+
     private static normalizedMatchesFilePattern(normalizedPath: string, candidate: string) {
         const normalizedCandidate = candidate.replace(/\\/g, '/').replace(/^\/+/, '');
         return normalizedPath.toLowerCase() === normalizedCandidate.toLowerCase();
@@ -492,6 +595,7 @@ export class Package {
         const directory = path.posix.dirname(normalizedLower);
         const basename = path.posix.basename(normalizedLower, extension);
         const directoryPrefix = directory === '.' ? '' : `${directory}/`;
+        const escapedBasename = this.escapeRegex(basename);
 
         for (const [candidateKey, candidate] of assetEntries.entries()) {
             if (candidateKey === normalizedLower) {
@@ -505,11 +609,11 @@ export class Package {
             const candidateBasename = path.posix.basename(candidateKey);
 
             if (extension === '.m2') {
-                if (new RegExp(`^${basename}(?:\\d+)?\\.(skin|phys|anim)$`, 'i').test(candidateBasename)) {
+                if (new RegExp(`^${escapedBasename}(?:\\d+)?\\.(skin|phys|anim)$`, 'i').test(candidateBasename)) {
                     matches.add(candidate.dst);
                 }
             } else if (extension === '.wmo') {
-                if (new RegExp(`^${basename}(?:_\\d{3}|_lod\\d+)?\\.wmo$`, 'i').test(candidateBasename)) {
+                if (new RegExp(`^${escapedBasename}(?:_\\d{3}|_lod\\d+)?\\.wmo$`, 'i').test(candidateBasename)) {
                     matches.add(candidate.dst);
                 }
             }
@@ -699,6 +803,64 @@ export class Package {
         return { args: filtered, maps };
     }
 
+    private static extractClientDirArg(args: string[]): ClientDirArgs {
+        const filtered: string[] = [];
+        let clientDir: string | undefined = undefined;
+
+        for (let i = 0; i < args.length; ++i) {
+            const arg = args[i];
+            const lower = arg.toLowerCase();
+
+            if (lower === '--client-dir') {
+                const value = args[i + 1];
+                if (value === undefined) {
+                    throw new Error('Missing value for --client-dir');
+                }
+                clientDir = value;
+                i += 1;
+                continue;
+            }
+
+            if (lower.startsWith('--client-dir=')) {
+                clientDir = arg.substring('--client-dir='.length);
+                continue;
+            }
+
+            filtered.push(arg);
+        }
+
+        return { args: filtered, clientDir };
+    }
+
+    private static extractPackageDirArg(args: string[]): PackageDirArgs {
+        const filtered: string[] = [];
+        let packageDir: string | undefined = undefined;
+
+        for (let i = 0; i < args.length; ++i) {
+            const arg = args[i];
+            const lower = arg.toLowerCase();
+
+            if (lower === '--package-dir') {
+                const value = args[i + 1];
+                if (value === undefined) {
+                    throw new Error('Missing value for --package-dir');
+                }
+                packageDir = value;
+                i += 1;
+                continue;
+            }
+
+            if (lower.startsWith('--package-dir=')) {
+                packageDir = arg.substring('--package-dir='.length);
+                continue;
+            }
+
+            filtered.push(arg);
+        }
+
+        return { args: filtered, packageDir };
+    }
+
     private static extractExcludeArgs(args: string[]): ExcludeArgs {
         const filtered: string[] = [];
         const patterns: string[] = [];
@@ -815,6 +977,43 @@ export class Package {
         return offsets;
     }
 
+    private static readTopLevelChunks(buffer: Buffer) {
+        const chunks = new Map<string, Buffer>();
+        const chunkIds: string[] = [];
+        let valid = true;
+        let malformedOffset: number | undefined;
+        let malformedChunkId: string | undefined;
+        let malformedChunkSize: number | undefined;
+
+        let offset = 0;
+        while (offset + 8 <= buffer.length) {
+            const chunkId = this.decodeChunkId(buffer.toString('ascii', offset, offset + 4));
+            const chunkSize = buffer.readUInt32LE(offset + 4);
+            const chunkStart = offset + 8;
+            const chunkEnd = chunkStart + chunkSize;
+            if (chunkEnd > buffer.length) {
+                valid = false;
+                malformedOffset = offset;
+                malformedChunkId = chunkId;
+                malformedChunkSize = chunkSize;
+                break;
+            }
+
+            chunks.set(chunkId, buffer.slice(chunkStart, chunkEnd));
+            chunkIds.push(chunkId);
+            offset = chunkEnd;
+        }
+
+        return {
+            chunks,
+            chunkIds,
+            valid: valid && offset === buffer.length,
+            malformedOffset,
+            malformedChunkId,
+            malformedChunkSize,
+        };
+    }
+
     private static resolveChunkStrings(dataChunk: Buffer | undefined, offsetChunk: Buffer | undefined) {
         if (!dataChunk || !offsetChunk) {
             return [];
@@ -850,13 +1049,54 @@ export class Package {
         return assets;
     }
 
+    private static validateIndexedAssetChunk(
+        chunkName: string,
+        indexChunk: Buffer | undefined,
+        entrySize: number,
+        names: string[]
+    ) {
+        const issues: string[] = [];
+        const resolvedAssets: string[] = [];
+        if (!indexChunk) {
+            return { issues, assets: resolvedAssets };
+        }
+
+        if (entrySize <= 0 || indexChunk.length % entrySize !== 0) {
+            issues.push(`${chunkName} chunk length ${indexChunk.length} is not a multiple of entry size ${entrySize}.`);
+        }
+
+        for (let i = 0; i + 4 <= indexChunk.length; i += entrySize) {
+            const index = indexChunk.readUInt32LE(i);
+            const asset = names[index];
+            if (!asset) {
+                issues.push(`${chunkName} entry ${(i / entrySize)} references out-of-range index ${index} (name count ${names.length}).`);
+                continue;
+            }
+            resolvedAssets.push(asset.replace(/\\/g, '/'));
+        }
+
+        return {
+            issues,
+            assets: Array.from(new Set(resolvedAssets)).sort((left, right) => left.localeCompare(right)),
+        };
+    }
+
     private static parseAdtAssets(adtPath: string) {
+        const parsed = this.parseAdtAssetReferences(adtPath);
+        return new Set(
+            parsed
+                .map(x => x.path)
+                .sort((left, right) => left.localeCompare(right))
+        );
+    }
+
+    private static parseAdtAssetReferences(adtPath: string): AdtAssetReference[] {
         const buffer = wfs.readBin(adtPath);
         const chunks = new Map<string, Buffer>();
 
         let offset = 0;
         while (offset + 8 <= buffer.length) {
-            const chunkId = buffer.toString('ascii', offset, offset + 4);
+            const chunkId = this.decodeChunkId(buffer.toString('ascii', offset, offset + 4));
             const chunkSize = buffer.readUInt32LE(offset + 4);
             const chunkStart = offset + 8;
             const chunkEnd = chunkStart + chunkSize;
@@ -873,12 +1113,82 @@ export class Package {
         const wmoNames = this.resolveChunkStrings(chunks.get('MWMO'), chunks.get('MWID'));
         const modelRefs = this.collectReferencedChunkAssets(chunks.get('MDDF'), 36, modelNames);
         const wmoRefs = this.collectReferencedChunkAssets(chunks.get('MODF'), 64, wmoNames);
+        const normalizedAdtPath = path.resolve(adtPath).replace(/\\/g, '/');
+        const references: AdtAssetReference[] = [];
 
-        const assets = new Set<string>();
-        textures.forEach(x => assets.add(x));
-        modelRefs.forEach(x => assets.add(x));
-        wmoRefs.forEach(x => assets.add(x));
-        return assets;
+        textures.forEach(asset => {
+            references.push({
+                type: 'texture',
+                path: asset,
+                adtPath: normalizedAdtPath,
+            });
+        });
+
+        modelRefs.forEach(asset => {
+            references.push({
+                type: 'm2',
+                path: asset,
+                adtPath: normalizedAdtPath,
+            });
+        });
+
+        wmoRefs.forEach(asset => {
+            references.push({
+                type: 'wmo',
+                path: asset,
+                adtPath: normalizedAdtPath,
+            });
+        });
+
+        return references;
+    }
+
+    private static validateAdtFile(adtPath: string): AdtValidationRecord {
+        const buffer = wfs.readBin(adtPath);
+        const topLevel = this.readTopLevelChunks(buffer);
+        const chunks = topLevel.chunks;
+        const issues: string[] = [];
+
+        if (!topLevel.valid) {
+            issues.push(
+                `Malformed ADT chunk stream at offset ${topLevel.malformedOffset} `
+                + `(chunk=${topLevel.malformedChunkId}, size=${topLevel.malformedChunkSize}).`
+            );
+        }
+
+        if (!chunks.has('MVER')) {
+            issues.push('Missing MVER chunk in ADT.');
+        }
+        if (!chunks.has('MWMO') && chunks.has('MODF')) {
+            issues.push('ADT has MODF placements but no MWMO string table.');
+        }
+        if (!chunks.has('MWID') && chunks.has('MODF')) {
+            issues.push('ADT has MODF placements but no MWID offset table.');
+        }
+        if (!chunks.has('MMDX') && chunks.has('MDDF')) {
+            issues.push('ADT has MDDF placements but no MMDX string table.');
+        }
+        if (!chunks.has('MMID') && chunks.has('MDDF')) {
+            issues.push('ADT has MDDF placements but no MMID offset table.');
+        }
+
+        const modelNames = this.resolveChunkStrings(chunks.get('MMDX'), chunks.get('MMID'));
+        const wmoNames = this.resolveChunkStrings(chunks.get('MWMO'), chunks.get('MWID'));
+        const modelValidation = this.validateIndexedAssetChunk('MDDF', chunks.get('MDDF'), 36, modelNames);
+        const wmoValidation = this.validateIndexedAssetChunk('MODF', chunks.get('MODF'), 64, wmoNames);
+
+        issues.push(...modelValidation.issues);
+        issues.push(...wmoValidation.issues);
+
+        return {
+            path: path.resolve(adtPath).replace(/\\/g, '/'),
+            chunkWalkValid: topLevel.valid,
+            chunkCount: topLevel.chunkIds.length,
+            chunkIds: topLevel.chunkIds,
+            issues,
+            referencedM2s: modelValidation.assets,
+            referencedWmos: wmoValidation.assets,
+        };
     }
 
     private static readWdbcTable(dbcPath: string) {
@@ -1103,6 +1413,1009 @@ export class Package {
         return adtFiles.sort((left, right) => left.localeCompare(right));
     }
 
+    private static collectPackageArchives(packageDir: string) {
+        const resolvedPackageDir = path.resolve(packageDir);
+        if (!wfs.exists(resolvedPackageDir) || !wfs.isDirectory(resolvedPackageDir)) {
+            throw new Error(`Package directory does not exist: ${resolvedPackageDir}`);
+        }
+
+        return wfs.readDir(resolvedPackageDir, false, 'files')
+            .filter(filePath => filePath.toLowerCase().endsWith('.mpq'))
+            .sort((left, right) => this.compareArchiveNamesDescending(path.basename(left), path.basename(right)));
+    }
+
+    private static unpackArchivesToWorkspace(archives: string[], outputDir: string, archiveBaseDir?: string) {
+        const resolvedOutputDir = path.resolve(outputDir);
+        const assetRepositoryDir = this.getSharedAssetRepositoryDir(resolvedOutputDir);
+        const latestExtractedByPath = new Map<string, string>();
+        const manifestArchives: UnpackedClientArchive[] = [];
+
+        wfs.mkDirs(resolvedOutputDir, true);
+
+        for (const archivePath of archives) {
+            const resolvedArchivePath = path.resolve(archivePath);
+            const relativeArchivePath = archiveBaseDir
+                ? path.relative(archiveBaseDir, resolvedArchivePath).replace(/\\/g, '/')
+                : path.basename(resolvedArchivePath);
+            const folderName = this.archiveOutputFolderName(resolvedArchivePath);
+            const archiveOutputDir = path.join(resolvedOutputDir, folderName);
+            manifestArchives.push({
+                folderName,
+                archivePath: relativeArchivePath,
+            });
+            term.log('client', `Extracting ${relativeArchivePath} to ${archiveOutputDir}`);
+            wsys.exec(
+                `"${ipaths.bin.mpqbuilder.mpqbuilder_exe.get()}" extract "${resolvedArchivePath}" "${archiveOutputDir}"`,
+                'inherit'
+            );
+
+            for (const extractedRelativePath of this.readExtractionManifest(archiveOutputDir)) {
+                const normalizedPath = extractedRelativePath.replace(/\\/g, '/');
+                const extractedPath = this.extractedFilePath(archiveOutputDir, normalizedPath);
+                let finalPath = extractedPath;
+
+                if (this.isSharedAssetPath(normalizedPath) && wfs.exists(extractedPath)) {
+                    finalPath = path.join(assetRepositoryDir, ...normalizedPath.split('/'));
+                    wfs.move(extractedPath, finalPath);
+                }
+
+                const previousPath = latestExtractedByPath.get(normalizedPath);
+                if (previousPath && previousPath !== finalPath && wfs.exists(previousPath)) {
+                    wfs.remove(previousPath);
+                }
+                latestExtractedByPath.set(normalizedPath, finalPath);
+            }
+        }
+
+        this.writeUnpackedClientManifest(resolvedOutputDir, manifestArchives);
+        return resolvedOutputDir;
+    }
+
+    private static prepareAuditWorkspaceFromClientDir(clientDir: string) {
+        const resolvedClientDir = path.resolve(clientDir);
+        const dataDir = path.join(resolvedClientDir, 'Data');
+        if (!wfs.exists(dataDir) || !wfs.isDirectory(dataDir)) {
+            throw new Error(`Client Data directory does not exist: ${dataDir}`);
+        }
+
+        const archives = this.collectClientArchives(dataDir);
+        if (archives.length === 0) {
+            throw new Error(`Found no MPQ archives under ${dataDir}`);
+        }
+
+        const workspaceDir = path.join(resfp(ipaths.package), '.adt-audit', this.sanitizeFileName(path.basename(resolvedClientDir) || 'client'));
+        term.log('client', `Preparing ADT audit workspace from client ${resolvedClientDir}`);
+        return this.unpackArchivesToWorkspace(archives, workspaceDir, dataDir);
+    }
+
+    private static prepareAuditWorkspaceFromPackageDir(packageDir: string) {
+        const resolvedPackageDir = path.resolve(packageDir);
+        const archives = this.collectPackageArchives(resolvedPackageDir);
+        if (archives.length === 0) {
+            throw new Error(`Found no MPQ archives under ${resolvedPackageDir}`);
+        }
+
+        const workspaceDir = path.join(resfp(ipaths.package), '.adt-audit', this.sanitizeFileName(path.basename(resolvedPackageDir) || 'package'));
+        term.log('client', `Preparing ADT audit workspace from packaged MPQs in ${resolvedPackageDir}`);
+        return this.unpackArchivesToWorkspace(archives, workspaceDir, resolvedPackageDir);
+    }
+
+    private static collectConfiguredIncludedAdtEntries(unpackedDir: string, excludePatterns: string[], includeRules: MapIncludeRule[]) {
+        const resolvedUnpackedDir = path.resolve(unpackedDir);
+        const archives = this.readUnpackedClientManifest(resolvedUnpackedDir);
+        const entries: Entry[] = [];
+
+        archives.forEach(archive => {
+            const sourceFolder = path.join(resolvedUnpackedDir, archive.folderName);
+            if (!wfs.exists(sourceFolder) || !wfs.isDirectory(sourceFolder)) {
+                return;
+            }
+
+            this.filterEntries(this.collectGroupEntries(sourceFolder), excludePatterns, includeRules)
+                .forEach(entry => {
+                    if (!/\.adt$/i.test(entry.dst.replace(/\\/g, '/'))) {
+                        return;
+                    }
+                    entries.push({
+                        src: path.resolve(entry.src),
+                        dst: this.normalizeArchiveRelativePath(entry.dst),
+                    });
+                });
+        });
+
+        return entries.sort((left, right) => left.dst.localeCompare(right.dst, undefined, { sensitivity: 'base' }));
+    }
+
+    private static collectUnpackedAdtEntries(unpackedDir: string, excludePatterns: string[] = [], includeRules: MapIncludeRule[] = []) {
+        const resolvedUnpackedDir = path.resolve(unpackedDir);
+        const archives = this.readUnpackedClientManifest(resolvedUnpackedDir);
+        const entries: Entry[] = [];
+
+        archives.forEach(archive => {
+            const sourceFolder = path.join(resolvedUnpackedDir, archive.folderName);
+            if (!wfs.exists(sourceFolder) || !wfs.isDirectory(sourceFolder)) {
+                return;
+            }
+
+            this.filterEntries(this.collectGroupEntries(sourceFolder), excludePatterns, includeRules)
+                .forEach(entry => {
+                    if (!/\.adt$/i.test(entry.dst.replace(/\\/g, '/'))) {
+                        return;
+                    }
+                    entries.push({
+                        src: path.resolve(entry.src),
+                        dst: this.normalizeArchiveRelativePath(entry.dst),
+                    });
+                });
+        });
+
+        return entries.sort((left, right) => left.dst.localeCompare(right.dst, undefined, { sensitivity: 'base' }));
+    }
+
+    private static buildRelativeAssetEntryMap(rootDir: string) {
+        const resolvedRootDir = path.resolve(rootDir);
+        if (!wfs.exists(resolvedRootDir) || !wfs.isDirectory(resolvedRootDir)) {
+            throw new Error(`Asset root does not exist: ${resolvedRootDir}`);
+        }
+
+        return new Map(
+            this.collectGroupEntries(resolvedRootDir)
+                .map(entry => [this.normalizeArchiveRelativePath(entry.dst).toLowerCase(), {
+                    src: entry.src,
+                    dst: this.normalizeArchiveRelativePath(entry.dst),
+                }] as const)
+        );
+    }
+
+    private static buildAdtIntegrityReport(
+        adtEntries: Entry[],
+        assetRoot: string
+    ) {
+        const referencesByKey = new Map<string, {
+            type: AdtAssetKind;
+            path: string;
+            adts: Set<string>;
+        }>();
+        const assetEntries = this.buildRelativeAssetEntryMap(assetRoot);
+
+        adtEntries.forEach(entry => {
+            this.parseAdtAssetReferences(entry.src).forEach(reference => {
+                const normalizedPath = this.normalizeArchiveRelativePath(reference.path);
+                const key = `${reference.type}:${normalizedPath.toLowerCase()}`;
+                if (!referencesByKey.has(key)) {
+                    referencesByKey.set(key, {
+                        type: reference.type,
+                        path: normalizedPath,
+                        adts: new Set<string>(),
+                    });
+                }
+                referencesByKey.get(key)!.adts.add(entry.dst.replace(/\\/g, '/'));
+            });
+        });
+
+        const records: AdtAssetIntegrityRecord[] = Array.from(referencesByKey.values())
+            .map(reference => {
+                const resolvedMatches = Array.from(this.collectAssetDependencyMatches(reference.path, assetEntries))
+                    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+                return {
+                    type: reference.type,
+                    path: reference.path,
+                    referencedBy: Array.from(reference.adts).sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })),
+                    resolvedMatches,
+                };
+            })
+            .sort((left, right) =>
+                left.type.localeCompare(right.type)
+                || left.path.localeCompare(right.path, undefined, { sensitivity: 'base' })
+            );
+
+        const missingAssets = records.filter(record => record.resolvedMatches.length === 0);
+        const missingWmos = missingAssets
+            .filter(record => record.type === 'wmo')
+            .map(record => record.path)
+            .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+
+        return {
+            scannedAdts: adtEntries.length,
+            assetRoot: path.resolve(assetRoot),
+            summary: {
+                referencedTextures: records.filter(record => record.type === 'texture').length,
+                referencedM2s: records.filter(record => record.type === 'm2').length,
+                referencedWmos: records.filter(record => record.type === 'wmo').length,
+                missingAssets: missingAssets.length,
+                missingWmos: missingWmos.length,
+            },
+            missingWmos,
+            missingAssets,
+            allAssets: records,
+        };
+    }
+
+    private static walkWmoChunks(buffer: Buffer): WmoChunkWalkResult {
+        const chunks: WmoChunkInfo[] = [];
+        let offset = 0;
+
+        while (offset + 8 <= buffer.length) {
+            const chunkId = this.decodeChunkId(buffer.toString('ascii', offset, offset + 4));
+            const chunkSize = buffer.readUInt32LE(offset + 4);
+            const dataOffset = offset + 8;
+            const endOffset = dataOffset + chunkSize;
+
+            if (endOffset > buffer.length) {
+                return {
+                    chunks,
+                    valid: false,
+                    malformedOffset: offset,
+                    malformedChunkId: chunkId,
+                    malformedChunkSize: chunkSize,
+                    endedAt: offset,
+                };
+            }
+
+            chunks.push({
+                id: chunkId,
+                size: chunkSize,
+                offset,
+                dataOffset,
+                endOffset,
+            });
+            offset = endOffset;
+        }
+
+        return {
+            chunks,
+            valid: offset === buffer.length,
+            endedAt: offset,
+        };
+    }
+
+    private static readWmoChunkData(buffer: Buffer, chunkId: string) {
+        const walk = this.walkWmoChunks(buffer);
+        const chunk = walk.chunks.find(candidate => candidate.id === chunkId);
+        if (!chunk) {
+            return undefined;
+        }
+        return buffer.slice(chunk.dataOffset, chunk.endOffset);
+    }
+
+    private static getWmoExpectedGroupCount(buffer: Buffer) {
+        const mohd = this.readWmoChunkData(buffer, 'MOHD');
+        if (!mohd || mohd.length < 8) {
+            return undefined;
+        }
+        return mohd.readUInt32LE(4);
+    }
+
+    private static getWmoMogiGroupCount(buffer: Buffer) {
+        const mogi = this.readWmoChunkData(buffer, 'MOGI');
+        if (!mogi) {
+            return undefined;
+        }
+        if (mogi.length % 32 !== 0) {
+            return undefined;
+        }
+        return mogi.length / 32;
+    }
+
+    private static getExpectedWotlkRootChunkOrder() {
+        return [
+            'MVER',
+            'MOHD',
+            'MOTX',
+            'MOMT',
+            'MOGN',
+            'MOGI',
+            'MOSB',
+            'MOPV',
+            'MOPT',
+            'MOPR',
+            'MOVV',
+            'MOVB',
+            'MOLT',
+            'MODS',
+            'MODN',
+            'MODD',
+            'MFOG',
+        ];
+    }
+
+    private static formatFnv1a64(value: bigint) {
+        return `0x${value.toString(16).padStart(16, '0')}`;
+    }
+
+    private static computeFnv1a64(buffer: Buffer) {
+        let hash = BigInt('0xcbf29ce484222325');
+        const prime = BigInt('0x100000001b3');
+        const mask = BigInt('0xffffffffffffffff');
+        for (const byte of buffer) {
+            hash ^= BigInt(byte);
+            hash = (hash * prime) & mask;
+        }
+        return this.formatFnv1a64(hash);
+    }
+
+    private static validateWotlkRootChunkLayout(chunks: WmoChunkInfo[]) {
+        const issues: string[] = [];
+        const expected = this.getExpectedWotlkRootChunkOrder();
+        const actual = chunks.map(chunk => chunk.id);
+
+        if (actual.length < expected.length) {
+            issues.push(
+                `Root WMO exposes only ${actual.length} chunk(s); Wrath expects at least ${expected.length}.`
+            );
+        }
+
+        const compareLength = Math.min(actual.length, expected.length);
+        for (let i = 0; i < compareLength; ++i) {
+            if (actual[i] !== expected[i]) {
+                issues.push(
+                    `Unexpected root chunk order at index ${i}: expected ${expected[i]}, found ${actual[i]}.`
+                );
+            }
+        }
+
+        if (actual.length > expected.length) {
+            const extras = actual.slice(expected.length);
+            if (!(extras.length === 1 && extras[0] === 'MCVP')) {
+                issues.push(
+                    `Unexpected extra root chunk(s) after ${expected[expected.length - 1]}: ${extras.join(', ')}.`
+                );
+            }
+        }
+
+        const divisibilityChecks: Record<string, number> = {
+            MOHD: 64,
+            MOMT: 64,
+            MOGI: 32,
+            MOPV: 12,
+            MOPT: 20,
+            MOPR: 8,
+            MOVV: 12,
+            MOVB: 4,
+            MOLT: 48,
+            MODS: 32,
+            MODD: 40,
+            MFOG: 48,
+        };
+
+        chunks.forEach(chunk => {
+            const divisor = divisibilityChecks[chunk.id];
+            if (divisor !== undefined && chunk.size % divisor !== 0) {
+                issues.push(
+                    `${chunk.id} chunk size ${chunk.size} is not a multiple of ${divisor}.`
+                );
+            }
+        });
+
+        return issues;
+    }
+
+    private static validateWotlkRootParserCompatibility(chunks: WmoChunkInfo[]) {
+        const stages: WmoRootParserStage[] = [];
+        const issues: string[] = [];
+        const expectedStages: Array<{ stage: string; chunkId: string; divisor?: number }> = [
+            { stage: 'version', chunkId: 'MVER' },
+            { stage: 'header', chunkId: 'MOHD', divisor: 64 },
+            { stage: 'textureTable', chunkId: 'MOTX' },
+            { stage: 'materialTable', chunkId: 'MOMT', divisor: 64 },
+            { stage: 'groupNameTable', chunkId: 'MOGN' },
+            { stage: 'groupInfoTable', chunkId: 'MOGI', divisor: 32 },
+            { stage: 'skybox', chunkId: 'MOSB' },
+            { stage: 'portalVertices', chunkId: 'MOPV', divisor: 12 },
+            { stage: 'portalInfo', chunkId: 'MOPT', divisor: 20 },
+            { stage: 'portalRefs', chunkId: 'MOPR', divisor: 8 },
+            { stage: 'visibleVertices', chunkId: 'MOVV', divisor: 12 },
+            { stage: 'visibleBatches', chunkId: 'MOVB', divisor: 4 },
+            { stage: 'lights', chunkId: 'MOLT', divisor: 48 },
+            { stage: 'doodadSets', chunkId: 'MODS', divisor: 32 },
+            { stage: 'doodadNameTable', chunkId: 'MODN' },
+            { stage: 'doodadDefs', chunkId: 'MODD', divisor: 40 },
+            { stage: 'fogs', chunkId: 'MFOG', divisor: 48 },
+        ];
+
+        for (let i = 0; i < expectedStages.length; ++i) {
+            const expected = expectedStages[i];
+            const chunk = chunks[i];
+            if (!chunk) {
+                const issue = `Parser expects ${expected.chunkId} at stage ${expected.stage}, but the root ends after ${i} chunk(s).`;
+                stages.push({
+                    stage: expected.stage,
+                    expectedChunkId: expected.chunkId,
+                    divisor: expected.divisor,
+                    ok: false,
+                    issue,
+                });
+                issues.push(issue);
+                continue;
+            }
+
+            if (chunk.id !== expected.chunkId) {
+                const issue = `Parser expects ${expected.chunkId} at stage ${expected.stage}, found ${chunk.id} at offset ${chunk.offset}.`;
+                stages.push({
+                    stage: expected.stage,
+                    expectedChunkId: expected.chunkId,
+                    actualChunkId: chunk.id,
+                    chunkOffset: chunk.offset,
+                    chunkSize: chunk.size,
+                    divisor: expected.divisor,
+                    ok: false,
+                    issue,
+                });
+                issues.push(issue);
+                continue;
+            }
+
+            let computedCount: number | undefined;
+            if (expected.divisor !== undefined) {
+                if (chunk.size % expected.divisor !== 0) {
+                    const issue = `${expected.chunkId} size ${chunk.size} at offset ${chunk.offset} is not divisible by ${expected.divisor}, so the client count math is invalid.`;
+                    stages.push({
+                        stage: expected.stage,
+                        expectedChunkId: expected.chunkId,
+                        actualChunkId: chunk.id,
+                        chunkOffset: chunk.offset,
+                        chunkSize: chunk.size,
+                        divisor: expected.divisor,
+                        ok: false,
+                        issue,
+                    });
+                    issues.push(issue);
+                    continue;
+                }
+                computedCount = chunk.size / expected.divisor;
+            }
+
+            stages.push({
+                stage: expected.stage,
+                expectedChunkId: expected.chunkId,
+                actualChunkId: chunk.id,
+                chunkOffset: chunk.offset,
+                chunkSize: chunk.size,
+                divisor: expected.divisor,
+                computedCount,
+                ok: true,
+            });
+        }
+
+        const extras = chunks.slice(expectedStages.length).map(chunk => chunk.id);
+        if (extras.length > 0 && !(extras.length === 1 && extras[0] === 'MCVP')) {
+            issues.push(`Parser-compatible root allows only optional trailing MCVP after MFOG, found extra chunk(s): ${extras.join(', ')}.`);
+        }
+
+        return {
+            compatible: issues.length === 0,
+            stages,
+            issues,
+        } as WmoRootParserValidationResult;
+    }
+
+    private static collectWmoGroupEntries(rootPath: string, assetEntries: Map<string, Entry>) {
+        const normalizedRoot = this.normalizeArchiveRelativePath(rootPath);
+        const extension = path.posix.extname(normalizedRoot);
+        const directory = path.posix.dirname(normalizedRoot);
+        const basename = path.posix.basename(normalizedRoot, extension);
+        const directoryPrefix = directory === '.' ? '' : `${directory}/`;
+        const escapedBasename = this.escapeRegex(basename);
+        const groups = new Map<number, Entry>();
+
+        for (const [candidateKey, candidate] of assetEntries.entries()) {
+            if (directoryPrefix && !candidateKey.startsWith(directoryPrefix.toLowerCase())) {
+                continue;
+            }
+
+            const candidateBasename = path.posix.basename(candidate.dst);
+            const match = new RegExp(`^${escapedBasename}_(\\d{3})\\.wmo$`, 'i').exec(candidateBasename);
+            if (!match) {
+                continue;
+            }
+
+            groups.set(parseInt(match[1], 10), candidate);
+        }
+
+        return groups;
+    }
+
+    private static buildWmoIntegrityReport(
+        adtEntries: Entry[],
+        assetRoot: string
+    ) {
+        const assetEntries = this.buildRelativeAssetEntryMap(assetRoot);
+        const adtRecords = adtEntries
+            .map(entry => this.validateAdtFile(entry.src))
+            .sort((left, right) => left.path.localeCompare(right.path, undefined, { sensitivity: 'base' }));
+        const referencesByKey = new Map<string, {
+            path: string;
+            referencedBy: Set<string>;
+        }>();
+
+        adtRecords.forEach(record => {
+            const adtRelativePath = adtEntries
+                .find(entry => path.resolve(entry.src).replace(/\\/g, '/') === record.path)
+                ?.dst.replace(/\\/g, '/')
+                || path.basename(record.path);
+            record.referencedWmos.forEach(referencePath => {
+                const normalizedPath = this.normalizeArchiveRelativePath(referencePath);
+                const key = normalizedPath.toLowerCase();
+                if (!referencesByKey.has(key)) {
+                    referencesByKey.set(key, {
+                        path: normalizedPath,
+                        referencedBy: new Set<string>(),
+                    });
+                }
+                referencesByKey.get(key)!.referencedBy.add(adtRelativePath);
+            });
+        });
+
+        const records: WmoIntegrityRecord[] = Array.from(referencesByKey.values())
+            .map(reference => {
+                const exactRoot = assetEntries.get(reference.path.toLowerCase());
+                const referencedBy = Array.from(reference.referencedBy)
+                    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' }));
+
+                if (!exactRoot) {
+                    return {
+                        path: reference.path,
+                        referencedBy,
+                        exists: false,
+                    rootChunkWalkValid: false,
+                    rootChunkCount: 0,
+                    rootChunkIds: [],
+                    rootIssues: ['Root WMO file is missing from the asset set.'],
+                    rootParserCompatible: false,
+                    rootParserIssues: ['Root WMO file is missing from the asset set.'],
+                    rootParserStages: [],
+                    presentGroupCount: 0,
+                    presentGroups: [],
+                    missingGroups: [],
+                    extraGroups: [],
+                    invalidGroups: [],
+                        invalidGroupDetails: [],
+                        suspicious: true,
+                    };
+                }
+
+                const rootBuffer = wfs.readBin(exactRoot.src);
+                const chunkWalk = this.walkWmoChunks(rootBuffer);
+                const rootChunkIds = chunkWalk.chunks.map(chunk => chunk.id);
+                const rootIssues: string[] = [];
+                const rootParserValidation = this.validateWotlkRootParserCompatibility(chunkWalk.chunks);
+
+                if (!chunkWalk.valid) {
+                    rootIssues.push(
+                        `Malformed root chunk stream at offset ${chunkWalk.malformedOffset} `
+                        + `(chunk=${chunkWalk.malformedChunkId}, size=${chunkWalk.malformedChunkSize}).`
+                    );
+                }
+
+                if (!rootChunkIds.includes('MVER')) {
+                    rootIssues.push('Missing MVER chunk in root WMO.');
+                }
+                if (!rootChunkIds.includes('MOHD')) {
+                    rootIssues.push('Missing MOHD chunk in root WMO.');
+                }
+                if (!rootChunkIds.includes('MOGI')) {
+                    rootIssues.push('Missing MOGI chunk in root WMO.');
+                }
+
+                rootIssues.push(...this.validateWotlkRootChunkLayout(chunkWalk.chunks));
+                rootIssues.push(...rootParserValidation.issues);
+
+                const expectedGroupCount = this.getWmoExpectedGroupCount(rootBuffer);
+                const mogiGroupCount = this.getWmoMogiGroupCount(rootBuffer);
+
+                if (expectedGroupCount === undefined) {
+                    rootIssues.push('Could not read expected group count from MOHD.');
+                }
+
+                const mogi = this.readWmoChunkData(rootBuffer, 'MOGI');
+                if (mogi && mogi.length % 32 !== 0) {
+                    rootIssues.push(`MOGI chunk length ${mogi.length} is not a multiple of 32 bytes.`);
+                }
+
+                if (expectedGroupCount !== undefined && mogiGroupCount !== undefined && expectedGroupCount !== mogiGroupCount) {
+                    rootIssues.push(
+                        `MOHD group count (${expectedGroupCount}) does not match MOGI group count (${mogiGroupCount}).`
+                    );
+                }
+
+                const groupEntries = this.collectWmoGroupEntries(reference.path, assetEntries);
+                const presentGroups = Array.from(groupEntries.entries())
+                    .sort((left, right) => left[0] - right[0])
+                    .map(([, entry]) => entry.dst);
+                const missingGroups: string[] = [];
+                const extraGroups: string[] = [];
+                const invalidGroups: string[] = [];
+                const invalidGroupDetails: WmoInvalidGroupRecord[] = [];
+
+                if (expectedGroupCount !== undefined) {
+                    for (let i = 0; i < expectedGroupCount; ++i) {
+                        if (!groupEntries.has(i)) {
+                            missingGroups.push(
+                                reference.path.replace(/\.wmo$/i, `_${i.toString().padStart(3, '0')}.wmo`)
+                            );
+                        }
+                    }
+                }
+
+                groupEntries.forEach((entry, index) => {
+                    if (expectedGroupCount !== undefined && index >= expectedGroupCount) {
+                        extraGroups.push(entry.dst);
+                    }
+
+                    const groupBuffer = wfs.readBin(entry.src);
+                    const groupWalk = this.walkWmoChunks(groupBuffer);
+                    const groupHasMogp = groupWalk.chunks.some(chunk => chunk.id === 'MOGP');
+                    if (!groupWalk.valid || !groupHasMogp) {
+                        invalidGroups.push(entry.dst);
+                        const mogpChunk = groupWalk.chunks.find(chunk => chunk.id === 'MOGP');
+                        const expectedEndOffset = mogpChunk
+                            ? mogpChunk.dataOffset + mogpChunk.size
+                            : groupWalk.malformedOffset !== undefined && groupWalk.malformedChunkSize !== undefined
+                                ? groupWalk.malformedOffset + 8 + groupWalk.malformedChunkSize
+                                : undefined;
+                        const overrunBytes = expectedEndOffset !== undefined
+                            ? expectedEndOffset - groupBuffer.length
+                            : undefined;
+
+                        invalidGroupDetails.push({
+                            path: entry.dst,
+                            reason: !groupWalk.valid && !groupHasMogp
+                                ? 'Malformed group chunk stream and missing readable MOGP chunk.'
+                                : !groupWalk.valid
+                                    ? 'Malformed group chunk stream.'
+                                    : 'Missing readable MOGP chunk.',
+                            chunkWalkValid: groupWalk.valid,
+                            hasMogp: groupHasMogp,
+                            malformedOffset: groupWalk.malformedOffset,
+                            malformedChunkId: groupWalk.malformedChunkId,
+                            malformedChunkSize: groupWalk.malformedChunkSize,
+                            expectedEndOffset,
+                            fileSize: groupBuffer.length,
+                            overrunBytes: overrunBytes !== undefined && overrunBytes > 0
+                                ? overrunBytes
+                                : undefined,
+                        });
+                    }
+                });
+
+                if (missingGroups.length > 0) {
+                    rootIssues.push(`Missing ${missingGroups.length} expected WMO group file(s).`);
+                }
+                if (extraGroups.length > 0) {
+                    rootIssues.push(`Found ${extraGroups.length} extra WMO group file(s) beyond the expected group count.`);
+                }
+                if (invalidGroups.length > 0) {
+                    rootIssues.push(`Found ${invalidGroups.length} malformed WMO group file(s).`);
+                }
+
+                return {
+                    path: reference.path,
+                    referencedBy,
+                    resolvedRoot: exactRoot.dst,
+                    exists: true,
+                    rootChunkWalkValid: chunkWalk.valid,
+                    rootChunkCount: chunkWalk.chunks.length,
+                    rootChunkIds,
+                    rootIssues,
+                    rootBufferSize: rootBuffer.length,
+                    rootBufferHash: this.computeFnv1a64(rootBuffer),
+                    rootParserCompatible: rootParserValidation.compatible,
+                    rootParserIssues: rootParserValidation.issues,
+                    rootParserStages: rootParserValidation.stages,
+                    expectedGroupCount,
+                    mogiGroupCount,
+                    presentGroupCount: groupEntries.size,
+                    presentGroups,
+                    missingGroups,
+                    extraGroups,
+                    invalidGroups,
+                    invalidGroupDetails,
+                    suspicious: rootIssues.length > 0,
+                };
+            })
+            .sort((left, right) => left.path.localeCompare(right.path, undefined, { sensitivity: 'base' }));
+
+        const suspiciousRecords = records.filter(record => record.suspicious);
+
+        return {
+            scannedAdts: adtEntries.length,
+            scannedReferencedWmos: records.length,
+            assetRoot: path.resolve(assetRoot),
+            summary: {
+                adtsWithIssues: adtRecords.filter(record => record.issues.length > 0).length,
+                referencedWmos: records.length,
+                suspiciousWmos: suspiciousRecords.length,
+                missingRoots: records.filter(record => !record.exists).length,
+                malformedRoots: records.filter(record => record.exists && !record.rootChunkWalkValid).length,
+                parserIncompatibleRoots: records.filter(record => record.exists && record.rootParserCompatible === false).length,
+                rootsMissingGroups: records.filter(record => record.missingGroups.length > 0).length,
+                rootsWithExtraGroups: records.filter(record => record.extraGroups.length > 0).length,
+                malformedGroups: records.filter(record => record.invalidGroups.length > 0).length,
+            },
+            adtRecords,
+            suspiciousWmos: suspiciousRecords.map(record => record.path),
+            records,
+        };
+    }
+
+    static verifyWmoIntegrity(
+        inputPath?: string,
+        assetRoot?: string,
+        outputFile?: string,
+        configPath?: string,
+        clientDir?: string,
+        packageDir?: string
+    ) {
+        const loaded = this.readPackageConfig(configPath);
+        const resolvedConfiguredUnpackedDir = loaded?.config.unpackedDir
+            ? this.resolveConfigPath(loaded.configDir, loaded.config.unpackedDir)
+            : undefined;
+        const excludePatterns = this.getConfiguredExcludePatterns(configPath);
+        const includeRules = this.getConfiguredIncludeRules(configPath);
+        const assetRepositorySettings = this.getConfiguredAssetRepositorySettings(configPath);
+        const resolvedAuditWorkspace = clientDir
+            ? this.prepareAuditWorkspaceFromClientDir(clientDir)
+            : packageDir
+                ? this.prepareAuditWorkspaceFromPackageDir(packageDir)
+                : undefined;
+
+        const useConfiguredIncludedAdts =
+            !!loaded
+            && !!resolvedConfiguredUnpackedDir
+            && (!inputPath || path.resolve(inputPath).toLowerCase() === path.resolve(resolvedConfiguredUnpackedDir).toLowerCase());
+
+        if (!useConfiguredIncludedAdts && !inputPath && !resolvedAuditWorkspace) {
+            throw new Error(
+                'Missing ADT input path. Pass <adt-path>, or use --client-dir / --package-dir, or use --config with a package config that defines unpackedDir.'
+            );
+        }
+
+        const adtEntries = useConfiguredIncludedAdts
+            ? this.collectConfiguredIncludedAdtEntries(resolvedConfiguredUnpackedDir!, excludePatterns, includeRules)
+            : resolvedAuditWorkspace && !inputPath
+                ? this.collectUnpackedAdtEntries(resolvedAuditWorkspace)
+                : this.collectAdtFiles(inputPath!).map(adtPath => ({
+                    src: adtPath,
+                    dst: path.relative(path.resolve(inputPath!), adtPath).replace(/\\/g, '/'),
+                }));
+
+        if (adtEntries.length === 0) {
+            throw new Error(
+                useConfiguredIncludedAdts
+                    ? `Found no ADT files in the configured minipack selection under ${resolvedConfiguredUnpackedDir}`
+                    : `Found no ADT files under ${path.resolve(inputPath || '')}`
+            );
+        }
+
+        const resolvedAssetRoot = assetRoot
+            ? path.resolve(assetRoot)
+            : resolvedAuditWorkspace
+                ? this.getSharedAssetRepositoryDir(resolvedAuditWorkspace)
+            : loaded && resolvedConfiguredUnpackedDir && assetRepositorySettings.enabled
+                ? this.getSharedAssetRepositoryDir(resolvedConfiguredUnpackedDir, assetRepositorySettings.folderName)
+                : undefined;
+
+        if (!resolvedAssetRoot) {
+            throw new Error(
+                'Missing asset root. Pass <asset-root> explicitly or use a package config with minipack.assetRepository enabled.'
+            );
+        }
+
+        const resolvedOutputFile = outputFile
+            ? path.resolve(outputFile)
+            : loaded && resolvedConfiguredUnpackedDir
+                ? path.join(resolvedConfiguredUnpackedDir, 'wmo-integrity-report.json')
+                : path.resolve('wmo-integrity-report.json');
+
+        const report = this.buildWmoIntegrityReport(adtEntries, resolvedAssetRoot);
+        wfs.write(resolvedOutputFile, JSON.stringify(report, null, 4));
+
+        const suspiciousOutput = resolvedOutputFile.replace(/\.json$/i, '.suspicious-wmos.txt');
+        wfs.write(
+            suspiciousOutput,
+            report.suspiciousWmos.join('\n') + (report.suspiciousWmos.length > 0 ? '\n' : '')
+        );
+
+        term.log(
+            'client',
+            `Scanned ${report.scannedAdts} ADT file(s), validated ${report.scannedReferencedWmos} referenced WMO root(s), `
+            + `and wrote the WMO integrity report to ${resolvedOutputFile}`
+        );
+        term.log(
+            'client',
+            `Wrote ${report.suspiciousWmos.length} suspicious WMO path(s) to ${suspiciousOutput}`
+        );
+    }
+
+    static findWmoByFingerprint(
+        workspaceDir: string,
+        expectedSize: number,
+        expectedHash: string
+    ) {
+        const resolvedWorkspaceDir = path.resolve(workspaceDir);
+        if (!wfs.exists(resolvedWorkspaceDir) || !wfs.isDirectory(resolvedWorkspaceDir)) {
+            throw new Error(`Workspace directory does not exist: ${resolvedWorkspaceDir}`);
+        }
+
+        const normalizedHash = expectedHash.trim().toLowerCase();
+        const manifestPath = path.join(resolvedWorkspaceDir, this.unpackedClientManifestName());
+        const hasManifest = wfs.exists(manifestPath) && wfs.isFile(manifestPath);
+        const archives = hasManifest
+            ? this.readUnpackedClientManifest(resolvedWorkspaceDir)
+            : [];
+        const assetRepositoryDir = this.getSharedAssetRepositoryDir(resolvedWorkspaceDir);
+        const checked = new Set<string>();
+        const matches: Array<{
+            logicalPath: string;
+            resolvedPath: string;
+            size: number;
+            hash: string;
+        }> = [];
+
+        const considerFile = (logicalPath: string, resolvedPath: string) => {
+            const normalizedLogicalPath = this.normalizeArchiveRelativePath(logicalPath);
+            if (!normalizedLogicalPath.toLowerCase().endsWith('.wmo')) {
+                return;
+            }
+
+            const resolved = path.resolve(resolvedPath);
+            const key = resolved.toLowerCase();
+            if (!wfs.exists(resolved) || !wfs.isFile(resolved) || checked.has(key)) {
+                return;
+            }
+            checked.add(key);
+
+            const buffer = wfs.readBin(resolved);
+            if (buffer.length !== expectedSize) {
+                return;
+            }
+
+            const hash = this.computeFnv1a64(buffer).toLowerCase();
+            if (hash !== normalizedHash) {
+                return;
+            }
+
+            matches.push({
+                logicalPath: normalizedLogicalPath,
+                resolvedPath: resolved.replace(/\\/g, '/'),
+                size: buffer.length,
+                hash,
+            });
+        };
+
+        if (!hasManifest) {
+            wfs.iterate(resolvedWorkspaceDir, filePath => {
+                considerFile(path.relative(resolvedWorkspaceDir, filePath).replace(/\\/g, '/'), filePath);
+            });
+        } else if (wfs.exists(assetRepositoryDir) && wfs.isDirectory(assetRepositoryDir)) {
+            this.collectGroupEntries(assetRepositoryDir).forEach(entry => {
+                considerFile(entry.dst.replace(/\\/g, '/'), entry.src);
+            });
+        }
+
+        archives.forEach(archive => {
+            const sourceFolder = path.join(resolvedWorkspaceDir, archive.folderName);
+            if (!wfs.exists(sourceFolder) || !wfs.isDirectory(sourceFolder)) {
+                return;
+            }
+
+            this.readExtractionManifest(sourceFolder).forEach(extractedRelativePath => {
+                const normalizedPath = this.normalizeArchiveRelativePath(extractedRelativePath);
+                const extractedPath = this.extractedFilePath(sourceFolder, normalizedPath);
+                const finalPath = this.isSharedAssetPath(normalizedPath)
+                    ? path.join(assetRepositoryDir, ...normalizedPath.split('/'))
+                    : extractedPath;
+                considerFile(normalizedPath, finalPath);
+            });
+        });
+
+        const output = {
+            workspaceDir: resolvedWorkspaceDir.replace(/\\/g, '/'),
+            expectedSize,
+            expectedHash: normalizedHash,
+            matches: matches.sort((left, right) =>
+                left.logicalPath.localeCompare(right.logicalPath, undefined, { sensitivity: 'base' })
+                || left.resolvedPath.localeCompare(right.resolvedPath, undefined, { sensitivity: 'base' })
+            ),
+        };
+
+        term.log(
+            'client',
+            `Found ${output.matches.length} WMO file(s) in ${resolvedWorkspaceDir} matching size ${expectedSize} and hash ${normalizedHash}`
+        );
+        term.log('client', JSON.stringify(output, null, 4));
+        return output;
+    }
+
+    static verifyAdtAssetIntegrity(
+        inputPath?: string,
+        assetRoot?: string,
+        outputFile?: string,
+        configPath?: string,
+        clientDir?: string,
+        packageDir?: string
+    ) {
+        const loaded = this.readPackageConfig(configPath);
+        const resolvedConfiguredUnpackedDir = loaded?.config.unpackedDir
+            ? this.resolveConfigPath(loaded.configDir, loaded.config.unpackedDir)
+            : undefined;
+        const excludePatterns = this.getConfiguredExcludePatterns(configPath);
+        const includeRules = this.getConfiguredIncludeRules(configPath);
+        const assetRepositorySettings = this.getConfiguredAssetRepositorySettings(configPath);
+        const resolvedAuditWorkspace = clientDir
+            ? this.prepareAuditWorkspaceFromClientDir(clientDir)
+            : packageDir
+                ? this.prepareAuditWorkspaceFromPackageDir(packageDir)
+                : undefined;
+
+        const useConfiguredIncludedAdts =
+            !!loaded
+            && !!resolvedConfiguredUnpackedDir
+            && (!inputPath || path.resolve(inputPath).toLowerCase() === path.resolve(resolvedConfiguredUnpackedDir).toLowerCase());
+
+        if (!useConfiguredIncludedAdts && !inputPath && !resolvedAuditWorkspace) {
+            throw new Error(
+                'Missing ADT input path. Pass <adt-path>, or use --client-dir / --package-dir, or use --config with a package config that defines unpackedDir.'
+            );
+        }
+
+        const adtEntries = useConfiguredIncludedAdts
+            ? this.collectConfiguredIncludedAdtEntries(resolvedConfiguredUnpackedDir!, excludePatterns, includeRules)
+            : resolvedAuditWorkspace && !inputPath
+                ? this.collectUnpackedAdtEntries(resolvedAuditWorkspace)
+            : this.collectAdtFiles(inputPath!).map(adtPath => ({
+                src: adtPath,
+                dst: path.relative(path.resolve(inputPath!), adtPath).replace(/\\/g, '/'),
+            }));
+
+        if (adtEntries.length === 0) {
+            throw new Error(
+                useConfiguredIncludedAdts
+                    ? `Found no ADT files in the configured minipack selection under ${resolvedConfiguredUnpackedDir}`
+                    : `Found no ADT files under ${path.resolve(inputPath || '')}`
+            );
+        }
+
+        const resolvedAssetRoot = assetRoot
+            ? path.resolve(assetRoot)
+            : resolvedAuditWorkspace
+                ? this.getSharedAssetRepositoryDir(resolvedAuditWorkspace)
+            : loaded && resolvedConfiguredUnpackedDir && assetRepositorySettings.enabled
+                ? this.getSharedAssetRepositoryDir(resolvedConfiguredUnpackedDir, assetRepositorySettings.folderName)
+                : undefined;
+
+        if (!resolvedAssetRoot) {
+            throw new Error(
+                'Missing asset root. Pass <asset-root> explicitly or use a package config with minipack.assetRepository enabled.'
+            );
+        }
+
+        const resolvedOutputFile = outputFile
+            ? path.resolve(outputFile)
+            : loaded && resolvedConfiguredUnpackedDir
+                ? path.join(resolvedConfiguredUnpackedDir, 'adt-integrity-report.json')
+                : path.resolve('adt-integrity-report.json');
+
+        const report = this.buildAdtIntegrityReport(adtEntries, resolvedAssetRoot);
+        wfs.write(resolvedOutputFile, JSON.stringify(report, null, 4));
+
+        const missingWmoOutput = resolvedOutputFile.replace(/\.json$/i, '.missing-wmos.txt');
+        wfs.write(
+            missingWmoOutput,
+            report.missingWmos.join('\n') + (report.missingWmos.length > 0 ? '\n' : '')
+        );
+
+        term.log(
+            'client',
+            `Scanned ${report.scannedAdts} ADT file(s), found ${report.summary.missingAssets} missing asset(s), `
+            + `and wrote the integrity report to ${resolvedOutputFile}`
+        );
+        term.log(
+            'client',
+            `Wrote ${report.missingWmos.length} missing WMO path(s) to ${missingWmoOutput}`
+        );
+    }
+
     private static buildArchive(outputPath: string, entries: Entry[], folder: boolean, compression?: MPQCompression) {
         if (entries.length === 0) {
             throw new Error(`Refusing to build an MPQ with no files: ${outputPath}`);
@@ -1316,8 +2629,48 @@ export class Package {
         return path.join(resfp(ipaths.package), `${dataset.fullName}.chunked-release`);
     }
 
+    private static chunkedInputDir(dataset: Dataset) {
+        return path.join(resfp(ipaths.package), `${dataset.fullName}.chunked-inputs`);
+    }
+
     private static chunkedReleaseManifestPath(dataset: Dataset) {
         return path.join(this.chunkedReleaseDir(dataset), 'manifest.json');
+    }
+
+    private static readChunkedInputArtifacts(dataset: Dataset) {
+        const inputDir = this.chunkedInputDir(dataset);
+        if (!wfs.exists(inputDir)) {
+            return [] as ReleaseArtifact[];
+        }
+
+        const files: ReleaseArtifact[] = [];
+        wfs.iterate(inputDir, filePath => {
+            if (!wfs.isFile(filePath)) {
+                return;
+            }
+
+            files.push({
+                sourcePath: filePath,
+                releasePath: path.relative(inputDir, filePath).replace(/\\/g, '/'),
+            });
+        });
+
+        return files.sort((left, right) => left.releasePath.localeCompare(right.releasePath));
+    }
+
+    private static buildCanonicalChunkedInputArtifact(
+        outputRoot: string,
+        releasePath: string,
+        entries: Entry[],
+        folder: boolean,
+        compression?: MPQCompression
+    ) {
+        const outputPath = path.join(outputRoot, ...releasePath.replace(/\\/g, '/').split('/'));
+        this.buildArchive(outputPath, entries, folder, compression);
+        return {
+            sourcePath: outputPath,
+            releasePath: releasePath.replace(/\\/g, '/'),
+        } as ReleaseArtifact;
     }
 
     private static normalizeRemotePath(value: string) {
@@ -1424,12 +2777,29 @@ export class Package {
         compression?: MPQCompression
     ) {
         const artifacts: PackagedArtifact[] = [];
+        const canonicalArtifacts: ReleaseArtifact[] = [];
         const maxPatchFileSizeMB = NodeConfig.LauncherMaxPatchFileSizeMB ?? 0;
         const maxBytes = maxPatchFileSizeMB > 0 ? maxPatchFileSizeMB * 1024 * 1024 : 0;
+        const chunkedInputRoot = this.chunkedInputDir(dataset);
         term.debug('client', `Packaging ${Object.keys(entriesByMpq).length} MPQ(s)`);
 
         for (const [mpq, entries] of Object.entries(entriesByMpq)) {
             const effectiveMpq = ensurePatchPrefix(mpq);
+            const canonicalOutputName = canonicalArchiveOutputName(effectiveMpq);
+            const canonicalReleasePath = resolveLocalPackageOutputPath(
+                effectiveMpq,
+                canonicalOutputName,
+                supplementaryConfig
+            );
+            canonicalArtifacts.push(
+                this.buildCanonicalChunkedInputArtifact(
+                    chunkedInputRoot,
+                    canonicalReleasePath,
+                    entries,
+                    folder,
+                    compression
+                )
+            );
             const segments = maxBytes > 0 ? partitionEntriesBySize(entries, maxBytes) : [entries];
             for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
                 const segmentEntries = segments[segmentIndex];
@@ -1449,7 +2819,7 @@ export class Package {
             }
         }
 
-        return artifacts;
+        return { packaged: artifacts, canonical: canonicalArtifacts };
     }
 
     private static collectGroupEntries(groupDir: string) {
@@ -1508,7 +2878,10 @@ export class Package {
         compression?: MPQCompression
     ) {
         if (config.inputs.length === 0) {
-            return [] as PackagedArtifact[];
+            return {
+                packaged: [] as PackagedArtifact[],
+                canonical: [] as ReleaseArtifact[],
+            };
         }
 
         const workingRoot = path.join(resfp(ipaths.package), `${dataset.fullName}.supplementary-work`);
@@ -1522,7 +2895,7 @@ export class Package {
             const input = config.inputs[index];
             const zipName = this.sanitizeFileName(path.basename(input.remotePath) || `${input.target}.zip`);
             const zipPath = path.join(downloadsDir, `${index.toString().padStart(3, '0')}-${zipName}`);
-
+            
             try {
                 await BunnyCdn.downloadFile(input.remotePath, zipPath);
             } catch (err) {
@@ -1552,14 +2925,27 @@ export class Package {
         }
 
         const artifacts: PackagedArtifact[] = [];
+        const canonicalArtifacts: ReleaseArtifact[] = [];
         const maxPatchFileSizeMB = NodeConfig.LauncherMaxPatchFileSizeMB ?? 0;
         const maxBytes = maxPatchFileSizeMB > 0 ? maxPatchFileSizeMB * 1024 * 1024 : 0;
+        const chunkedInputRoot = this.chunkedInputDir(dataset);
 
         for (const [target, targetDir] of Object.entries(targetDirs)) {
             const entries = this.collectGroupEntries(targetDir);
             if (entries.length === 0) {
                 continue;
             }
+
+            const canonicalReleasePath = resolveTargetOutputPath(target, config);
+            canonicalArtifacts.push(
+                this.buildCanonicalChunkedInputArtifact(
+                    chunkedInputRoot,
+                    canonicalReleasePath,
+                    entries,
+                    folder,
+                    compression
+                )
+            );
 
             const segments = maxBytes > 0 ? partitionEntriesBySize(entries, maxBytes) : [entries];
             for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex++) {
@@ -1583,7 +2969,7 @@ export class Package {
             }
         }
 
-        return artifacts;
+        return { packaged: artifacts, canonical: canonicalArtifacts };
     }
 
     static async packageClient(
@@ -1681,12 +3067,13 @@ export class Package {
         });
 
         const supplementaryConfig = readSupplementaryPatchConfig(dataset.fullName);
-        const localArtifacts = this.buildLocalPackageArtifacts(dataset, entriesByMpq, folder, supplementaryConfig, compression);
-        const supplementaryArtifacts = pipeline
+        wfs.mkDirs(this.chunkedInputDir(dataset), true);
+        const localBuild = this.buildLocalPackageArtifacts(dataset, entriesByMpq, folder, supplementaryConfig, compression);
+        const supplementaryBuild = pipeline
             ? await this.buildSupplementaryPackageArtifacts(dataset, supplementaryConfig, folder, compression)
-            : [];
+            : { packaged: [] as PackagedArtifact[], canonical: [] as ReleaseArtifact[] };
 
-        const allArtifacts = localArtifacts.concat(supplementaryArtifacts);
+        const allArtifacts = localBuild.packaged.concat(supplementaryBuild.packaged);
         this.writeLegacyMeta(dataset, allArtifacts);
 
         if (pipeline) {
@@ -2142,8 +3529,13 @@ export class Package {
     }
 
     static buildChunkedRelease(dataset: Dataset) {
-        const supplementaryConfig = readSupplementaryPatchConfig(dataset.fullName);
-        const artifacts = this.resolveChunkedReleaseInputs(dataset, supplementaryConfig);
+        const artifacts = this.readChunkedInputArtifacts(dataset);
+        if (artifacts.length === 0) {
+            throw new Error(
+                `Missing canonical chunked input artifacts at ${this.chunkedInputDir(dataset)}. `
+                + `Run "package client ${dataset.fullName} --pipeline" first so the launcher-safe patch set can be built.`
+            );
+        }
         const outputDir = this.chunkedReleaseDir(dataset);
         term.log('client', `Building chunked release for ${dataset.fullName}`);
         const result = createChunkedRelease(dataset.fullName, artifacts, outputDir);
@@ -2177,10 +3569,154 @@ export class Package {
         await this.uploadChunkedReleaseArtifacts(dataset, supplementaryConfig, dryRun);
     }
 
+    private static async promptValue(question: string, fallback = '') {
+        term.suspendInput();
+        try {
+            const answer = (await wsys.userInput(question)).trim();
+            return answer.length > 0 ? answer : fallback;
+        } finally {
+            term.resumeInput();
+            if (term.getEnabled()) {
+                term.setInput('', true);
+            }
+        }
+    }
+
+    private static async promptYesNo(question: string, defaultValue: boolean) {
+        const suffix = defaultValue ? ' [Y/n] ' : ' [y/N] ';
+        const answer = (await wsys.userInput(`${question}${suffix}`)).trim().toLowerCase();
+        if (answer.length === 0) {
+            return defaultValue;
+        }
+        return answer === 'y' || answer === 'yes';
+    }
+
+    private static async runInteractivePackaging(_args: string[]) {
+        term.log('client', 'Interactive packaging wizard');
+        term.log('client', 'Choose one or more steps:');
+        term.log('client', '  1. Minipack client');
+        term.log('client', '  2. Build base client patches');
+        term.log('client', '  3. Build release artifacts with Bunny supplementary patches');
+        term.log('client', '  4. Build chunked release');
+        term.log('client', '  5. Verify chunked release');
+        term.log('client', '  6. Publish chunked release');
+
+        const selectedRaw = await this.promptValue('Steps (comma-separated, e.g. 2,3,4,6): ');
+        const selectedSteps = Array.from(new Set(
+            selectedRaw
+                .split(',')
+                .map(x => Number(x.trim()))
+                .filter(x => Number.isInteger(x) && x >= 1 && x <= 6)
+        )).sort((left, right) => left - right);
+
+        if (selectedSteps.length === 0) {
+            throw new Error('No packaging steps selected.');
+        }
+
+        const needsDataset = selectedSteps.some(step => step >= 2);
+        const datasetTokens = needsDataset
+            ? (await this.promptValue(`Dataset(s) [${NodeConfig.DefaultDataset}]: `))
+                .split(/\s+/)
+                .map(x => x.trim())
+                .filter(x => x.length > 0)
+            : [];
+        const datasets = needsDataset
+            ? Identifier.getDatasets(datasetTokens, 'MATCH_ANY', NodeConfig.DefaultDataset)
+            : [];
+
+        const needsCompression = selectedSteps.some(step => step === 1 || step === 2 || step === 3);
+        const compressionAnswer = needsCompression
+            ? await this.promptValue('Compression [blank=default, zlib, pkware, bzip2, sparse, lzma]: ')
+            : '';
+        const compression = compressionAnswer.length > 0
+            ? this.normalizeCompression(compressionAnswer)
+            : undefined;
+
+        const needsClientBuild = selectedSteps.some(step => step === 2 || step === 3);
+        const fullDBC = needsClientBuild
+            ? await this.promptYesNo('Include full DBC data?', false)
+            : false;
+        const fullInterface = needsClientBuild
+            ? await this.promptYesNo('Include full Interface data?', false)
+            : false;
+        const folder = needsClientBuild
+            ? await this.promptYesNo('Build folder outputs instead of MPQs?', false)
+            : false;
+        const dryRun = selectedSteps.includes(6)
+            ? await this.promptYesNo('Publish in dry-run mode?', true)
+            : false;
+
+        if (selectedSteps.includes(1)) {
+            const configPathInput = await this.promptValue('Minipack config path [blank=default package config]: ');
+            const configPath = configPathInput.length > 0 ? configPathInput : undefined;
+            const loaded = this.readPackageConfig(configPath);
+            const unpackedDir = loaded?.config.unpackedDir;
+            const sourceClientDir = loaded?.config.sourceClientDir || loaded?.config.inputClientDir;
+            const outputClientDir = loaded?.config.outputClientDir;
+            const includeRules = this.getConfiguredIncludeRules(configPath);
+            const excludePatterns = this.getConfiguredExcludePatterns(configPath);
+            const minipackCompression = compression || loaded?.config.minipack?.compression;
+
+            if (!loaded || !unpackedDir || !sourceClientDir || !outputClientDir) {
+                throw new Error(
+                    'Interactive minipack requires a package config with unpackedDir, sourceClientDir/inputClientDir, and outputClientDir.'
+                );
+            }
+
+            this.restoreClient(
+                this.resolveConfigPath(loaded.configDir, unpackedDir)!,
+                this.resolveConfigPath(loaded.configDir, sourceClientDir)!,
+                this.resolveConfigPath(loaded.configDir, outputClientDir)!,
+                excludePatterns,
+                includeRules,
+                minipackCompression,
+                configPath
+            );
+        }
+
+        if (selectedSteps.includes(2)) {
+            for (const dataset of datasets) {
+                await this.packageClient(dataset, fullDBC, fullInterface, folder, false, false, false, compression);
+            }
+        }
+
+        if (selectedSteps.includes(3)) {
+            for (const dataset of datasets) {
+                await this.packageClient(dataset, fullDBC, fullInterface, folder, true, false, false, compression);
+            }
+        }
+
+        if (selectedSteps.includes(4)) {
+            for (const dataset of datasets) {
+                this.buildChunkedRelease(dataset);
+            }
+        }
+
+        if (selectedSteps.includes(5)) {
+            for (const dataset of datasets) {
+                this.verifyChunkedRelease(dataset);
+            }
+        }
+
+        if (selectedSteps.includes(6)) {
+            for (const dataset of datasets) {
+                await this.publishChunkedRelease(dataset, dryRun);
+            }
+        }
+    }
+
     static Command = commands.addCommand('package')
 
     static initialize() {
         term.debug('misc', `Initializing packages`)
+        this.Command.addCommand(
+              'interactive'
+            , '[dataset]'
+            , 'Runs an interactive packaging wizard for minipack, client patch builds, chunking, verification, and publish'
+            , async args => {
+                await this.runInteractivePackaging(args);
+            }
+        )
         this.Command.addCommand(
               'client'
             , 'dataset --fullDBC --fullInterface --folder --pipeline --publish --dry-run --compression=<type>'
@@ -2302,6 +3838,67 @@ export class Package {
                     throw new Error('Expected package scan-adt-assets <adt-path> <output-file>');
                 }
                 this.scanAdtAssets(args[0], args[1]);
+            }
+        )
+        this.Command.addCommand(
+              'verify-adt-integrity'
+            , '[adt-path asset-root output-file] [--config=<file>] [--client-dir=<dir>] [--package-dir=<dir>]'
+            , 'Checks ADT-referenced assets against a minipack asset set, a real client, or packaged MPQs and writes a JSON report plus a missing-WMO list'
+            , async args => {
+                const configured = this.extractConfigArg(args);
+                const withClientDir = this.extractClientDirArg(configured.args);
+                const withPackageDir = this.extractPackageDirArg(withClientDir.args);
+                if (withPackageDir.args.length > 3) {
+                    throw new Error(
+                        'Expected package verify-adt-integrity [adt-path asset-root output-file] [--config=<file>] [--client-dir=<dir>] [--package-dir=<dir>]'
+                    );
+                }
+                this.verifyAdtAssetIntegrity(
+                    withPackageDir.args[0],
+                    withPackageDir.args[1],
+                    withPackageDir.args[2],
+                    configured.configPath,
+                    withClientDir.clientDir,
+                    withPackageDir.packageDir
+                );
+            }
+        )
+        this.Command.addCommand(
+              'verify-wmo-integrity'
+            , '[adt-path asset-root output-file] [--config=<file>] [--client-dir=<dir>] [--package-dir=<dir>]'
+            , 'Checks ADT-referenced WMO roots for malformed chunk streams, missing groups, and root/group mismatches'
+            , async args => {
+                const configured = this.extractConfigArg(args);
+                const withClientDir = this.extractClientDirArg(configured.args);
+                const withPackageDir = this.extractPackageDirArg(withClientDir.args);
+                if (withPackageDir.args.length > 3) {
+                    throw new Error(
+                        'Expected package verify-wmo-integrity [adt-path asset-root output-file] [--config=<file>] [--client-dir=<dir>] [--package-dir=<dir>]'
+                    );
+                }
+                this.verifyWmoIntegrity(
+                    withPackageDir.args[0],
+                    withPackageDir.args[1],
+                    withPackageDir.args[2],
+                    configured.configPath,
+                    withClientDir.clientDir,
+                    withPackageDir.packageDir
+                );
+            }
+        )
+        this.Command.addCommand(
+              'find-wmo-by-fingerprint'
+            , '<workspace-dir> <size> <hash>'
+            , 'Scans an unpacked audit workspace for WMO files matching an exact byte size and FNV-1a hash'
+            , async args => {
+                if (args.length !== 3) {
+                    throw new Error('Expected package find-wmo-by-fingerprint <workspace-dir> <size> <hash>');
+                }
+                const expectedSize = Number(args[1]);
+                if (!Number.isInteger(expectedSize) || expectedSize < 0) {
+                    throw new Error(`Invalid WMO size "${args[1]}". Expected a non-negative integer.`);
+                }
+                this.findWmoByFingerprint(args[0], expectedSize, args[2]);
             }
         )
         this.Command.addCommand(
