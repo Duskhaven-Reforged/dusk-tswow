@@ -2409,7 +2409,7 @@ declare function UnitAura(unitId: WoWAPI.UnitId, index: number, rank?: number, f
  * @see https://wow.gamepedia.com/API_UnitBuff
  */
 // tslint:disable-next-line max-line-length
-declare function UnitBuff(unitId: WoWAPI.UnitId, index: number, filter?: WoWAPI.BuffFilterType & string): LuaMultiReturn<[string, WoWAPI.TexturePath, number, WoWAPI.DebuffType, number, number, WoWAPI.UnitId, boolean, boolean, number, boolean, boolean, boolean, number, number, number, number]>;
+declare function UnitBuff(unitId: WoWAPI.UnitId, index: number, filter?: WoWAPI.BuffFilterType & string): LuaMultiReturn<[string, string, WoWAPI.TexturePath, number, WoWAPI.DebuffType, number, number, WoWAPI.UnitId, boolean, boolean, number]>;
 
 /**
  * Retrieve info about a specified debuff on a certain unit
@@ -2419,7 +2419,7 @@ declare function UnitBuff(unitId: WoWAPI.UnitId, index: number, filter?: WoWAPI.
  * @see https://wow.gamepedia.com/API_UnitBuff
  */
 // tslint:disable-next-line max-line-length
-declare function UnitDebuff(unitId: WoWAPI.UnitId, index: number, filter?: WoWAPI.BuffFilterType & string): LuaMultiReturn<[string, WoWAPI.TexturePath, number, WoWAPI.DebuffType, number, number, WoWAPI.UnitId, boolean, boolean, number, boolean, boolean, boolean, number, number, number, number]>;
+declare function UnitDebuff(unitId: WoWAPI.UnitId, index: number, filter?: WoWAPI.BuffFilterType & string): LuaMultiReturn<[string, string, WoWAPI.TexturePath, number, WoWAPI.DebuffType, number, number, WoWAPI.UnitId, boolean, boolean, number]>;
 
 
 declare namespace WoWAPI {
