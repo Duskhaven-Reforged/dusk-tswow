@@ -1076,48 +1076,50 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
         CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
         v112 = 1;
     }
+    if (!a3) {
+        // Dodge / Parry / Block / Crit (disas 923-949): when !a3 and (effect 78 or v155+effect 20/22/23).
+        // no clue what minID is at this point in the disas, block made to test stats
+        // if ((spell->m_effect[0] == 78 || (v155 && (spell->m_effect[0] == 20 || spell->m_effect[0] == 22 || spell->m_effect[0] == 23)))) {
+        //     float* stats = reinterpret_cast<float*>(reinterpret_cast<char*>(activePlayer) + 0x7D4);
+        //     const char* keys[] = { "CHANCE_TO_DODGE", "CHANCE_TO_PARRY", "CHANCE_TO_BLOCK", "CHANCE_TO_CRIT" };
+        //     for (int s = 0; s < 4; ++s) {
+        //         if (stats[s] <= 0.0f) continue;
+        //         const char* lbl = FrameScript::GetText(const_cast<char*>(keys[s]), -1, 0);
+        //         if (lbl) {
+        //             SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(lbl), stats[s]);
+        //             CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+        //             v112 = 1;
+        //         }
+        //     }
+        // }
 
-    // // Dodge / Parry / Block / Crit (disas 923-949): when !a3 and (effect 78 or v155+effect 20/22/23).
-    // if (!a3 && (spell->m_effect[0] == 78 || (v155 && (spell->m_effect[0] == 20 || spell->m_effect[0] == 22 || spell->m_effect[0] == 23)))) {
-    //     float* stats = reinterpret_cast<float*>(reinterpret_cast<char*>(activePlayer) + 0x7D4);
-    //     const char* keys[] = { "CHANCE_TO_DODGE", "CHANCE_TO_PARRY", "CHANCE_TO_BLOCK", "CHANCE_TO_CRIT" };
-    //     for (int s = 0; s < 4; ++s) {
-    //         if (stats[s] <= 0.0f) continue;
-    //         const char* lbl = FrameScript::GetText(const_cast<char*>(keys[s]), -1, 0);
-    //         if (lbl) {
-    //             SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(lbl), stats[s]);
-    //             CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
-    //             v112 = 1;
-    //         }
-    //     }
-    // }
-
-    // "Use all power" line (disas 950-955).
-    if (!a3 && (spell->m_attributesEx & 2) != 0) {
-        PowerDisplayRow* v134 = nullptr;
-        const uintptr_t powerDisplayDB = 0x00AD43A0;
-        uint32_t powerMinID = *reinterpret_cast<uint32_t*>(powerDisplayDB + 4 + 16);
-        uint32_t powerMaxID = *reinterpret_cast<uint32_t*>(powerDisplayDB + 4 + 12);
-        if (spell->m_powerDisplayID >= powerMinID && spell->m_powerDisplayID <= powerMaxID) {
-            uint32_t powerIndex = spell->m_powerDisplayID - powerMinID;
-            v134 = reinterpret_cast<PowerDisplayRow*>(ClientDB::GetRow(reinterpret_cast<void*>(powerDisplayDB), powerIndex));
-        }
-        if (v134 && v134->m_globalStringBaseTag) {
-            const char* powerStr = FrameScript::GetText(v134->m_globalStringBaseTag, -1, 0);
-            if (powerStr) {
-                char buf[256] = {};
-                SStr::Copy(buf, const_cast<char*>(powerStr), sizeof(buf));
-                const char* fmt = FrameScript::GetText(const_cast<char*>("SPELL_USE_ALL_POWER_DISPLAY"), -1, 0);
-                if (fmt) SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(fmt), buf);
-                else SStr::Copy(lineLeft, buf, sizeof(lineLeft));
-                CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+        // "Use all power" line (disas 950-955).
+        if (spell->m_attributesEx & 2 != 0) {
+            PowerDisplayRow* v134 = nullptr;
+            const uintptr_t powerDisplayDB = 0x00AD43A0;
+            uint32_t powerMinID = *reinterpret_cast<uint32_t*>(powerDisplayDB + 4 + 16);
+            uint32_t powerMaxID = *reinterpret_cast<uint32_t*>(powerDisplayDB + 4 + 12);
+            if (spell->m_powerDisplayID >= powerMinID && spell->m_powerDisplayID <= powerMaxID) {
+                uint32_t powerIndex = spell->m_powerDisplayID - powerMinID;
+                v134 = reinterpret_cast<PowerDisplayRow*>(ClientDB::GetRow(reinterpret_cast<void*>(powerDisplayDB), powerIndex));
             }
-        } else {
-            const char* useKey = (spell->m_powerType > 6) ? "SPELL_USE_ALL_HEALTH" : (spell->m_powerType == 0) ? "SPELL_USE_ALL_MANA" : "SPELL_USE_ALL_POWER";
-            const char* txt = FrameScript::GetText(const_cast<char*>(useKey), -1, 0);
-            if (txt) {
-                SStr::Copy(lineLeft, const_cast<char*>(txt), sizeof(lineLeft));
-                CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+            if (v134 && v134->m_globalStringBaseTag) {
+                const char* powerStr = FrameScript::GetText(v134->m_globalStringBaseTag, -1, 0);
+                if (powerStr) {
+                    char buf[256] = {};
+                    SStr::Copy(buf, const_cast<char*>(powerStr), sizeof(buf));
+                    const char* fmt = FrameScript::GetText(const_cast<char*>("SPELL_USE_ALL_POWER_DISPLAY"), -1, 0);
+                    if (fmt) SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(fmt), buf);
+                    else SStr::Copy(lineLeft, buf, sizeof(lineLeft));
+                    CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+                }
+            } else {
+                const char* useKey = (spell->m_powerType > 6) ? "SPELL_USE_ALL_HEALTH" : (spell->m_powerType == 0) ? "SPELL_USE_ALL_MANA" : "SPELL_USE_ALL_POWER";
+                const char* txt = FrameScript::GetText(const_cast<char*>(useKey), -1, 0);
+                if (txt) {
+                    SStr::Copy(lineLeft, const_cast<char*>(txt), sizeof(lineLeft));
+                    CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+                }
             }
         }
     }

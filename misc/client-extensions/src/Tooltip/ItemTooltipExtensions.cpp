@@ -689,35 +689,21 @@ namespace {
             return;
         }
 
+        LOG_DEBUG << formatKey << " : " << formatText;
+
         char line[512] = {};
-        if (equipStyle) {
-            SStr::Printf(
-                line,
-                sizeof(line),
-                formatText,
-                value < 0 ? -value : value);
-
-            char* equipText = FrameScript::GetText(const_cast<char*>("ITEM_SPELL_TRIGGER_ONEQUIP"), -1, 0);
-            if (equipText && equipText[0]) {
-                char equipLine[640] = {};
-                SStr::Printf(equipLine, sizeof(equipLine), const_cast<char*>("%s %s"), equipText, line);
-                AddSingleLine(tooltip, equipLine, reinterpret_cast<void*>(kColorGreen0), 1);
-            } else {
-                AddSingleLine(tooltip, line, reinterpret_cast<void*>(kColorGreen0), 1);
-            }
-            return;
-        }
-
         SStr::Printf(
             line,
             sizeof(line),
             formatText,
             value <= 0 ? '-' : '+',
             value < 0 ? -value : value);
-        AddWhiteLine(tooltip, line, 1);
+
+        uint32_t lineColor = equipStyle ? kColorGreen0 : kColorWhite;
+        AddSingleLine(tooltip, line, reinterpret_cast<void*>(lineColor), 1);
     }
 
-    void AddDirectStatLines(void* tooltip, const ItemCacheTooltipView* itemCache, bool equipStyle) {
+    void AddDirectStatLines(void* tooltip, const ItemCacheTooltipView* itemCache) {
         if (!tooltip || !itemCache || itemCache->armorFlags != 0) {
             return;
         }
@@ -727,13 +713,9 @@ namespace {
                 continue;
             }
 
-            if (IsEquipStyleStatType(itemCache->statType[i]) != equipStyle) {
-                continue;
-            }
-
             char* key = GetItemModKey(itemCache->statType[i]);
             if (key) {
-                AddFormattedItemModLine(tooltip, key, itemCache->statValue[i], equipStyle);
+                AddFormattedItemModLine(tooltip, key, itemCache->statValue[i], IsEquipStyleStatType(itemCache->statType[i]));
             }
         }
     }
@@ -1058,16 +1040,6 @@ namespace {
         return reinterpret_cast<ItemCacheTooltipView*>(gemItemBlock);
     }
 
-    bool IsSocketFilled(void* tooltip, const ItemCacheTooltipView* itemCache, void* itemObject, size_t socketIndex) {
-        if (!tooltip || !itemCache || socketIndex >= 3 || itemCache->socketColor[socketIndex] == 0) {
-            return false;
-        }
-
-        int32_t enchantmentId = GetSocketEnchantmentId(itemObject, socketIndex);
-        ItemCacheTooltipView* gemItemCache = GetGemItemCacheByEnchantmentId(tooltip, enchantmentId);
-        return gemItemCache != nullptr;
-    }
-
     bool AreAllSocketBonusesActive(void* tooltip, const ItemCacheTooltipView* itemCache, void* itemObject) {
         if (!tooltip || !itemCache || !itemObject) {
             return false;
@@ -1206,7 +1178,7 @@ namespace {
             AddSingleLine(
                 tooltip,
                 socketText,
-                GetQualityColor(gemItemCache),
+                reinterpret_cast<void*>(kColorWhite),
                 0);
         }
 
@@ -1421,14 +1393,9 @@ namespace {
                 std::copy(std::begin(parsed.spellThreshold), std::end(parsed.spellThreshold), std::begin(outRow->spellThreshold));
                 outRow->requiredSkillId = parsed.requiredSkillId;
                 outRow->requiredSkillRank = parsed.requiredSkillRank;
-                LOG_DEBUG << "ItemTooltip set-file-id-match: setId=" << setId
-                          << " rowId=" << outRow->id
-                          << " hasName=" << (outRow->name && outRow->name[0] ? 1 : 0);
                 return true;
             }
         }
-
-        LOG_DEBUG << "ItemTooltip set-id: no parsed row for setId=" << setId;
 
         return false;
     }
@@ -1462,7 +1429,6 @@ namespace {
 
         auto* itemSetDb = reinterpret_cast<WoWClientDB*>(kItemSetDB);
         if (!itemSetDb) {
-            LOG_DEBUG << "ItemTooltip set-scan: missing db pointer for itemId=" << itemId;
             return false;
         }
 
@@ -1480,8 +1446,6 @@ namespace {
                 }
             }
         }
-
-        LOG_DEBUG << "ItemTooltip set-scan: no match for itemId=" << itemId;
 
         return false;
     }
@@ -1707,13 +1671,6 @@ namespace {
 
         bool equippedMask[17] = {};
         uint32_t equippedItemCount = BuildItemSetEquippedMask(activePlayer, &itemSetRow, equippedMask);
-        LOG_DEBUG << "ItemTooltip set-lines: itemId=" << itemId
-                  << " setId=" << itemSetRow.id
-                  << " equipped=" << equippedItemCount
-                  << " total=" << totalItemCount
-                  << " requiredSkillId=" << itemSetRow.requiredSkillId
-                  << " requiredSkillRank=" << itemSetRow.requiredSkillRank;
-
         CGTooltip::AddLine(
             tooltip,
             const_cast<char*>(" "),
@@ -1844,10 +1801,6 @@ namespace {
             }
 
             addedBonusLine = true;
-        }
-
-        if (addedBonusLine) {
-            LOG_DEBUG << "ItemTooltip set-lines: added bonus lines for itemId=" << itemId;
         }
     }
 
@@ -3468,10 +3421,6 @@ namespace {
 
         if (line[0]) {
             AddSingleLine(tooltip, line, reinterpret_cast<void*>(color), 0);
-            LOG_DEBUG << "ItemTooltip targeting-disenchant: added line for spellId=" << targetingSpellId
-                      << " skillLineId=" << abilityRow->m_skillLine
-                      << " requiredSkill=" << requiredSkill
-                      << " playerSkill=" << playerSkillRank;
         }
 #ifdef _MSC_VER
         } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -3743,13 +3692,11 @@ namespace {
                 LOG_DEBUG << "ItemTooltip petition: flag1 missing petition bit value=" << flags1
                           << " candidateId=" << candidatePetitionId;
             }
-
             if (!hasPetitionBit0 && !hasPetitionBit1 && candidatePetitionId == 0) {
                 return false;
             }
 
             *petitionId = candidatePetitionId;
-            LOG_DEBUG << "ItemTooltip petition: resolved petitionId=" << *petitionId;
             return *petitionId != 0;
 #ifdef _MSC_VER
         } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -3810,7 +3757,6 @@ namespace {
                 char line[1024] = {};
                 SStr::Printf(line, sizeof(line), titleFormat, petition->title);
                 AddWhiteLine(tooltip, line);
-                LOG_DEBUG << "ItemTooltip petition: added title line type=" << petition->petitionType;
             }
 
             char* creatorName = LookupNameCacheEntry(tooltip, petition->creatorGuidLow, petition->creatorGuidHigh);
@@ -3823,7 +3769,6 @@ namespace {
                     char line[1024] = {};
                     SStr::Printf(line, sizeof(line), creatorFormat, creatorName);
                     AddWhiteLine(tooltip, line);
-                    LOG_DEBUG << "ItemTooltip petition: added creator line";
                 }
             }
 
@@ -3834,7 +3779,6 @@ namespace {
                     char line[1024] = {};
                     SStr::Printf(line, sizeof(line), signaturesFormat, signatures);
                     AddWhiteLine(tooltip, line);
-                    LOG_DEBUG << "ItemTooltip petition: added signatures line count=" << signatures;
                 }
             }
             return PetitionTooltipResult::AddedLines;
@@ -4413,9 +4357,6 @@ int __fastcall ItemTooltipExtensions::SetItemTooltipHook(
     static thread_local int s_setItemHookDepth = 0;
     if (s_setItemHookDepth > 0) {
         if (updateExisting != 0) {
-            LOG_DEBUG << "ItemTooltip nested SetItem detected for itemId=" << itemId
-                      << " depth=" << s_setItemHookDepth
-                      << ", handling through replacement";
             ++s_setItemHookDepth;
             int nestedResult = 0;
             __try {
@@ -4444,10 +4385,6 @@ int __fastcall ItemTooltipExtensions::SetItemTooltipHook(
             --s_setItemHookDepth;
             return nestedResult;
         }
-
-        LOG_DEBUG << "ItemTooltip nested SetItem detected for itemId=" << itemId
-                  << " depth=" << s_setItemHookDepth
-                  << ", delegating to stock";
         return CGTooltip__SetItem_Trampoline(
             thisPtr,
             itemId,
@@ -4970,32 +4907,43 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
         AddWhiteLine(tooltip, shieldBlockText);
     }
 
-    AddDirectStatLines(tooltip, itemCache, false);
+    AddDirectStatLines(tooltip, itemCache);
     AddResistanceLines(tooltip, itemCache);
+    AddProposedEnchantLines(tooltip);
+
+    CGTooltip::AddLine(
+        tooltip,
+        const_cast<char*>(" "),
+        nullptr,
+        reinterpret_cast<void*>(kColorDarkYellow),
+        reinterpret_cast<void*>(kColorDarkYellow),
+    1);
+
     AddSocketLines(tooltip, itemCache, itemObject, activePlayer);
     AddGemPropertiesLines(tooltip, itemCache, activePlayer, arg10);
     AddAppliedEnchantmentLines(tooltip, itemCache, itemObject, activePlayer);
     AddSocketRequirementLines(tooltip, itemCache, activePlayer);
     AddSocketBonusLine(tooltip, itemCache, itemObject);
     AddRandomEnchantLine(tooltip, itemCache);
-    AddProposedEnchantLines(tooltip);
-    AddDurabilityLine(tooltip, itemObject);
     AddItemDurationLine(tooltip, itemCache, arg10);
     AddHolidayLine(tooltip, itemCache, arg10);
-    AddRaceClassRestrictionLine(tooltip, itemCache, activePlayer, arg10);
-    AddAllowedRaceLine(tooltip, itemCache, activePlayer, arg10);
-    AddAllowedClassLine(tooltip, itemCache, activePlayer, arg10);
-    AddRequiredLevelLine(tooltip, itemCache, activePlayer, arg10);
     AddRequiredSkillLine(tooltip, itemCache, activePlayer, arg10);
     AddItemSpellKnownLine(tooltip, itemCache, activePlayer);
     AddRequiredSpellLine(tooltip, itemCache, activePlayer);
     AddRequiredPvPRankLine(tooltip, itemCache, activePlayer);
     AddRequiredReputationLine(tooltip, itemCache, activePlayer, arg10);
-    AddDirectStatLines(tooltip, itemCache, true);
-        AddItemSpellLines(tooltip, itemCache, itemObject, activePlayer, randomPropertySeed);
+    AddItemSpellLines(tooltip, itemCache, itemObject, activePlayer, randomPropertySeed);
     AddLiveItemCooldownLine(tooltip, arg10);
     AddLeaveCombatCooldownLine(tooltip, itemObject, arg10);
     SafeAddItemSetLines(tooltip, itemCache, static_cast<uint32_t>(itemId), activePlayer);
+
+    CGTooltip::AddLine(
+    tooltip,
+    const_cast<char*>(" "),
+    nullptr,
+    reinterpret_cast<void*>(kColorDarkYellow),
+    reinterpret_cast<void*>(kColorDarkYellow),
+    1);
 
     // Stock returns here for the compare/loading-style path after cooldown handling.
     if (arg5 != 0) {
@@ -5004,8 +4952,6 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
         CGTooltipInternal::CalculateSize(tooltip);
         return 0;
     }
-
-    AddItemDescriptionLine(tooltip, itemCache, arg5);
 
     // Stock skips the creator/readable/openable/socketable/disenchant block when a10 is set,
     // then continues with equipment sets and the refund/bind/value tail.
@@ -5020,7 +4966,13 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
     SafeAddEquipmentSetsLine(tooltip, objectGuidPtr, objectGuidLow, objectGuidHigh);
     SafeAddRefundTimeLine(tooltip, itemObject, activePlayer);
     SafeAddBindTradeTimeLine(tooltip, itemObject, activePlayer);
+    AddDurabilityLine(tooltip, itemObject);
+    AddRequiredLevelLine(tooltip, itemCache, activePlayer, arg10);
+    AddRaceClassRestrictionLine(tooltip, itemCache, activePlayer, arg10);
+    AddAllowedRaceLine(tooltip, itemCache, activePlayer, arg10);
+    AddAllowedClassLine(tooltip, itemCache, activePlayer, arg10);
     SafeAddItemValueTail(tooltip, itemCache, itemObject, activePlayer, arg16);
+    AddItemDescriptionLine(tooltip, itemCache, arg5);
     SafeRunItemTooltipScript(tooltip);
 
     CSimpleFrame::Show(tooltip);
