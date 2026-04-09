@@ -50,7 +50,14 @@ export namespace Config {
         }
 
         if (isWindows()) {
-            wsys.execIn(ipaths.get(), `${ipaths.bin.node.npm_exe.abs().get()} i`);
+            if (isWindows()) {
+                try {
+                    wsys.execIn(ipaths.get(), `${ipaths.bin.node.npm_exe.abs().get()} i`);
+                } catch (err) {
+                    console.warn("bundled npm install failed, retrying with system npm...", err);
+                    wsys.execIn(ipaths.get(), `npm i`);
+                }
+            }
         } else {
             wsys.execIn(ipaths.get(), 'npm i');
         }
