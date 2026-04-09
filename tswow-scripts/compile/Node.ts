@@ -16,7 +16,6 @@
  */
 import { ipaths } from '../util/Paths';
 import { isWindows } from '../util/Platform';
-import { wsys } from '../util/System';
 import { NODE_URL } from './BuildConfig';
 import { bpaths } from './CompilePaths';
 import { DownloadFile } from './Downloader';
@@ -29,18 +28,16 @@ export namespace NodeJS {
             return;
         }
 
-        await DownloadFile(
-             NODE_URL
-           , bpaths.nodeArchive
-        )
-
         if(!bpaths.node.exists()) {
+            await DownloadFile(NODE_URL, bpaths.nodeArchive)
             await ExtractZip(
                   bpaths.nodeArchive.get()
                 , {dir:bpaths.abs().get()}
             )
         }
 
-        bpaths.node.copy(ipaths.bin.node);
+        if(!ipaths.bin.node.npm_exe.exists()) {
+            bpaths.node.copy(ipaths.bin.node);
+        }
     }
 }

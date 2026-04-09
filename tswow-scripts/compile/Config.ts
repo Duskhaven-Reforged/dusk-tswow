@@ -45,18 +45,13 @@ export namespace Config {
         if(!ipaths.package_lock_json.exists()) {
             spaths.package_lock_json.copy(ipaths.package_lock_json)
         }
-        if(!ipaths.bin.node.npm_exe.abs().exists()) {
-            bpaths.node.copy(ipaths.bin.node)
-        }
 
         if (isWindows()) {
-            if (isWindows()) {
-                try {
-                    wsys.execIn(ipaths.get(), `${ipaths.bin.node.npm_exe.abs().get()} i`);
-                } catch (err) {
-                    console.warn("bundled npm install failed, retrying with system npm...", err);
-                    wsys.execIn(ipaths.get(), `npm i`);
-                }
+            try {
+                wsys.execIn(ipaths.get(), `${ipaths.bin.node.npm_exe.abs().get()} i`);
+            } catch (err) {
+                console.warn("bundled npm install failed, retrying with system npm...", err);
+                wsys.execIn(ipaths.get(), `npm i`);
             }
         } else {
             wsys.execIn(ipaths.get(), 'npm i');
