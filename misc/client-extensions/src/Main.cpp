@@ -98,10 +98,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
             LOG_INFO << "Thread Made";
             Main::startup();
             LOG_INFO << "Main Done";
+            Main::StartDHV();
+            LOG_INFO << "StartDHV Done";
             return 0;
         }, nullptr, 0, nullptr);
-        // Startup DHV
-        Main::StartDHV();
     }
     return TRUE;
 }
