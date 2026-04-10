@@ -62,6 +62,17 @@ void LobbyHandler::Register(OpcodeDispatcher &dispatcher)
         bool automatic = reader.readBool();
         float threshold = std::round(reader.readFloat() * 100.0f - 100.0f);
         DiscordManager::Get()->SetVADThreshold(automatic, threshold); });
+
+    dispatcher.Register(Opcode::CMSG_DISCORD_SET_GAME_PRESENCE, [this](Opcode op, PacketReader reader)
+                        {
+        std::string characterName = reader.readString();
+        uint32_t characterLevel = reader.readUInt32();
+        std::string className = reader.readString();
+        std::string zoneName = reader.readString();
+        DiscordManager::Get()->SetGamePresence(characterName, characterLevel, className, zoneName); });
+
+    dispatcher.Register(Opcode::CMSG_DISCORD_CLEAR_GAME_PRESENCE, [this](Opcode op, PacketReader reader)
+                        { DiscordManager::Get()->ClearGamePresence(); });
 }
 
 void LobbyHandler::Unregister(OpcodeDispatcher &dispatcher)
@@ -80,4 +91,6 @@ void LobbyHandler::Unregister(OpcodeDispatcher &dispatcher)
     dispatcher.Unregister(Opcode::CMSG_VOICE_SET_PTT_RELEASE_DELAY);
     dispatcher.Unregister(Opcode::CMSG_VOICE_SET_VAD_THRESHOLD);
     dispatcher.Unregister(Opcode::CMSG_VOICE_SET_AUDIO_MODE);
+    dispatcher.Unregister(Opcode::CMSG_DISCORD_SET_GAME_PRESENCE);
+    dispatcher.Unregister(Opcode::CMSG_DISCORD_CLEAR_GAME_PRESENCE);
 }

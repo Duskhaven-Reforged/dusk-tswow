@@ -30,6 +30,10 @@ class Opcode
         CMSG_VOICE_SET_VAD_THRESHOLD     = 0x1132, // bool automatic, float threshold
         CMSG_VOICE_SET_AUDIO_MODE        = 0x1133, // uint32 mode enum (your own)
 
+        // Rich presence
+        CMSG_DISCORD_SET_GAME_PRESENCE   = 0x1200, // characterName, level, className, zoneName
+        CMSG_DISCORD_CLEAR_GAME_PRESENCE = 0x1201, // (no payload)
+
         // ---------------------------------------------------------
         // Server/SDK -> Client push (new)
         // ---------------------------------------------------------

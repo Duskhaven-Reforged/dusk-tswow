@@ -1,8 +1,93 @@
 ﻿#define DISCORDPP_IMPLEMENTATION
 #include "discordpp.h"
 #include "DiscordManager.h"
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <chrono>
+#include <optional>
+#include <utility>
+
+namespace
+{
+std::string TrimWhitespace(std::string value)
+{
+    auto isSpace = [](unsigned char ch) { return std::isspace(ch) != 0; };
+    auto begin = std::find_if_not(value.begin(), value.end(), isSpace);
+    if (begin == value.end())
+    {
+        return {};
+    }
+
+    auto end = std::find_if_not(value.rbegin(), value.rend(), isSpace).base();
+    return std::string(begin, end);
+}
+
+std::optional<std::string> ClampActivityField(std::string value, size_t maxLength = 128)
+{
+    value = TrimWhitespace(std::move(value));
+    if (value.size() < 2)
+    {
+        return std::nullopt;
+    }
+
+    if (value.size() > maxLength)
+    {
+        value.resize(maxLength);
+    }
+
+    return value;
+}
+
+std::optional<std::string> BuildActivityDetails(
+    std::string const& characterName,
+    uint32_t characterLevel,
+    std::string const& className)
+{
+    std::string details;
+    if (!characterName.empty())
+    {
+        details = characterName;
+    }
+
+    if (characterLevel > 0)
+    {
+        if (!details.empty())
+        {
+            details += ", Level";
+        }
+        details += std::to_string(characterLevel);
+    }
+
+    if (!className.empty())
+    {
+        if (!details.empty())
+        {
+            details += " ";
+        }
+        details += className;
+    }
+
+    return ClampActivityField(std::move(details));
+}
+
+std::optional<std::string> BuildActivityState(std::string const& zoneName)
+{
+    if (zoneName.empty())
+    {
+        return std::nullopt;
+    }
+
+    return ClampActivityField("In " + zoneName);
+}
+
+uint64_t CurrentUnixMilliseconds()
+{
+    using namespace std::chrono;
+    return static_cast<uint64_t>(
+        duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
+}
+}
 
 DiscordManager *DiscordManager::instance_ = nullptr;
 
@@ -132,10 +217,40 @@ void DiscordManager::UpdateActivity()
     if (!isReady_ || !client_)
         return;
 
+    auto details = BuildActivityDetails(activityCharacterName_, activityCharacterLevel_, activityClassName_);
+    auto state = BuildActivityState(activityZoneName_);
+    if (!details.has_value() && !state.has_value())
+    {
+        client_->ClearRichPresence();
+        std::cout << "🎮 Rich Presence cleared\n";
+        return;
+    }
+
     discordpp::Activity activity;
     activity.SetType(discordpp::ActivityTypes::Playing);
-    activity.SetState("In Competitive Match");
-    activity.SetDetails("Rank: Diamond II");
+    if (details.has_value())
+    {
+        activity.SetDetails(*details);
+        activity.SetStatusDisplayType(
+            std::optional<discordpp::StatusDisplayTypes>(discordpp::StatusDisplayTypes::Details));
+    }
+    else if (state.has_value())
+    {
+        activity.SetStatusDisplayType(
+            std::optional<discordpp::StatusDisplayTypes>(discordpp::StatusDisplayTypes::State));
+    }
+
+    if (state.has_value())
+    {
+        activity.SetState(*state);
+    }
+
+    if (activityStartMs_.has_value())
+    {
+        discordpp::ActivityTimestamps timestamps;
+        timestamps.SetStart(*activityStartMs_);
+        activity.SetTimestamps(std::optional<discordpp::ActivityTimestamps>(timestamps));
+    }
 
     client_->UpdateRichPresence(activity, [](discordpp::ClientResult result)
                                 {
@@ -144,6 +259,32 @@ void DiscordManager::UpdateActivity()
         } else {
             std::cerr << "❌ Rich Presence update failed\n";
         } });
+}
+
+void DiscordManager::SetGamePresence(
+    std::string characterName,
+    uint32_t characterLevel,
+    std::string className,
+    std::string zoneName)
+{
+    Enqueue(
+        [this,
+         characterName = std::move(characterName),
+         characterLevel,
+         className = std::move(className),
+         zoneName = std::move(zoneName)]() mutable
+        {
+            SetGamePresence_Internal(
+                std::move(characterName),
+                characterLevel,
+                std::move(className),
+                std::move(zoneName));
+        });
+}
+
+void DiscordManager::ClearGamePresence()
+{
+    Enqueue([this]() { ClearGamePresence_Internal(); });
 }
 
 // -----------------------------------------------------------------------------
@@ -243,6 +384,65 @@ void DiscordManager::SetAudioMode(discordpp::AudioModeType mode)
 {
     Enqueue([this, mode]()
             { SetAudioMode_Internal(mode); });
+}
+
+void DiscordManager::SetGamePresence_Internal(
+    std::string characterName,
+    uint32_t characterLevel,
+    std::string className,
+    std::string zoneName)
+{
+    characterName = TrimWhitespace(std::move(characterName));
+    className = TrimWhitespace(std::move(className));
+    zoneName = TrimWhitespace(std::move(zoneName));
+
+    const bool changed = characterName != activityCharacterName_ ||
+                         characterLevel != activityCharacterLevel_ ||
+                         className != activityClassName_ ||
+                         zoneName != activityZoneName_;
+    if (!changed)
+    {
+        return;
+    }
+
+    activityCharacterName_ = std::move(characterName);
+    activityCharacterLevel_ = characterLevel;
+    activityClassName_ = std::move(className);
+    activityZoneName_ = std::move(zoneName);
+
+    if (activityCharacterName_.empty() &&
+        activityCharacterLevel_ == 0 &&
+        activityClassName_.empty() &&
+        activityZoneName_.empty())
+    {
+        activityStartMs_.reset();
+    }
+    else if (!activityStartMs_.has_value())
+    {
+        activityStartMs_ = CurrentUnixMilliseconds();
+    }
+
+    UpdateActivity();
+}
+
+void DiscordManager::ClearGamePresence_Internal()
+{
+    if (activityCharacterName_.empty() &&
+        activityCharacterLevel_ == 0 &&
+        activityClassName_.empty() &&
+        activityZoneName_.empty() &&
+        !activityStartMs_.has_value())
+    {
+        return;
+    }
+
+    activityCharacterName_.clear();
+    activityCharacterLevel_ = 0;
+    activityClassName_.clear();
+    activityZoneName_.clear();
+    activityStartMs_.reset();
+
+    UpdateActivity();
 }
 
 std::vector<uint64_t> DiscordManager::GetParticipants() const

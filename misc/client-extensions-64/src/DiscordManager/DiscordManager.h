@@ -39,6 +39,8 @@ public:
 
 	// Helper methods
 	void UpdateActivity();
+	void SetGamePresence(std::string characterName, uint32_t characterLevel, std::string className, std::string zoneName);
+	void ClearGamePresence();
 
 	// ---- Voice helpers (thread-safe wrappers; enqueue onto SDK thread) ----
 	// Lobby + Call
@@ -104,7 +106,15 @@ private:
 	void SetPTTReleaseDelay_Internal(uint32_t releaseDelayMs);
 	void SetVADThreshold_Internal(bool automatic, float threshold);
 	void SetAudioMode_Internal(discordpp::AudioModeType mode);
+	void SetGamePresence_Internal(std::string characterName, uint32_t characterLevel, std::string className, std::string zoneName);
+	void ClearGamePresence_Internal();
 
 	void HookCallCallbacks();
 	void ClearCallCaches();
+
+	std::string activityCharacterName_;
+	std::string activityClassName_;
+	uint32_t activityCharacterLevel_ = 0;
+	std::string activityZoneName_;
+	std::optional<uint64_t> activityStartMs_;
 };
