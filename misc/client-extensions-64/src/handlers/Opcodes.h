@@ -32,6 +32,13 @@ public:
         CMSG_VOICE_SET_VAD_THRESHOLD = 0x1132,     // bool automatic, float threshold
         CMSG_VOICE_SET_AUDIO_MODE = 0x1133,        // uint32 mode enum (your own)
 
+        // Device / processing controls
+        CMSG_VOICE_SET_INPUT_DEVICE = 0x1140,           // string deviceId, empty = default
+        CMSG_VOICE_SET_OUTPUT_DEVICE = 0x1141,          // string deviceId, empty = default
+        CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL = 0x1142, // bool
+        CMSG_VOICE_SET_ECHO_CANCELLATION = 0x1143,      // bool
+        CMSG_VOICE_SET_NOISE_SUPPRESSION = 0x1144,      // bool
+
         // Rich presence
         CMSG_DISCORD_SET_GAME_PRESENCE = 0x1200,   // characterName, level, className, zoneName
         CMSG_DISCORD_CLEAR_GAME_PRESENCE = 0x1201, // (no payload)

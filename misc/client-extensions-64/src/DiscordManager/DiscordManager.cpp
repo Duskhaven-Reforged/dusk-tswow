@@ -585,6 +585,36 @@ void DiscordManager::SetAudioMode(discordpp::AudioModeType mode)
             { SetAudioMode_Internal(mode); });
 }
 
+void DiscordManager::SetInputDevice(const std::string &deviceId)
+{
+    Enqueue([this, deviceId]()
+            { SetInputDevice_Internal(deviceId); });
+}
+
+void DiscordManager::SetOutputDevice(const std::string &deviceId)
+{
+    Enqueue([this, deviceId]()
+            { SetOutputDevice_Internal(deviceId); });
+}
+
+void DiscordManager::SetAutomaticGainControl(bool enabled)
+{
+    Enqueue([this, enabled]()
+            { SetAutomaticGainControl_Internal(enabled); });
+}
+
+void DiscordManager::SetEchoCancellation(bool enabled)
+{
+    Enqueue([this, enabled]()
+            { SetEchoCancellation_Internal(enabled); });
+}
+
+void DiscordManager::SetNoiseSuppression(bool enabled)
+{
+    Enqueue([this, enabled]()
+            { SetNoiseSuppression_Internal(enabled); });
+}
+
 void DiscordManager::SetGamePresence_Internal(
     std::string characterName,
     uint32_t characterLevel,
@@ -686,6 +716,9 @@ void DiscordManager::StartCall_Internal(uint64_t lobbyId)
     // Apply cached settings immediately.
     call_->SetSelfMute(selfMuted_.load());
     call_->SetSelfDeaf(selfDeafened_.load());
+    call_->SetAudioMode(static_cast<discordpp::AudioModeType>(audioMode_.load()));
+    call_->SetPTTReleaseDelay(pttReleaseDelayMs_.load());
+    call_->SetVADThreshold(vadAutomatic_.load(), vadThreshold_.load());
     call_->SetPTTActive(false);
 
     HookCallCallbacks();
@@ -814,6 +847,7 @@ void DiscordManager::SetPTTActive_Internal(bool active)
 
 void DiscordManager::SetPTTReleaseDelay_Internal(uint32_t releaseDelayMs)
 {
+    pttReleaseDelayMs_ = releaseDelayMs;
     if (!isReady_ || !client_)
         return;
     if (call_ && *call_)
@@ -824,6 +858,8 @@ void DiscordManager::SetPTTReleaseDelay_Internal(uint32_t releaseDelayMs)
 
 void DiscordManager::SetVADThreshold_Internal(bool automatic, float threshold)
 {
+    vadAutomatic_ = automatic;
+    vadThreshold_ = threshold;
     if (!isReady_ || !client_)
         return;
     if (call_ && *call_)
@@ -834,12 +870,72 @@ void DiscordManager::SetVADThreshold_Internal(bool automatic, float threshold)
 
 void DiscordManager::SetAudioMode_Internal(discordpp::AudioModeType mode)
 {
+    audioMode_ = static_cast<uint32_t>(mode);
     if (!isReady_ || !client_)
         return;
     if (call_ && *call_)
     {
         call_->SetAudioMode(mode);
     }
+}
+
+void DiscordManager::SetInputDevice_Internal(std::string deviceId)
+{
+    if (!isReady_ || !client_)
+        return;
+
+    if (deviceId.empty())
+    {
+        deviceId = discordpp::Client::GetDefaultAudioDeviceId();
+    }
+
+    client_->SetInputDevice(deviceId, [deviceId](discordpp::ClientResult result)
+                            {
+        if (result.Successful()) {
+            std::cout << "Input device updated: " << deviceId << std::endl;
+        } else {
+            std::cerr << "Failed to set input device: " << result.Error() << std::endl;
+        } });
+}
+
+void DiscordManager::SetOutputDevice_Internal(std::string deviceId)
+{
+    if (!isReady_ || !client_)
+        return;
+
+    if (deviceId.empty())
+    {
+        deviceId = discordpp::Client::GetDefaultAudioDeviceId();
+    }
+
+    client_->SetOutputDevice(deviceId, [deviceId](discordpp::ClientResult result)
+                             {
+        if (result.Successful()) {
+            std::cout << "Output device updated: " << deviceId << std::endl;
+        } else {
+            std::cerr << "Failed to set output device: " << result.Error() << std::endl;
+        } });
+}
+
+void DiscordManager::SetAutomaticGainControl_Internal(bool enabled)
+{
+    if (!isReady_ || !client_)
+        return;
+    client_->SetAutomaticGainControl(enabled);
+}
+
+void DiscordManager::SetEchoCancellation_Internal(bool enabled)
+{
+    if (!isReady_ || !client_)
+        return;
+    client_->SetEchoCancellation(enabled);
+}
+
+void DiscordManager::SetNoiseSuppression_Internal(bool enabled)
+{
+    if (!isReady_ || !client_)
+        return;
+    client_->SetNoiseSuppression(enabled);
 }
 
 void DiscordManager::HookCallCallbacks()

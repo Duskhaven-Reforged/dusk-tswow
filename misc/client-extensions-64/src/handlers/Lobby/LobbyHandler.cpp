@@ -63,6 +63,36 @@ void LobbyHandler::Register(OpcodeDispatcher &dispatcher)
         float threshold = std::round(reader.readFloat() * 100.0f - 100.0f);
         DiscordManager::Get()->SetVADThreshold(automatic, threshold); });
 
+    dispatcher.Register(Opcode::CMSG_VOICE_SET_AUDIO_MODE, [this](Opcode op, PacketReader reader)
+                        {
+        uint32_t mode = reader.readUInt32();
+        DiscordManager::Get()->SetAudioMode(static_cast<discordpp::AudioModeType>(mode)); });
+
+    dispatcher.Register(Opcode::CMSG_VOICE_SET_INPUT_DEVICE, [this](Opcode op, PacketReader reader)
+                        {
+        std::string deviceId = reader.readString();
+        DiscordManager::Get()->SetInputDevice(deviceId); });
+
+    dispatcher.Register(Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE, [this](Opcode op, PacketReader reader)
+                        {
+        std::string deviceId = reader.readString();
+        DiscordManager::Get()->SetOutputDevice(deviceId); });
+
+    dispatcher.Register(Opcode::CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL, [this](Opcode op, PacketReader reader)
+                        {
+        bool enabled = reader.readBool();
+        DiscordManager::Get()->SetAutomaticGainControl(enabled); });
+
+    dispatcher.Register(Opcode::CMSG_VOICE_SET_ECHO_CANCELLATION, [this](Opcode op, PacketReader reader)
+                        {
+        bool enabled = reader.readBool();
+        DiscordManager::Get()->SetEchoCancellation(enabled); });
+
+    dispatcher.Register(Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION, [this](Opcode op, PacketReader reader)
+                        {
+        bool enabled = reader.readBool();
+        DiscordManager::Get()->SetNoiseSuppression(enabled); });
+
     dispatcher.Register(Opcode::CMSG_DISCORD_SET_GAME_PRESENCE, [this](Opcode op, PacketReader reader)
                         {
         std::string characterName = reader.readString();
@@ -91,6 +121,11 @@ void LobbyHandler::Unregister(OpcodeDispatcher &dispatcher)
     dispatcher.Unregister(Opcode::CMSG_VOICE_SET_PTT_RELEASE_DELAY);
     dispatcher.Unregister(Opcode::CMSG_VOICE_SET_VAD_THRESHOLD);
     dispatcher.Unregister(Opcode::CMSG_VOICE_SET_AUDIO_MODE);
+    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_INPUT_DEVICE);
+    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE);
+    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL);
+    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_ECHO_CANCELLATION);
+    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION);
     dispatcher.Unregister(Opcode::CMSG_DISCORD_SET_GAME_PRESENCE);
     dispatcher.Unregister(Opcode::CMSG_DISCORD_CLEAR_GAME_PRESENCE);
 }

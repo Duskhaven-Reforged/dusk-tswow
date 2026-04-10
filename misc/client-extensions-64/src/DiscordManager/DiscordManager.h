@@ -61,6 +61,11 @@ public:
 	void SetPTTReleaseDelay(uint32_t releaseDelayMs);
 	void SetVADThreshold(bool automatic, float threshold);
 	void SetAudioMode(discordpp::AudioModeType mode);
+	void SetInputDevice(const std::string& deviceId);
+	void SetOutputDevice(const std::string& deviceId);
+	void SetAutomaticGainControl(bool enabled);
+	void SetEchoCancellation(bool enabled);
+	void SetNoiseSuppression(bool enabled);
 
 	// Convenience / state accessors (best-effort; mirrors last values we set)
 	bool IsInCall() const { return inCall_; }
@@ -96,6 +101,10 @@ private:
 	std::atomic<bool> selfDeafened_{ false };
 	std::atomic<float> inputVolume_{ 1.0f };
 	std::atomic<float> outputVolume_{ 1.0f };
+	std::atomic<uint32_t> audioMode_{ static_cast<uint32_t>(discordpp::AudioModeType::MODE_VAD) };
+	std::atomic<uint32_t> pttReleaseDelayMs_{ 0 };
+	std::atomic<bool> vadAutomatic_{ true };
+	std::atomic<float> vadThreshold_{ 0.0f };
 
 	// Current active call (lives on SDK thread; guarded access via Enqueue/callback updates)
 	std::optional<discordpp::Call> call_;
@@ -119,6 +128,11 @@ private:
 	void SetPTTReleaseDelay_Internal(uint32_t releaseDelayMs);
 	void SetVADThreshold_Internal(bool automatic, float threshold);
 	void SetAudioMode_Internal(discordpp::AudioModeType mode);
+	void SetInputDevice_Internal(std::string deviceId);
+	void SetOutputDevice_Internal(std::string deviceId);
+	void SetAutomaticGainControl_Internal(bool enabled);
+	void SetEchoCancellation_Internal(bool enabled);
+	void SetNoiseSuppression_Internal(bool enabled);
 	void SetGamePresence_Internal(std::string characterName, uint32_t characterLevel, std::string className, std::string zoneName);
 	void ClearGamePresence_Internal();
 

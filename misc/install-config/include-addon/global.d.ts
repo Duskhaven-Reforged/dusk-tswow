@@ -123,7 +123,17 @@ declare function VoiceSetSelfMute(muted: boolean): void;
 declare function VoiceSetSelfDeaf(deaf: boolean): void;
 declare function VoiceSetInputVolume(volume01: number): void;
 declare function VoiceSetOutputVolume(volume01: number): void;
+declare function VoiceSetLocalMute(userId: number, muted: boolean): void;
+declare function VoiceSetUserVolume(userId: number, volume01: number): void;
 declare function VoiceSetPTTActive(active: boolean): void;
+declare function VoiceSetPTTReleaseDelay(ms: number): void;
+declare function VoiceSetVADThreshold(automatic: boolean, threshold: number): void;
+declare function VoiceSetAudioMode(mode: number): void;
+declare function VoiceSetInputDevice(deviceId?: string): void;
+declare function VoiceSetOutputDevice(deviceId?: string): void;
+declare function VoiceSetAutomaticGainControl(enabled: boolean): void;
+declare function VoiceSetEchoCancellation(enabled: boolean): void;
+declare function VoiceSetNoiseSuppression(enabled: boolean): void;
 
 declare function GetCVar(cvar: string): any
 declare function SetCVar(cvar: string, value: any): void
