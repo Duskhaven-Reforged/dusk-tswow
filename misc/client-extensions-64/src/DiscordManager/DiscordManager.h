@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 #include <optional>
+#include "DiscordTokenStore.h"
 #include "../discordpp.h"
 #include "../IPC/CommandQueue.h"
 
@@ -76,6 +77,18 @@ public:
 	void OnDisconnect(discordpp::Client::Error error, int32_t errorDetail);
 
 private:
+	void BeginAuthentication(uint64_t appId);
+	void BeginInteractiveAuthorization(uint64_t appId);
+	void RefreshCachedToken(uint64_t appId, std::string refreshToken);
+	void ApplyAccessToken(discordpp::AuthorizationTokenType tokenType, std::string accessToken);
+	void SaveCachedToken(
+		discordpp::AuthorizationTokenType tokenType,
+		std::string accessToken,
+		std::string refreshToken,
+		int32_t expiresIn,
+		std::string scopes);
+	void ClearCachedToken();
+
 	// Voice state we track locally (not authoritative, but useful for UI)
 	std::atomic<uint64_t> activeLobbyId_{ 0 };
 	std::atomic<bool> inCall_{ false };
@@ -117,4 +130,11 @@ private:
 	uint32_t activityCharacterLevel_ = 0;
 	std::string activityZoneName_;
 	std::optional<uint64_t> activityStartMs_;
+
+	uint64_t applicationId_ = 0;
+	bool usingCachedAccessToken_ = false;
+	bool refreshAttempted_ = false;
+	bool interactiveAuthAttempted_ = false;
+	bool interactiveAuthInProgress_ = false;
+	std::optional<DiscordTokenStore::CachedToken> cachedToken_;
 };

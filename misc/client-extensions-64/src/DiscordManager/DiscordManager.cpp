@@ -3,13 +3,15 @@
 #include "DiscordManager.h"
 #include <algorithm>
 #include <cctype>
-#include <iostream>
 #include <chrono>
+#include <iostream>
 #include <optional>
 #include <utility>
 
 namespace
 {
+constexpr uint64_t kAccessTokenRefreshLeadTimeMs = 24ull * 60ull * 60ull * 1000ull;
+
 std::string TrimWhitespace(std::string value)
 {
     auto isSpace = [](unsigned char ch) { return std::isspace(ch) != 0; };
@@ -87,6 +89,33 @@ uint64_t CurrentUnixMilliseconds()
     return static_cast<uint64_t>(
         duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
 }
+
+bool ShouldRefreshCachedAccessToken(DiscordTokenStore::CachedToken const& token)
+{
+    if (token.accessToken.empty() || token.accessTokenExpiresAtMs == 0)
+    {
+        return true;
+    }
+
+    uint64_t now = CurrentUnixMilliseconds();
+    return now + kAccessTokenRefreshLeadTimeMs >= token.accessTokenExpiresAtMs;
+}
+
+bool HasUnexpiredCachedAccessToken(DiscordTokenStore::CachedToken const& token)
+{
+    if (token.accessToken.empty() || token.accessTokenExpiresAtMs == 0)
+    {
+        return false;
+    }
+
+    return CurrentUnixMilliseconds() < token.accessTokenExpiresAtMs;
+}
+
+std::string BuildRequestedScopes()
+{
+    return discordpp::Client::GetDefaultPresenceScopes() + " " +
+           discordpp::Client::GetDefaultCommunicationScopes();
+}
 }
 
 DiscordManager *DiscordManager::instance_ = nullptr;
@@ -119,6 +148,12 @@ void DiscordManager::Stop()
 void DiscordManager::ThreadMain(uint64_t appId)
 {
     std::cout << "🚀 Initializing Discord SDK in DiscordManager...\n";
+    applicationId_ = appId;
+    usingCachedAccessToken_ = false;
+    refreshAttempted_ = false;
+    interactiveAuthAttempted_ = false;
+    interactiveAuthInProgress_ = false;
+    cachedToken_.reset();
 
     // Create client
     client_ = std::make_shared<discordpp::Client>();
@@ -140,36 +175,7 @@ void DiscordManager::ThreadMain(uint64_t appId)
             OnDisconnect(error, errorDetail);
         } });
 
-    // TODO: eventually write this somewhere so i dont ask every time
-    auto codeVerifier = client_->CreateAuthorizationCodeVerifier();
-    discordpp::AuthorizationArgs args{};
-    args.SetClientId(appId);
-    args.SetScopes(discordpp::Client::GetDefaultPresenceScopes());
-    args.SetScopes(discordpp::Client::GetDefaultCommunicationScopes());
-    args.SetCodeChallenge(codeVerifier.Challenge());
-
-    client_->Authorize(args, [this, codeVerifier, appId](auto result, auto code, auto redirectUri)
-                       {
-        if (!result.Successful()) {
-            std::cerr << "❌ Authentication Error: " << result.Error() << std::endl;
-            return;
-        }
-        std::cout << "✅ Authorization successful! Getting access token...\n";
-        client_->GetToken(appId, code, codeVerifier.Verifier(), redirectUri,
-            [this](discordpp::ClientResult result,
-                std::string accessToken,
-                std::string refreshToken,
-                discordpp::AuthorizationTokenType tokenType,
-                int32_t expiresIn,
-                std::string scope) {
-                    std::cout << "🔓 Access token received! Establishing connection...\n";
-                    client_->UpdateToken(discordpp::AuthorizationTokenType::Bearer, accessToken, [this](discordpp::ClientResult result) {
-                        if (result.Successful()) {
-                             std::cout << "🔑 Token updated, connecting to Discord...\n";
-                             client_->Connect();
-                        }
-                    });
-            }); });
+    BeginAuthentication(appId);
 
     // Main loop
     while (running_)
@@ -195,6 +201,12 @@ void DiscordManager::ThreadMain(uint64_t appId)
     activeLobbyId_ = 0;
     selfMuted_ = false;
     selfDeafened_ = false;
+    applicationId_ = 0;
+    usingCachedAccessToken_ = false;
+    refreshAttempted_ = false;
+    interactiveAuthAttempted_ = false;
+    interactiveAuthInProgress_ = false;
+    cachedToken_.reset();
     ClearCallCaches();
     call_.reset();
     client_.reset();
@@ -210,6 +222,193 @@ void DiscordManager::OnConnect()
     isReady_ = true;
 
     UpdateActivity();
+}
+
+void DiscordManager::BeginAuthentication(uint64_t appId)
+{
+    if (!client_)
+    {
+        return;
+    }
+
+    auto cachedToken = DiscordTokenStore::Load(appId);
+    if (cachedToken.has_value())
+    {
+        cachedToken_ = std::move(cachedToken);
+
+        if (!ShouldRefreshCachedAccessToken(*cachedToken_))
+        {
+            usingCachedAccessToken_ = true;
+            std::cout << "[Auth] Using cached Discord access token\n";
+            ApplyAccessToken(cachedToken_->tokenType, cachedToken_->accessToken);
+            return;
+        }
+
+        if (!cachedToken_->refreshToken.empty())
+        {
+            refreshAttempted_ = true;
+            std::cout << "[Auth] Refreshing cached Discord token\n";
+            RefreshCachedToken(appId, cachedToken_->refreshToken);
+            return;
+        }
+    }
+
+    BeginInteractiveAuthorization(appId);
+}
+
+void DiscordManager::BeginInteractiveAuthorization(uint64_t appId)
+{
+    if (!client_ || interactiveAuthInProgress_)
+    {
+        return;
+    }
+
+    interactiveAuthAttempted_ = true;
+    interactiveAuthInProgress_ = true;
+
+    auto codeVerifier = client_->CreateAuthorizationCodeVerifier();
+    discordpp::AuthorizationArgs args{};
+    args.SetClientId(appId);
+    args.SetScopes(BuildRequestedScopes());
+    args.SetCodeChallenge(codeVerifier.Challenge());
+
+    std::cout << "[Auth] Starting interactive Discord authorization\n";
+    client_->Authorize(args, [this, codeVerifier, appId](auto result, auto code, auto redirectUri)
+                       {
+        if (!result.Successful()) {
+            interactiveAuthInProgress_ = false;
+            std::cerr << "[Auth] Authentication error: " << result.Error() << std::endl;
+            return;
+        }
+        std::cout << "[Auth] Authorization successful, getting access token...\n";
+        client_->GetToken(appId, code, codeVerifier.Verifier(), redirectUri,
+            [this](discordpp::ClientResult result,
+                std::string accessToken,
+                std::string refreshToken,
+                discordpp::AuthorizationTokenType tokenType,
+                int32_t expiresIn,
+                std::string scopes) {
+                    interactiveAuthInProgress_ = false;
+                    if (!result.Successful()) {
+                        std::cerr << "[Auth] Failed to exchange authorization code: " << result.Error() << std::endl;
+                        return;
+                    }
+
+                    std::cout << "[Auth] Access token received from interactive authorization\n";
+                    SaveCachedToken(tokenType, accessToken, refreshToken, expiresIn, scopes);
+                    usingCachedAccessToken_ = false;
+                    refreshAttempted_ = true;
+                    ApplyAccessToken(tokenType, accessToken);
+            }); });
+}
+
+void DiscordManager::RefreshCachedToken(uint64_t appId, std::string refreshToken)
+{
+    if (!client_)
+    {
+        return;
+    }
+
+    client_->RefreshToken(
+        appId,
+        refreshToken,
+        [this](discordpp::ClientResult result,
+               std::string accessToken,
+               std::string newRefreshToken,
+               discordpp::AuthorizationTokenType tokenType,
+               int32_t expiresIn,
+               std::string scopes)
+        {
+            if (!result.Successful())
+            {
+                std::cerr << "[Auth] Failed to refresh cached Discord token: " << result.Error() << std::endl;
+                if (cachedToken_.has_value() && HasUnexpiredCachedAccessToken(*cachedToken_))
+                {
+                    usingCachedAccessToken_ = true;
+                    std::cout << "[Auth] Falling back to still-valid cached Discord access token\n";
+                    ApplyAccessToken(cachedToken_->tokenType, cachedToken_->accessToken);
+                    return;
+                }
+
+                if (!interactiveAuthAttempted_)
+                {
+                    ClearCachedToken();
+                    BeginInteractiveAuthorization(applicationId_);
+                }
+                return;
+            }
+
+            std::cout << "[Auth] Cached Discord token refreshed successfully\n";
+            SaveCachedToken(tokenType, accessToken, newRefreshToken, expiresIn, scopes);
+            usingCachedAccessToken_ = false;
+            ApplyAccessToken(tokenType, accessToken);
+        });
+}
+
+void DiscordManager::ApplyAccessToken(discordpp::AuthorizationTokenType tokenType, std::string accessToken)
+{
+    if (!client_)
+    {
+        return;
+    }
+
+    client_->UpdateToken(tokenType, accessToken, [this](discordpp::ClientResult result)
+                         {
+        if (result.Successful()) {
+            std::cout << "[Auth] Token updated, connecting to Discord...\n";
+            client_->Connect();
+            return;
+        }
+
+        std::cerr << "[Auth] Failed to update Discord token: " << result.Error() << std::endl;
+        if (usingCachedAccessToken_ &&
+            cachedToken_.has_value() &&
+            !refreshAttempted_ &&
+            !cachedToken_->refreshToken.empty()) {
+            usingCachedAccessToken_ = false;
+            refreshAttempted_ = true;
+            std::cout << "[Auth] Cached access token rejected, attempting refresh\n";
+            RefreshCachedToken(applicationId_, cachedToken_->refreshToken);
+            return;
+        }
+
+        ClearCachedToken();
+        if (!interactiveAuthAttempted_) {
+            BeginInteractiveAuthorization(applicationId_);
+        } });
+}
+
+void DiscordManager::SaveCachedToken(
+    discordpp::AuthorizationTokenType tokenType,
+    std::string accessToken,
+    std::string refreshToken,
+    int32_t expiresIn,
+    std::string scopes)
+{
+    DiscordTokenStore::CachedToken token{};
+    token.tokenType = tokenType;
+    token.accessToken = std::move(accessToken);
+    token.refreshToken = std::move(refreshToken);
+    token.scopes = std::move(scopes);
+    token.accessTokenExpiresAtMs = expiresIn > 0
+        ? CurrentUnixMilliseconds() + static_cast<uint64_t>(expiresIn) * 1000ull
+        : 0;
+
+    cachedToken_ = token;
+    if (!DiscordTokenStore::Save(applicationId_, token))
+    {
+        std::cerr << "[Auth] Failed to persist Discord token cache\n";
+    }
+}
+
+void DiscordManager::ClearCachedToken()
+{
+    cachedToken_.reset();
+    usingCachedAccessToken_ = false;
+    if (applicationId_ != 0)
+    {
+        DiscordTokenStore::Clear(applicationId_);
+    }
 }
 
 void DiscordManager::UpdateActivity()

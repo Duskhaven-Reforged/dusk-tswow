@@ -55,6 +55,9 @@ endif()
 
 # Link the Social SDK library
 target_link_libraries(ClientExtensions64 PRIVATE ${DISCORD_LIB_PATH})
+if(WIN32)
+    target_link_libraries(ClientExtensions64 PRIVATE Crypt32)
+endif()
 
 # Set the runtime search path (RPATH) for Linux and macOS
 if(UNIX)
