@@ -3,6 +3,7 @@
 #include <Character/CharacterExtensions.h>
 #include <Character/CharacterFixes.h>
 #include <Misc/MiscFixes.h>
+#include <Rendering/M2ModelPatches.h>
 #include <Spells/Spells.h>
 #include <Tooltip/ItemTooltipExtensions.h>
 #include <Tooltip/SpellTooltipExtensions.h>

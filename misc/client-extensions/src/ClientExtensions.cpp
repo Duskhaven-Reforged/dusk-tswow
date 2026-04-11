@@ -5,6 +5,8 @@
 #include <Windows.h>
 
 void ClientExtensions::initialize() {
+    M2ModelPatches::Apply();
+    LOG_INFO << "M2 model patches applied";
     CDBCMgr::Load();
     LOG_INFO << "Custom DBCs loaded";
     CharacterFixes::CharacterCreationFixes();
