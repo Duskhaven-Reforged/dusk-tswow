@@ -11,6 +11,7 @@
 #include <FrameXMLExtensions.h>
 #include <Logger.h>
 #include "IPC/IPCTest.h"
+#include "IPC/VoiceUpdateIPC.h"
 
 #include <vector>
 
@@ -36,6 +37,8 @@ class Main
         LOG_INFO << "Client arguments initialized";
         ClientExtensions::initialize();
         LOG_INFO << "Client extensions initialized";
+        VoiceUpdateIPC::Start();
+        LOG_INFO << "Voice update IPC initialized";
         ClientDetours::Apply();
         LOG_INFO << "Client detours applied";
         FileIntegrity::RunStartupScan();

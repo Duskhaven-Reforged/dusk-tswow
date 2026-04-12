@@ -134,6 +134,7 @@ declare function VoiceSetOutputDevice(deviceId?: string): void;
 declare function VoiceSetAutomaticGainControl(enabled: boolean): void;
 declare function VoiceSetEchoCancellation(enabled: boolean): void;
 declare function VoiceSetNoiseSuppression(enabled: boolean): void;
+declare function getVoiceUpdateState(): LuaMultiReturn<[...Unknown[]]>;
 
 declare function GetCVar(cvar: string): any
 declare function SetCVar(cvar: string, value: any): void

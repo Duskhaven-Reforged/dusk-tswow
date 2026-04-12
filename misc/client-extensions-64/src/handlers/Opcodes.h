@@ -50,11 +50,14 @@ public:
         SMSG_LOBBY_LEFT = 0x2002,    // lobbyId
         SMSG_LOBBY_UPDATED = 0x2003, // lobbyId + fields, or "changed" flags
 
-        SMSG_VOICE_CALL_STATUS = 0x2100,  // lobbyId, status enum, errorCode?
-        SMSG_VOICE_PARTICIPANTS = 0x2101, // lobbyId, list(userId, flags...)
-        SMSG_VOICE_SPEAKING = 0x2102,     // lobbyId, userId, bool speaking
-        SMSG_VOICE_SELF_STATE = 0x2103,   // muted, deafened, inputVol, outputVol
-        SMSG_VOICE_ERROR = 0x21FF         // op, errorCode, message(optional)
+        SMSG_VOICE_CALL_STATUS = 0x2100,       // lobbyId, status enum, errorCode, errorDetail
+        SMSG_VOICE_PARTICIPANTS = 0x2101,      // lobbyId (clear/rebuild participant snapshot)
+        SMSG_VOICE_SPEAKING = 0x2102,          // lobbyId, userId, bool speaking
+        SMSG_VOICE_SELF_STATE = 0x2103,        // lobbyId, muted, deafened, inputVol, outputVol, mode...
+        SMSG_VOICE_PARTICIPANT_STATE = 0x2104, // lobbyId, userId, speaking, selfMute, selfDeaf, localMute, volume
+        SMSG_VOICE_DEVICES = 0x2105,           // bool inputDevices (clear/rebuild device snapshot)
+        SMSG_VOICE_DEVICE_STATE = 0x2106,      // bool inputDevices, deviceId, name, isDefault, isCurrent
+        SMSG_VOICE_ERROR = 0x21FF              // op, errorCode, message(optional)
     };
 
     constexpr Opcode() : value_(DEFAULT_VALUE) {}

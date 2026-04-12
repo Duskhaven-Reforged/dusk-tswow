@@ -12,6 +12,7 @@
 #include "DiscordTokenStore.h"
 #include "../discordpp.h"
 #include "../IPC/CommandQueue.h"
+#include "../IPC/UpdatePipeClient.h"
 
 class DiscordManager {
 public:
@@ -138,12 +139,26 @@ private:
 
 	void HookCallCallbacks();
 	void ClearCallCaches();
+	void ResetCallState(uint64_t previousLobbyId);
+	void ConfigureVoiceUpdateCallbacks();
+	void PushCallStatusUpdate(discordpp::Call::Status status,
+		discordpp::Call::Error error = discordpp::Call::Error::None,
+		int32_t errorDetail = 0);
+	void PushVoiceErrorUpdate(Opcode sourceOpcode, uint32_t errorCode, std::string message);
+	void PushSelfStateUpdate();
+	void PushSpeakingUpdate(uint64_t userId, bool speaking);
+	void PushParticipantsClear(uint64_t lobbyId);
+	void PushParticipantsSnapshot();
+	void PushParticipantStateUpdate(uint64_t userId);
+	void PushInputDevicesSnapshot();
+	void PushOutputDevicesSnapshot();
 
 	std::string activityCharacterName_;
 	std::string activityClassName_;
 	uint32_t activityCharacterLevel_ = 0;
 	std::string activityZoneName_;
 	std::optional<uint64_t> activityStartMs_;
+	UpdatePipeClient updatePipe_{ L"duskhaven_social_sdk_updates_pipe" };
 
 	uint64_t applicationId_ = 0;
 	bool usingCachedAccessToken_ = false;

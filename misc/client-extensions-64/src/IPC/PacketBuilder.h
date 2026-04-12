@@ -130,6 +130,13 @@ public:
         return *this;
     }
 
+    MsgHeader header() const
+    {
+        MsgHeader hdr = header_;
+        hdr.length = static_cast<uint32_t>(buffer_.size());
+        return hdr;
+    }
+
     const std::vector<uint8_t> &bytes() const { return buffer_; }
 
 private:
