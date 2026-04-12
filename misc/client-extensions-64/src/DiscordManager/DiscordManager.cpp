@@ -134,6 +134,48 @@ std::string ClientResultMessage(const discordpp::ClientResult& result)
     std::string message = TrimWhitespace(result.Error());
     return message.empty() ? result.ToString() : message;
 }
+
+template <typename Writer>
+void SendUpdatePacket(UpdatePipeClient& updatePipe, Opcode opcode, Writer&& writer)
+{
+    auto packet = PacketBuilder::CreatePacket(opcode);
+    writer(packet);
+    updatePipe.Send(packet);
+}
+
+const char* DeviceTypeName(bool inputDevice)
+{
+    return inputDevice ? "input" : "output";
+}
+
+Opcode DeviceSetOpcode(bool inputDevice)
+{
+    return inputDevice ? Opcode::CMSG_VOICE_SET_INPUT_DEVICE
+                       : Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE;
+}
+
+void PushDeviceEntries(
+    UpdatePipeClient& updatePipe,
+    bool inputDevices,
+    const std::string& currentId,
+    const std::vector<discordpp::AudioDevice>& devices)
+{
+    SendUpdatePacket(updatePipe, Opcode::SMSG_VOICE_DEVICES, [inputDevices](PacketBuilder& packet)
+                     { packet.writeBool(inputDevices); });
+
+    for (const auto& device : devices)
+    {
+        const std::string deviceId = device.Id();
+        SendUpdatePacket(updatePipe, Opcode::SMSG_VOICE_DEVICE_STATE, [&](PacketBuilder& packet)
+                         {
+                             packet.writeBool(inputDevices);
+                             packet.writeString(deviceId);
+                             packet.writeString(device.Name());
+                             packet.writeBool(device.IsDefault());
+                             packet.writeBool(!currentId.empty() && deviceId == currentId);
+                         });
+    }
+}
 }
 
 DiscordManager *DiscordManager::instance_ = nullptr;
@@ -244,8 +286,8 @@ void DiscordManager::OnConnect()
     PushCallStatusUpdate(call_ && *call_ ? call_->GetStatus() : discordpp::Call::Status::Disconnected);
     PushSelfStateUpdate();
     PushParticipantsSnapshot();
-    PushInputDevicesSnapshot();
-    PushOutputDevicesSnapshot();
+    PushDevicesSnapshot(true);
+    PushDevicesSnapshot(false);
 }
 
 void DiscordManager::BeginAuthentication(uint64_t appId)
@@ -514,6 +556,18 @@ void DiscordManager::ClearGamePresence()
 // Voice (public thread-safe wrappers)
 // -----------------------------------------------------------------------------
 
+#define ENQUEUE_DISCORD_CALL0(Name, Body) \
+    void DiscordManager::Name() { Enqueue([this]() { Body; }); }
+
+#define ENQUEUE_DISCORD_CALL1(Name, Type1, Arg1, Body) \
+    void DiscordManager::Name(Type1 Arg1) { Enqueue([this, Arg1]() { Body; }); }
+
+#define ENQUEUE_DISCORD_CALL2(Name, Type1, Arg1, Type2, Arg2, Body) \
+    void DiscordManager::Name(Type1 Arg1, Type2 Arg2)               \
+    {                                                               \
+        Enqueue([this, Arg1, Arg2]() { Body; });                    \
+    }
+
 void DiscordManager::JoinLobbyAndCall(const std::string &lobbySecret)
 {
     Enqueue([this, lobbySecret]()
@@ -534,113 +588,28 @@ void DiscordManager::JoinLobbyAndCall(const std::string &lobbySecret)
 		}); });
 }
 
-void DiscordManager::StartCall(uint64_t lobbyId)
-{
-    Enqueue([this, lobbyId]()
-            { StartCall_Internal(lobbyId); });
-}
+ENQUEUE_DISCORD_CALL1(StartCall, uint64_t, lobbyId, StartCall_Internal(lobbyId))
+ENQUEUE_DISCORD_CALL0(LeaveCall, LeaveCall_Internal())
+ENQUEUE_DISCORD_CALL0(EndAllCalls, EndAllCalls_Internal())
+ENQUEUE_DISCORD_CALL1(SetInputVolume, float, volume01, SetInputVolume_Internal(volume01))
+ENQUEUE_DISCORD_CALL1(SetOutputVolume, float, volume01, SetOutputVolume_Internal(volume01))
+ENQUEUE_DISCORD_CALL1(SetSelfMute, bool, muted, SetSelfMute_Internal(muted))
+ENQUEUE_DISCORD_CALL1(SetSelfDeaf, bool, deafened, SetSelfDeaf_Internal(deafened))
+ENQUEUE_DISCORD_CALL2(SetLocalMute, uint64_t, userId, bool, muted, SetLocalMute_Internal(userId, muted))
+ENQUEUE_DISCORD_CALL2(SetParticipantVolume, uint64_t, userId, float, volume01, SetParticipantVolume_Internal(userId, volume01))
+ENQUEUE_DISCORD_CALL1(SetPTTActive, bool, active, SetPTTActive_Internal(active))
+ENQUEUE_DISCORD_CALL1(SetPTTReleaseDelay, uint32_t, releaseDelayMs, SetPTTReleaseDelay_Internal(releaseDelayMs))
+ENQUEUE_DISCORD_CALL2(SetVADThreshold, bool, automatic, float, threshold, SetVADThreshold_Internal(automatic, threshold))
+ENQUEUE_DISCORD_CALL1(SetAudioMode, discordpp::AudioModeType, mode, SetAudioMode_Internal(mode))
+ENQUEUE_DISCORD_CALL1(SetInputDevice, const std::string&, deviceId, SetDevice_Internal(true, deviceId))
+ENQUEUE_DISCORD_CALL1(SetOutputDevice, const std::string&, deviceId, SetDevice_Internal(false, deviceId))
+ENQUEUE_DISCORD_CALL1(SetAutomaticGainControl, bool, enabled, SetAutomaticGainControl_Internal(enabled))
+ENQUEUE_DISCORD_CALL1(SetEchoCancellation, bool, enabled, SetEchoCancellation_Internal(enabled))
+ENQUEUE_DISCORD_CALL1(SetNoiseSuppression, bool, enabled, SetNoiseSuppression_Internal(enabled))
 
-void DiscordManager::LeaveCall()
-{
-    Enqueue([this]()
-            { LeaveCall_Internal(); });
-}
-
-void DiscordManager::EndAllCalls()
-{
-    Enqueue([this]()
-            { EndAllCalls_Internal(); });
-}
-
-void DiscordManager::SetInputVolume(float volume01)
-{
-    Enqueue([this, volume01]()
-            { SetInputVolume_Internal(volume01); });
-}
-
-void DiscordManager::SetOutputVolume(float volume01)
-{
-    Enqueue([this, volume01]()
-            { SetOutputVolume_Internal(volume01); });
-}
-
-void DiscordManager::SetSelfMute(bool muted)
-{
-    Enqueue([this, muted]()
-            { SetSelfMute_Internal(muted); });
-}
-
-void DiscordManager::SetSelfDeaf(bool deafened)
-{
-    Enqueue([this, deafened]()
-            { SetSelfDeaf_Internal(deafened); });
-}
-
-void DiscordManager::SetLocalMute(uint64_t userId, bool muted)
-{
-    Enqueue([this, userId, muted]()
-            { SetLocalMute_Internal(userId, muted); });
-}
-
-void DiscordManager::SetParticipantVolume(uint64_t userId, float volume01)
-{
-    Enqueue([this, userId, volume01]()
-            { SetParticipantVolume_Internal(userId, volume01); });
-}
-
-void DiscordManager::SetPTTActive(bool active)
-{
-    Enqueue([this, active]()
-            { SetPTTActive_Internal(active); });
-}
-
-void DiscordManager::SetPTTReleaseDelay(uint32_t releaseDelayMs)
-{
-    Enqueue([this, releaseDelayMs]()
-            { SetPTTReleaseDelay_Internal(releaseDelayMs); });
-}
-
-void DiscordManager::SetVADThreshold(bool automatic, float threshold)
-{
-    Enqueue([this, automatic, threshold]()
-            { SetVADThreshold_Internal(automatic, threshold); });
-}
-
-void DiscordManager::SetAudioMode(discordpp::AudioModeType mode)
-{
-    Enqueue([this, mode]()
-            { SetAudioMode_Internal(mode); });
-}
-
-void DiscordManager::SetInputDevice(const std::string &deviceId)
-{
-    Enqueue([this, deviceId]()
-            { SetInputDevice_Internal(deviceId); });
-}
-
-void DiscordManager::SetOutputDevice(const std::string &deviceId)
-{
-    Enqueue([this, deviceId]()
-            { SetOutputDevice_Internal(deviceId); });
-}
-
-void DiscordManager::SetAutomaticGainControl(bool enabled)
-{
-    Enqueue([this, enabled]()
-            { SetAutomaticGainControl_Internal(enabled); });
-}
-
-void DiscordManager::SetEchoCancellation(bool enabled)
-{
-    Enqueue([this, enabled]()
-            { SetEchoCancellation_Internal(enabled); });
-}
-
-void DiscordManager::SetNoiseSuppression(bool enabled)
-{
-    Enqueue([this, enabled]()
-            { SetNoiseSuppression_Internal(enabled); });
-}
+#undef ENQUEUE_DISCORD_CALL0
+#undef ENQUEUE_DISCORD_CALL1
+#undef ENQUEUE_DISCORD_CALL2
 
 void DiscordManager::ConfigureVoiceUpdateCallbacks()
 {
@@ -654,8 +623,8 @@ void DiscordManager::ConfigureVoiceUpdateCallbacks()
                                      {
         (void)inputDevices;
         (void)outputDevices;
-        PushInputDevicesSnapshot();
-        PushOutputDevicesSnapshot(); });
+        PushDevicesSnapshot(true);
+        PushDevicesSnapshot(false); });
 }
 
 void DiscordManager::PushCallStatusUpdate(
@@ -663,64 +632,68 @@ void DiscordManager::PushCallStatusUpdate(
     discordpp::Call::Error error,
     int32_t errorDetail)
 {
-    auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_CALL_STATUS);
-    packet.writeUInt64(activeLobbyId_.load());
-    packet.writeUInt32(static_cast<uint32_t>(status));
-    packet.writeUInt32(static_cast<uint32_t>(error));
-    packet.writeUInt32(static_cast<uint32_t>(errorDetail));
-    updatePipe_.Send(packet);
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_CALL_STATUS, [&](PacketBuilder& packet)
+                     {
+                         packet.writeUInt64(activeLobbyId_.load());
+                         packet.writeUInt32(static_cast<uint32_t>(status));
+                         packet.writeUInt32(static_cast<uint32_t>(error));
+                         packet.writeUInt32(static_cast<uint32_t>(errorDetail));
+                     });
 }
 
 void DiscordManager::PushVoiceErrorUpdate(Opcode sourceOpcode, uint32_t errorCode, std::string message)
 {
-    auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_ERROR);
-    packet.writeUInt32(sourceOpcode.raw());
-    packet.writeUInt32(errorCode);
-    packet.writeString(message);
-    updatePipe_.Send(packet);
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_ERROR, [&](PacketBuilder& packet)
+                     {
+                         packet.writeUInt32(sourceOpcode.raw());
+                         packet.writeUInt32(errorCode);
+                         packet.writeString(message);
+                     });
 }
 
 void DiscordManager::PushSelfStateUpdate()
 {
-    auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_SELF_STATE);
-    packet.writeUInt64(activeLobbyId_.load());
-    packet.writeBool(selfMuted_.load());
-    packet.writeBool(selfDeafened_.load());
-    packet.writeFloat(inputVolume_.load());
-    packet.writeFloat(outputVolume_.load());
-    packet.writeUInt32(audioMode_.load());
-    packet.writeUInt32(pttReleaseDelayMs_.load());
-    packet.writeBool(vadAutomatic_.load());
-    packet.writeFloat(vadThreshold_.load());
-    updatePipe_.Send(packet);
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_SELF_STATE, [&](PacketBuilder& packet)
+                     {
+                         packet.writeUInt64(activeLobbyId_.load());
+                         packet.writeBool(selfMuted_.load());
+                         packet.writeBool(selfDeafened_.load());
+                         packet.writeFloat(inputVolume_.load());
+                         packet.writeFloat(outputVolume_.load());
+                         packet.writeUInt32(audioMode_.load());
+                         packet.writeUInt32(pttReleaseDelayMs_.load());
+                         packet.writeBool(vadAutomatic_.load());
+                         packet.writeFloat(vadThreshold_.load());
+                     });
 }
 
 void DiscordManager::PushSpeakingUpdate(uint64_t userId, bool speaking)
 {
-    auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_SPEAKING);
-    packet.writeUInt64(activeLobbyId_.load());
-    packet.writeUInt64(userId);
-    packet.writeBool(speaking);
-    updatePipe_.Send(packet);
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_SPEAKING, [&](PacketBuilder& packet)
+                     {
+                         packet.writeUInt64(activeLobbyId_.load());
+                         packet.writeUInt64(userId);
+                         packet.writeBool(speaking);
+                     });
 }
 
 void DiscordManager::PushParticipantsClear(uint64_t lobbyId)
 {
-    auto clearPacket = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_PARTICIPANTS);
-    clearPacket.writeUInt64(lobbyId);
-    updatePipe_.Send(clearPacket);
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_PARTICIPANTS, [lobbyId](PacketBuilder& packet)
+                     { packet.writeUInt64(lobbyId); });
 }
 
 void DiscordManager::PushParticipantsSnapshot()
 {
     PushParticipantsClear(activeLobbyId_.load());
 
-    if (!call_ || !(*call_))
+    auto* call = ActiveCall();
+    if (!call)
     {
         return;
     }
 
-    for (uint64_t userId : call_->GetParticipants())
+    for (uint64_t userId : call->GetParticipants())
     {
         PushParticipantStateUpdate(userId);
     }
@@ -728,7 +701,8 @@ void DiscordManager::PushParticipantsSnapshot()
 
 void DiscordManager::PushParticipantStateUpdate(uint64_t userId)
 {
-    if (!call_ || !(*call_))
+    auto* call = ActiveCall();
+    if (!call)
     {
         return;
     }
@@ -742,85 +716,63 @@ void DiscordManager::PushParticipantStateUpdate(uint64_t userId)
 
     bool selfMuted = false;
     bool selfDeafened = false;
-    if (auto voiceState = call_->GetVoiceStateHandle(userId); voiceState.has_value())
+    if (auto voiceState = call->GetVoiceStateHandle(userId); voiceState.has_value())
     {
         selfMuted = voiceState->SelfMute();
         selfDeafened = voiceState->SelfDeaf();
     }
 
-    auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_PARTICIPANT_STATE);
-    packet.writeUInt64(activeLobbyId_.load());
-    packet.writeUInt64(userId);
-    packet.writeBool(speaking);
-    packet.writeBool(selfMuted);
-    packet.writeBool(selfDeafened);
-    packet.writeBool(call_->GetLocalMute(userId));
-    packet.writeFloat(call_->GetParticipantVolume(userId));
-    updatePipe_.Send(packet);
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_PARTICIPANT_STATE, [&](PacketBuilder& packet)
+                     {
+                         packet.writeUInt64(activeLobbyId_.load());
+                         packet.writeUInt64(userId);
+                         packet.writeBool(speaking);
+                         packet.writeBool(selfMuted);
+                         packet.writeBool(selfDeafened);
+                         packet.writeBool(call->GetLocalMute(userId));
+                         packet.writeFloat(call->GetParticipantVolume(userId));
+                     });
 }
 
-void DiscordManager::PushInputDevicesSnapshot()
+void DiscordManager::PushDevicesSnapshot(bool inputDevices)
 {
     if (!client_)
     {
         return;
     }
 
-    client_->GetCurrentInputDevice([this](discordpp::AudioDevice currentDevice)
-                                   {
-        if (!client_) {
-            return;
-        }
-
-        client_->GetInputDevices([this, currentId = DeviceIdOrEmpty(currentDevice)](
-                                     std::vector<discordpp::AudioDevice> devices)
-                                 {
-            auto clearPacket = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_DEVICES);
-            clearPacket.writeBool(true);
-            updatePipe_.Send(clearPacket);
-
-            for (const discordpp::AudioDevice& device : devices) {
-                const std::string deviceId = device.Id();
-                auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_DEVICE_STATE);
-                packet.writeBool(true);
-                packet.writeString(deviceId);
-                packet.writeString(device.Name());
-                packet.writeBool(device.IsDefault());
-                packet.writeBool(!currentId.empty() && deviceId == currentId);
-                updatePipe_.Send(packet);
-            } }); });
-}
-
-void DiscordManager::PushOutputDevicesSnapshot()
-{
-    if (!client_)
+    auto pushDevices = [this, inputDevices](discordpp::AudioDevice currentDevice, std::vector<discordpp::AudioDevice> devices)
     {
+        PushDeviceEntries(updatePipe_, inputDevices, DeviceIdOrEmpty(currentDevice), devices);
+    };
+
+    if (inputDevices)
+    {
+        client_->GetCurrentInputDevice([this, pushDevices = std::move(pushDevices)](discordpp::AudioDevice currentDevice) mutable
+                                       {
+                                           if (!client_)
+                                           {
+                                               return;
+                                           }
+
+                                           client_->GetInputDevices(
+                                               [pushDevices = std::move(pushDevices), currentDevice](std::vector<discordpp::AudioDevice> devices) mutable
+                                               { pushDevices(currentDevice, std::move(devices)); });
+                                       });
         return;
     }
 
-    client_->GetCurrentOutputDevice([this](discordpp::AudioDevice currentDevice)
+    client_->GetCurrentOutputDevice([this, pushDevices = std::move(pushDevices)](discordpp::AudioDevice currentDevice) mutable
                                     {
-        if (!client_) {
-            return;
-        }
+                                        if (!client_)
+                                        {
+                                            return;
+                                        }
 
-        client_->GetOutputDevices([this, currentId = DeviceIdOrEmpty(currentDevice)](
-                                      std::vector<discordpp::AudioDevice> devices)
-                                  {
-            auto clearPacket = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_DEVICES);
-            clearPacket.writeBool(false);
-            updatePipe_.Send(clearPacket);
-
-            for (const discordpp::AudioDevice& device : devices) {
-                const std::string deviceId = device.Id();
-                auto packet = PacketBuilder::CreatePacket(Opcode::SMSG_VOICE_DEVICE_STATE);
-                packet.writeBool(false);
-                packet.writeString(deviceId);
-                packet.writeString(device.Name());
-                packet.writeBool(device.IsDefault());
-                packet.writeBool(!currentId.empty() && deviceId == currentId);
-                updatePipe_.Send(packet);
-            } }); });
+                                        client_->GetOutputDevices(
+                                            [pushDevices = std::move(pushDevices), currentDevice](std::vector<discordpp::AudioDevice> devices) mutable
+                                            { pushDevices(currentDevice, std::move(devices)); });
+                                    });
 }
 
 void DiscordManager::SetGamePresence_Internal(
@@ -895,6 +847,16 @@ bool DiscordManager::IsUserSpeaking(uint64_t userId) const
     return it != speakingCache_.end() ? it->second : false;
 }
 
+discordpp::Call* DiscordManager::ActiveCall()
+{
+    return call_ && *call_ ? &call_.value() : nullptr;
+}
+
+const discordpp::Call* DiscordManager::ActiveCall() const
+{
+    return call_ && *call_ ? &call_.value() : nullptr;
+}
+
 void DiscordManager::ResetCallState(uint64_t previousLobbyId)
 {
     inCall_ = false;
@@ -911,7 +873,7 @@ void DiscordManager::ResetCallState(uint64_t previousLobbyId)
 
 void DiscordManager::StartCall_Internal(uint64_t lobbyId)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
 
     activeLobbyId_ = lobbyId;
@@ -954,11 +916,11 @@ void DiscordManager::StartCall_Internal(uint64_t lobbyId)
 
 void DiscordManager::LeaveCall_Internal()
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
 
     const uint64_t previousLobbyId = activeLobbyId_.load();
-    if (!call_ || !(*call_))
+    if (!ActiveCall())
     {
         ResetCallState(previousLobbyId);
         return;
@@ -973,7 +935,7 @@ void DiscordManager::LeaveCall_Internal()
 
 void DiscordManager::EndAllCalls_Internal()
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
 
     const uint64_t previousLobbyId = activeLobbyId_.load();
@@ -985,7 +947,7 @@ void DiscordManager::EndAllCalls_Internal()
 
 void DiscordManager::SetInputVolume_Internal(float volume01)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
     inputVolume_ = volume01;
     client_->SetInputVolume(volume01);
@@ -994,7 +956,7 @@ void DiscordManager::SetInputVolume_Internal(float volume01)
 
 void DiscordManager::SetOutputVolume_Internal(float volume01)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
     outputVolume_ = volume01;
     client_->SetOutputVolume(volume01);
@@ -1003,13 +965,13 @@ void DiscordManager::SetOutputVolume_Internal(float volume01)
 
 void DiscordManager::SetSelfMute_Internal(bool muted)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
 
     selfMuted_ = muted;
-    if (call_ && *call_)
+    if (auto* call = ActiveCall())
     {
-        call_->SetSelfMute(muted);
+        call->SetSelfMute(muted);
     }
     else
     {
@@ -1021,13 +983,13 @@ void DiscordManager::SetSelfMute_Internal(bool muted)
 
 void DiscordManager::SetSelfDeaf_Internal(bool deafened)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
 
     selfDeafened_ = deafened;
-    if (call_ && *call_)
+    if (auto* call = ActiveCall())
     {
-        call_->SetSelfDeaf(deafened);
+        call->SetSelfDeaf(deafened);
     }
     else
     {
@@ -1038,44 +1000,48 @@ void DiscordManager::SetSelfDeaf_Internal(bool deafened)
 
 void DiscordManager::SetLocalMute_Internal(uint64_t userId, bool muted)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
-    if (call_ && *call_)
+
+    if (auto* call = ActiveCall())
     {
-        call_->SetLocalMute(userId, muted);
+        call->SetLocalMute(userId, muted);
         PushParticipantStateUpdate(userId);
     }
 }
 
 void DiscordManager::SetParticipantVolume_Internal(uint64_t userId, float volume01)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
-    if (call_ && *call_)
+
+    if (auto* call = ActiveCall())
     {
-        call_->SetParticipantVolume(userId, volume01);
+        call->SetParticipantVolume(userId, volume01);
         PushParticipantStateUpdate(userId);
     }
 }
 
 void DiscordManager::SetPTTActive_Internal(bool active)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
-    if (call_ && *call_)
+
+    if (auto* call = ActiveCall())
     {
-        call_->SetPTTActive(active);
+        call->SetPTTActive(active);
     }
 }
 
 void DiscordManager::SetPTTReleaseDelay_Internal(uint32_t releaseDelayMs)
 {
     pttReleaseDelayMs_ = releaseDelayMs;
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
-    if (call_ && *call_)
+
+    if (auto* call = ActiveCall())
     {
-        call_->SetPTTReleaseDelay(releaseDelayMs);
+        call->SetPTTReleaseDelay(releaseDelayMs);
     }
     PushSelfStateUpdate();
 }
@@ -1084,11 +1050,12 @@ void DiscordManager::SetVADThreshold_Internal(bool automatic, float threshold)
 {
     vadAutomatic_ = automatic;
     vadThreshold_ = threshold;
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
-    if (call_ && *call_)
+
+    if (auto* call = ActiveCall())
     {
-        call_->SetVADThreshold(automatic, threshold);
+        call->SetVADThreshold(automatic, threshold);
     }
     PushSelfStateUpdate();
 }
@@ -1096,18 +1063,19 @@ void DiscordManager::SetVADThreshold_Internal(bool automatic, float threshold)
 void DiscordManager::SetAudioMode_Internal(discordpp::AudioModeType mode)
 {
     audioMode_ = static_cast<uint32_t>(mode);
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
-    if (call_ && *call_)
+
+    if (auto* call = ActiveCall())
     {
-        call_->SetAudioMode(mode);
+        call->SetAudioMode(mode);
     }
     PushSelfStateUpdate();
 }
 
-void DiscordManager::SetInputDevice_Internal(std::string deviceId)
+void DiscordManager::SetDevice_Internal(bool inputDevice, std::string deviceId)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
 
     if (deviceId.empty())
@@ -1115,59 +1083,48 @@ void DiscordManager::SetInputDevice_Internal(std::string deviceId)
         deviceId = discordpp::Client::GetDefaultAudioDeviceId();
     }
 
-    client_->SetInputDevice(deviceId, [this, deviceId](discordpp::ClientResult result)
-                            {
-        if (result.Successful()) {
-            std::cout << "Input device updated: " << deviceId << std::endl;
-            PushInputDevicesSnapshot();
-        } else {
-            std::cerr << "Failed to set input device: " << result.Error() << std::endl;
-            PushVoiceErrorUpdate(Opcode::CMSG_VOICE_SET_INPUT_DEVICE,
-                                 ClientResultErrorCode(result),
-                                 ClientResultMessage(result));
-        } });
-}
-
-void DiscordManager::SetOutputDevice_Internal(std::string deviceId)
-{
-    if (!isReady_ || !client_)
-        return;
-
-    if (deviceId.empty())
+    auto onComplete = [this, inputDevice, deviceId](discordpp::ClientResult result)
     {
-        deviceId = discordpp::Client::GetDefaultAudioDeviceId();
+        if (result.Successful())
+        {
+            std::cout << DeviceTypeName(inputDevice) << " device updated: " << deviceId << std::endl;
+            PushDevicesSnapshot(inputDevice);
+            return;
+        }
+
+        std::cerr << "Failed to set " << DeviceTypeName(inputDevice) << " device: " << result.Error() << std::endl;
+        PushVoiceErrorUpdate(
+            DeviceSetOpcode(inputDevice),
+            ClientResultErrorCode(result),
+            ClientResultMessage(result));
+    };
+
+    if (inputDevice)
+    {
+        client_->SetInputDevice(deviceId, onComplete);
+        return;
     }
 
-    client_->SetOutputDevice(deviceId, [this, deviceId](discordpp::ClientResult result)
-                             {
-        if (result.Successful()) {
-            std::cout << "Output device updated: " << deviceId << std::endl;
-            PushOutputDevicesSnapshot();
-        } else {
-            std::cerr << "Failed to set output device: " << result.Error() << std::endl;
-            PushVoiceErrorUpdate(Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE,
-                                 ClientResultErrorCode(result),
-                                 ClientResultMessage(result));
-        } });
+    client_->SetOutputDevice(deviceId, onComplete);
 }
 
 void DiscordManager::SetAutomaticGainControl_Internal(bool enabled)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
     client_->SetAutomaticGainControl(enabled);
 }
 
 void DiscordManager::SetEchoCancellation_Internal(bool enabled)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
     client_->SetEchoCancellation(enabled);
 }
 
 void DiscordManager::SetNoiseSuppression_Internal(bool enabled)
 {
-    if (!isReady_ || !client_)
+    if (!HasReadyClient())
         return;
     client_->SetNoiseSuppression(enabled);
 }

@@ -10,7 +10,6 @@
 #include <ClientNetwork.h>
 #include <FrameXMLExtensions.h>
 #include <Logger.h>
-#include "IPC/IPCTest.h"
 #include "IPC/VoiceUpdateIPC.h"
 
 #include <vector>

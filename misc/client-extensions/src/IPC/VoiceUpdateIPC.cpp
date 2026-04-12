@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -130,17 +131,50 @@ class PayloadReader
     size_t cursor_ = 0;
 };
 
-void PushUInt64String(lua_State* L, uint64_t value)
+struct UInt64String
 {
-    const std::string asString = std::to_string(value);
+    uint64_t value;
+};
+
+bool ReadValue(PayloadReader& reader, uint32_t& value) { return reader.readUInt32(value); }
+bool ReadValue(PayloadReader& reader, uint64_t& value) { return reader.readUInt64(value); }
+bool ReadValue(PayloadReader& reader, bool& value) { return reader.readBool(value); }
+bool ReadValue(PayloadReader& reader, float& value) { return reader.readFloat(value); }
+bool ReadValue(PayloadReader& reader, std::string& value) { return reader.readString(value); }
+
+template <typename... Args>
+bool ReadValues(PayloadReader& reader, Args&... args)
+{
+    return (ReadValue(reader, args) && ...);
+}
+
+void PushLuaValue(lua_State* L, const char* value) { ClientLua::PushString(L, value); }
+void PushLuaValue(lua_State* L, const std::string& value) { ClientLua::PushString(L, value.c_str()); }
+void PushLuaValue(lua_State* L, bool value) { ClientLua::PushBoolean(L, value); }
+void PushLuaValue(lua_State* L, uint32_t value) { ClientLua::PushNumber(L, value); }
+void PushLuaValue(lua_State* L, float value) { ClientLua::PushNumber(L, value); }
+void PushLuaValue(lua_State* L, UInt64String value)
+{
+    const std::string asString = std::to_string(value.value);
     ClientLua::PushString(L, asString.c_str());
+}
+
+template <typename... Args>
+int PushUpdate(lua_State* L, const char* kind, Args&&... args)
+{
+    ClientLua::PushString(L, kind);
+    (PushLuaValue(L, std::forward<Args>(args)), ...);
+    return 1 + static_cast<int>(sizeof...(Args));
+}
+
+const char* DeviceDirection(bool inputDevices)
+{
+    return inputDevices ? "input" : "output";
 }
 
 int PushMalformedUpdate(lua_State* L, Opcode opcode)
 {
-    ClientLua::PushString(L, "malformed_update");
-    ClientLua::PushNumber(L, opcode.raw());
-    return 2;
+    return PushUpdate(L, "malformed_update", opcode.raw());
 }
 
 int PushCallStatus(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -151,34 +185,24 @@ int PushCallStatus(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payl
     uint32_t errorCode = 0;
     uint32_t errorDetail = 0;
 
-    if (!reader.readUInt64(lobbyId) ||
-        !reader.readUInt32(status) ||
-        !reader.readUInt32(errorCode) ||
-        !reader.readUInt32(errorDetail))
+    if (!ReadValues(reader, lobbyId, status, errorCode, errorDetail))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "call_status");
-    PushUInt64String(L, lobbyId);
-    ClientLua::PushNumber(L, status);
-    ClientLua::PushNumber(L, errorCode);
-    ClientLua::PushNumber(L, errorDetail);
-    return 5;
+    return PushUpdate(L, "call_status", UInt64String{lobbyId}, status, errorCode, errorDetail);
 }
 
 int PushParticipantsClear(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
 {
     PayloadReader reader(payload.data(), payload.size());
     uint64_t lobbyId = 0;
-    if (!reader.readUInt64(lobbyId))
+    if (!ReadValues(reader, lobbyId))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "participants_clear");
-    PushUInt64String(L, lobbyId);
-    return 2;
+    return PushUpdate(L, "participants_clear", UInt64String{lobbyId});
 }
 
 int PushSelfState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -194,30 +218,33 @@ int PushSelfState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& paylo
     bool vadAutomatic = false;
     float vadThreshold = 0.0f;
 
-    if (!reader.readUInt64(lobbyId) ||
-        !reader.readBool(muted) ||
-        !reader.readBool(deafened) ||
-        !reader.readFloat(inputVolume) ||
-        !reader.readFloat(outputVolume) ||
-        !reader.readUInt32(audioMode) ||
-        !reader.readUInt32(pttReleaseDelay) ||
-        !reader.readBool(vadAutomatic) ||
-        !reader.readFloat(vadThreshold))
+    if (!ReadValues(
+            reader,
+            lobbyId,
+            muted,
+            deafened,
+            inputVolume,
+            outputVolume,
+            audioMode,
+            pttReleaseDelay,
+            vadAutomatic,
+            vadThreshold))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "self_state");
-    PushUInt64String(L, lobbyId);
-    ClientLua::PushBoolean(L, muted);
-    ClientLua::PushBoolean(L, deafened);
-    ClientLua::PushNumber(L, inputVolume);
-    ClientLua::PushNumber(L, outputVolume);
-    ClientLua::PushNumber(L, audioMode);
-    ClientLua::PushNumber(L, pttReleaseDelay);
-    ClientLua::PushBoolean(L, vadAutomatic);
-    ClientLua::PushNumber(L, vadThreshold);
-    return 10;
+    return PushUpdate(
+        L,
+        "self_state",
+        UInt64String{lobbyId},
+        muted,
+        deafened,
+        inputVolume,
+        outputVolume,
+        audioMode,
+        pttReleaseDelay,
+        vadAutomatic,
+        vadThreshold);
 }
 
 int PushSpeakingState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -227,18 +254,12 @@ int PushSpeakingState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& p
     uint64_t userId = 0;
     bool speaking = false;
 
-    if (!reader.readUInt64(lobbyId) ||
-        !reader.readUInt64(userId) ||
-        !reader.readBool(speaking))
+    if (!ReadValues(reader, lobbyId, userId, speaking))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "speaking");
-    PushUInt64String(L, lobbyId);
-    PushUInt64String(L, userId);
-    ClientLua::PushBoolean(L, speaking);
-    return 4;
+    return PushUpdate(L, "speaking", UInt64String{lobbyId}, UInt64String{userId}, speaking);
 }
 
 int PushParticipantState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -252,40 +273,33 @@ int PushParticipantState(lua_State* L, Opcode opcode, const std::vector<uint8_t>
     bool localMute = false;
     float volume = 0.0f;
 
-    if (!reader.readUInt64(lobbyId) ||
-        !reader.readUInt64(userId) ||
-        !reader.readBool(speaking) ||
-        !reader.readBool(selfMuted) ||
-        !reader.readBool(selfDeafened) ||
-        !reader.readBool(localMute) ||
-        !reader.readFloat(volume))
+    if (!ReadValues(reader, lobbyId, userId, speaking, selfMuted, selfDeafened, localMute, volume))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "participant_state");
-    PushUInt64String(L, lobbyId);
-    PushUInt64String(L, userId);
-    ClientLua::PushBoolean(L, speaking);
-    ClientLua::PushBoolean(L, selfMuted);
-    ClientLua::PushBoolean(L, selfDeafened);
-    ClientLua::PushBoolean(L, localMute);
-    ClientLua::PushNumber(L, volume);
-    return 8;
+    return PushUpdate(
+        L,
+        "participant_state",
+        UInt64String{lobbyId},
+        UInt64String{userId},
+        speaking,
+        selfMuted,
+        selfDeafened,
+        localMute,
+        volume);
 }
 
 int PushDevicesClear(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
 {
     PayloadReader reader(payload.data(), payload.size());
     bool inputDevices = false;
-    if (!reader.readBool(inputDevices))
+    if (!ReadValues(reader, inputDevices))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "devices_clear");
-    ClientLua::PushString(L, inputDevices ? "input" : "output");
-    return 2;
+    return PushUpdate(L, "devices_clear", DeviceDirection(inputDevices));
 }
 
 int PushDeviceState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -297,22 +311,12 @@ int PushDeviceState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& pay
     bool isDefault = false;
     bool isCurrent = false;
 
-    if (!reader.readBool(inputDevices) ||
-        !reader.readString(deviceId) ||
-        !reader.readString(deviceName) ||
-        !reader.readBool(isDefault) ||
-        !reader.readBool(isCurrent))
+    if (!ReadValues(reader, inputDevices, deviceId, deviceName, isDefault, isCurrent))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "device");
-    ClientLua::PushString(L, inputDevices ? "input" : "output");
-    ClientLua::PushString(L, deviceId.c_str());
-    ClientLua::PushString(L, deviceName.c_str());
-    ClientLua::PushBoolean(L, isDefault);
-    ClientLua::PushBoolean(L, isCurrent);
-    return 6;
+    return PushUpdate(L, "device", DeviceDirection(inputDevices), deviceId, deviceName, isDefault, isCurrent);
 }
 
 int PushVoiceError(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -322,18 +326,12 @@ int PushVoiceError(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payl
     uint32_t errorCode = 0;
     std::string message;
 
-    if (!reader.readUInt32(sourceOpcode) ||
-        !reader.readUInt32(errorCode) ||
-        !reader.readString(message))
+    if (!ReadValues(reader, sourceOpcode, errorCode, message))
     {
         return PushMalformedUpdate(L, opcode);
     }
 
-    ClientLua::PushString(L, "error");
-    ClientLua::PushNumber(L, sourceOpcode);
-    ClientLua::PushNumber(L, errorCode);
-    ClientLua::PushString(L, message.c_str());
-    return 4;
+    return PushUpdate(L, "error", sourceOpcode, errorCode, message);
 }
 
 #ifdef _WIN32
@@ -449,8 +447,6 @@ LUA_FUNCTION(getVoiceUpdateState, (lua_State* L))
         case Opcode::SMSG_VOICE_ERROR:
             return PushVoiceError(L, update->opcode, update->payload);
         default:
-            ClientLua::PushString(L, "unknown");
-            ClientLua::PushNumber(L, update->opcode.raw());
-            return 2;
+            return PushUpdate(L, "unknown", update->opcode.raw());
     }
 }

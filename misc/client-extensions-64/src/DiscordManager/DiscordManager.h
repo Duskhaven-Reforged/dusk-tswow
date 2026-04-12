@@ -94,6 +94,9 @@ private:
 		int32_t expiresIn,
 		std::string scopes);
 	void ClearCachedToken();
+	bool HasReadyClient() const { return isReady_.load() && static_cast<bool>(client_); }
+	discordpp::Call* ActiveCall();
+	const discordpp::Call* ActiveCall() const;
 
 	// Voice state we track locally (not authoritative, but useful for UI)
 	std::atomic<uint64_t> activeLobbyId_{ 0 };
@@ -129,8 +132,7 @@ private:
 	void SetPTTReleaseDelay_Internal(uint32_t releaseDelayMs);
 	void SetVADThreshold_Internal(bool automatic, float threshold);
 	void SetAudioMode_Internal(discordpp::AudioModeType mode);
-	void SetInputDevice_Internal(std::string deviceId);
-	void SetOutputDevice_Internal(std::string deviceId);
+	void SetDevice_Internal(bool inputDevice, std::string deviceId);
 	void SetAutomaticGainControl_Internal(bool enabled);
 	void SetEchoCancellation_Internal(bool enabled);
 	void SetNoiseSuppression_Internal(bool enabled);
@@ -150,8 +152,7 @@ private:
 	void PushParticipantsClear(uint64_t lobbyId);
 	void PushParticipantsSnapshot();
 	void PushParticipantStateUpdate(uint64_t userId);
-	void PushInputDevicesSnapshot();
-	void PushOutputDevicesSnapshot();
+	void PushDevicesSnapshot(bool inputDevices);
 
 	std::string activityCharacterName_;
 	std::string activityClassName_;
