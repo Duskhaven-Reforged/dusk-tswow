@@ -30,6 +30,17 @@ class Opcode
         CMSG_VOICE_SET_VAD_THRESHOLD     = 0x1132, // bool automatic, float threshold
         CMSG_VOICE_SET_AUDIO_MODE        = 0x1133, // uint32 mode enum (your own)
 
+        // Device / processing controls
+        CMSG_VOICE_SET_INPUT_DEVICE           = 0x1140, // string deviceId, empty = default
+        CMSG_VOICE_SET_OUTPUT_DEVICE          = 0x1141, // string deviceId, empty = default
+        CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL = 0x1142, // bool
+        CMSG_VOICE_SET_ECHO_CANCELLATION      = 0x1143, // bool
+        CMSG_VOICE_SET_NOISE_SUPPRESSION      = 0x1144, // bool
+
+        // Rich presence
+        CMSG_DISCORD_SET_GAME_PRESENCE   = 0x1200, // characterName, level, className, zoneName
+        CMSG_DISCORD_CLEAR_GAME_PRESENCE = 0x1201, // (no payload)
+
         // ---------------------------------------------------------
         // Server/SDK -> Client push (new)
         // ---------------------------------------------------------
@@ -37,11 +48,14 @@ class Opcode
         SMSG_LOBBY_LEFT    = 0x2002, // lobbyId
         SMSG_LOBBY_UPDATED = 0x2003, // lobbyId + fields, or "changed" flags
 
-        SMSG_VOICE_CALL_STATUS  = 0x2100, // lobbyId, status enum, errorCode?
-        SMSG_VOICE_PARTICIPANTS = 0x2101, // lobbyId, list(userId, flags...)
-        SMSG_VOICE_SPEAKING     = 0x2102, // lobbyId, userId, bool speaking
-        SMSG_VOICE_SELF_STATE   = 0x2103, // muted, deafened, inputVol, outputVol
-        SMSG_VOICE_ERROR        = 0x21FF  // op, errorCode, message(optional)
+        SMSG_VOICE_CALL_STATUS      = 0x2100, // lobbyId, status enum, errorCode, errorDetail
+        SMSG_VOICE_PARTICIPANTS     = 0x2101, // lobbyId (clear/rebuild participant snapshot)
+        SMSG_VOICE_SPEAKING         = 0x2102, // lobbyId, userId, bool speaking
+        SMSG_VOICE_SELF_STATE       = 0x2103, // lobbyId, muted, deafened, inputVol, outputVol, mode...
+        SMSG_VOICE_PARTICIPANT_STATE = 0x2104, // lobbyId, userId, speaking, selfMute, selfDeaf, localMute, volume
+        SMSG_VOICE_DEVICES          = 0x2105, // bool inputDevices (clear/rebuild device snapshot)
+        SMSG_VOICE_DEVICE_STATE     = 0x2106, // bool inputDevices, deviceId, name, isDefault, isCurrent
+        SMSG_VOICE_ERROR            = 0x21FF  // op, errorCode, message(optional)
     };
     constexpr Opcode() : value_(DEFAULT_VALUE) {}
     constexpr Opcode(Value v) : value_(v) {}

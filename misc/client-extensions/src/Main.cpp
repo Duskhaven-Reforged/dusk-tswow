@@ -10,7 +10,7 @@
 #include <ClientNetwork.h>
 #include <FrameXMLExtensions.h>
 #include <Logger.h>
-#include "IPC/IPCTest.h"
+#include "IPC/VoiceUpdateIPC.h"
 
 #include <vector>
 
@@ -36,6 +36,8 @@ class Main
         LOG_INFO << "Client arguments initialized";
         ClientExtensions::initialize();
         LOG_INFO << "Client extensions initialized";
+        VoiceUpdateIPC::Start();
+        LOG_INFO << "Voice update IPC initialized";
         ClientDetours::Apply();
         LOG_INFO << "Client detours applied";
         FileIntegrity::RunStartupScan();
@@ -98,10 +100,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
             LOG_INFO << "Thread Made";
             Main::startup();
             LOG_INFO << "Main Done";
+            Main::StartDHV();
+            LOG_INFO << "StartDHV Done";
             return 0;
         }, nullptr, 0, nullptr);
-        // Startup DHV
-        Main::StartDHV();
     }
     return TRUE;
 }

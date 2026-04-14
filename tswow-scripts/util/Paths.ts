@@ -255,6 +255,8 @@ export function ClientPath(pathIn: string, devPatch: string) {
             }
         }),
         ClientExtensions_dll: file('ClientExtensions.dll'),
+        ClientExtensions64_exe: file('ClientExtensions64.exe'),
+        DiscordPartnerSDK_dll: file('discord_partner_sdk.dll'),
         Cache: file('Cache'),
         Interface: dir({
             AddOns: dir({})

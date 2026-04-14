@@ -1,83 +1,111 @@
-﻿#include "LobbyHandler.h"
+#include "LobbyHandler.h"
+
+#include <array>
+#include <cmath>
+#include <utility>
 
 REGISTER_IPC_HANDLER(LobbyHandler)
 
-void LobbyHandler::Register(OpcodeDispatcher &dispatcher)
+namespace
 {
-    dispatcher.Register(Opcode::CMSG_VOICE_START_CALL, [this](Opcode op, PacketReader reader)
-                        {
-        std::string secret = reader.readString();
-        DiscordManager::Get()->JoinLobbyAndCall(secret); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_LEAVE_CALL, [this](Opcode op, PacketReader reader)
-                        { DiscordManager::Get()->LeaveCall(); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_END_ALL_CALLS, [this](Opcode op, PacketReader reader)
-                        { DiscordManager::Get()->EndAllCalls(); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_SELF_MUTE, [this](Opcode op, PacketReader reader)
-                        {
-        bool muted = reader.readBool();
-        DiscordManager::Get()->SetSelfMute(muted); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_SELF_DEAF, [this](Opcode op, PacketReader reader)
-                        {
-        bool deaf = reader.readBool();
-        DiscordManager::Get()->SetSelfDeaf(deaf); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_INPUT_VOLUME, [this](Opcode op, PacketReader reader)
-                        {
-        float v = reader.readFloat();
-        DiscordManager::Get()->SetInputVolume(v); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_OUTPUT_VOLUME, [this](Opcode op, PacketReader reader)
-                        {
-        float v = reader.readFloat();
-        DiscordManager::Get()->SetOutputVolume(v); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_LOCAL_MUTE, [this](Opcode op, PacketReader reader)
-                        {
-        uint64_t userId = reader.readUInt64();
-        bool muted = reader.readBool();
-        DiscordManager::Get()->SetLocalMute(userId, muted); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_USER_VOLUME, [this](Opcode op, PacketReader reader)
-                        {
-        uint64_t userId = reader.readUInt64();
-        float v = reader.readFloat();
-        DiscordManager::Get()->SetParticipantVolume(userId, v); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_PTT_ACTIVE, [this](Opcode op, PacketReader reader)
-                        {
-        bool active = reader.readBool();
-        DiscordManager::Get()->SetPTTActive(active); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_PTT_RELEASE_DELAY, [this](Opcode op, PacketReader reader)
-                        {
-        uint32_t ms = reader.readUInt32();
-        DiscordManager::Get()->SetPTTReleaseDelay(ms); });
-
-    dispatcher.Register(Opcode::CMSG_VOICE_SET_VAD_THRESHOLD, [this](Opcode op, PacketReader reader)
-                        {
-        bool automatic = reader.readBool();
-        float threshold = std::round(reader.readFloat() * 100.0f - 100.0f);
-        DiscordManager::Get()->SetVADThreshold(automatic, threshold); });
+template <typename Handler>
+void RegisterReaderHandler(OpcodeDispatcher& dispatcher, Opcode opcode, Handler&& handler)
+{
+    dispatcher.Register(opcode,
+                        [handler = std::forward<Handler>(handler)](Opcode, PacketReader reader) mutable
+                        { handler(reader); });
 }
 
-void LobbyHandler::Unregister(OpcodeDispatcher &dispatcher)
+template <typename Handler>
+void RegisterSimpleHandler(OpcodeDispatcher& dispatcher, Opcode opcode, Handler&& handler)
 {
+    dispatcher.Register(opcode,
+                        [handler = std::forward<Handler>(handler)](Opcode, PacketReader) mutable
+                        { handler(); });
+}
 
-    dispatcher.Unregister(Opcode::CMSG_VOICE_START_CALL);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_LEAVE_CALL);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_END_ALL_CALLS);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_SELF_MUTE);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_SELF_DEAF);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_INPUT_VOLUME);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_OUTPUT_VOLUME);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_LOCAL_MUTE);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_USER_VOLUME);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_PTT_ACTIVE);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_PTT_RELEASE_DELAY);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_VAD_THRESHOLD);
-    dispatcher.Unregister(Opcode::CMSG_VOICE_SET_AUDIO_MODE);
+constexpr std::array<Opcode, 20> kRegisteredOpcodes = {
+    Opcode::CMSG_VOICE_START_CALL,
+    Opcode::CMSG_VOICE_LEAVE_CALL,
+    Opcode::CMSG_VOICE_END_ALL_CALLS,
+    Opcode::CMSG_VOICE_SET_SELF_MUTE,
+    Opcode::CMSG_VOICE_SET_SELF_DEAF,
+    Opcode::CMSG_VOICE_SET_INPUT_VOLUME,
+    Opcode::CMSG_VOICE_SET_OUTPUT_VOLUME,
+    Opcode::CMSG_VOICE_SET_LOCAL_MUTE,
+    Opcode::CMSG_VOICE_SET_USER_VOLUME,
+    Opcode::CMSG_VOICE_SET_PTT_ACTIVE,
+    Opcode::CMSG_VOICE_SET_PTT_RELEASE_DELAY,
+    Opcode::CMSG_VOICE_SET_VAD_THRESHOLD,
+    Opcode::CMSG_VOICE_SET_AUDIO_MODE,
+    Opcode::CMSG_VOICE_SET_INPUT_DEVICE,
+    Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE,
+    Opcode::CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL,
+    Opcode::CMSG_VOICE_SET_ECHO_CANCELLATION,
+    Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION,
+    Opcode::CMSG_DISCORD_SET_GAME_PRESENCE,
+    Opcode::CMSG_DISCORD_CLEAR_GAME_PRESENCE,
+};
+}
+
+void LobbyHandler::Register(OpcodeDispatcher& dispatcher)
+{
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_START_CALL, [](PacketReader reader)
+                          { DiscordManager::Get()->JoinLobbyAndCall(reader.readString()); });
+    RegisterSimpleHandler(dispatcher, Opcode::CMSG_VOICE_LEAVE_CALL, []()
+                          { DiscordManager::Get()->LeaveCall(); });
+    RegisterSimpleHandler(dispatcher, Opcode::CMSG_VOICE_END_ALL_CALLS, []()
+                          { DiscordManager::Get()->EndAllCalls(); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_SELF_MUTE, [](PacketReader reader)
+                          { DiscordManager::Get()->SetSelfMute(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_SELF_DEAF, [](PacketReader reader)
+                          { DiscordManager::Get()->SetSelfDeaf(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_INPUT_VOLUME, [](PacketReader reader)
+                          { DiscordManager::Get()->SetInputVolume(reader.readFloat()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_OUTPUT_VOLUME, [](PacketReader reader)
+                          { DiscordManager::Get()->SetOutputVolume(reader.readFloat()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_LOCAL_MUTE, [](PacketReader reader)
+                          { DiscordManager::Get()->SetLocalMute(reader.readUInt64(), reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_USER_VOLUME, [](PacketReader reader)
+                          { DiscordManager::Get()->SetParticipantVolume(reader.readUInt64(), reader.readFloat()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_PTT_ACTIVE, [](PacketReader reader)
+                          { DiscordManager::Get()->SetPTTActive(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_PTT_RELEASE_DELAY, [](PacketReader reader)
+                          { DiscordManager::Get()->SetPTTReleaseDelay(reader.readUInt32()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_VAD_THRESHOLD, [](PacketReader reader)
+                          {
+                              const bool automatic = reader.readBool();
+                              const float threshold = std::round(reader.readFloat() * 100.0f - 100.0f);
+                              DiscordManager::Get()->SetVADThreshold(automatic, threshold);
+                          });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_AUDIO_MODE, [](PacketReader reader)
+                          { DiscordManager::Get()->SetAudioMode(static_cast<discordpp::AudioModeType>(reader.readUInt32())); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_INPUT_DEVICE, [](PacketReader reader)
+                          { DiscordManager::Get()->SetInputDevice(reader.readString()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE, [](PacketReader reader)
+                          { DiscordManager::Get()->SetOutputDevice(reader.readString()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL, [](PacketReader reader)
+                          { DiscordManager::Get()->SetAutomaticGainControl(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_ECHO_CANCELLATION, [](PacketReader reader)
+                          { DiscordManager::Get()->SetEchoCancellation(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION, [](PacketReader reader)
+                          { DiscordManager::Get()->SetNoiseSuppression(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_DISCORD_SET_GAME_PRESENCE, [](PacketReader reader)
+                          {
+                              const std::string characterName = reader.readString();
+                              const uint32_t characterLevel = reader.readUInt32();
+                              const std::string className = reader.readString();
+                              const std::string zoneName = reader.readString();
+                              DiscordManager::Get()->SetGamePresence(characterName, characterLevel, className, zoneName);
+                          });
+    RegisterSimpleHandler(dispatcher, Opcode::CMSG_DISCORD_CLEAR_GAME_PRESENCE, []()
+                          { DiscordManager::Get()->ClearGamePresence(); });
+}
+
+void LobbyHandler::Unregister(OpcodeDispatcher& dispatcher)
+{
+    for (Opcode opcode : kRegisteredOpcodes)
+    {
+        dispatcher.Unregister(opcode);
+    }
 }

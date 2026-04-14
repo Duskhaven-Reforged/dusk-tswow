@@ -118,3 +118,63 @@ LUA_FUNCTION(VoiceSetVADThreshold, (lua_State* L)) {
     LOG_INFO << "Sent CMSG_VOICE_SET_VAD_THRESHOLD\n";
     return 0;
 }
+
+LUA_FUNCTION(VoiceSetAudioMode, (lua_State* L)) {
+    uint32_t mode = static_cast<uint32_t>(ClientLua::GetNumber(L, 1));
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_AUDIO_MODE);
+    packet.writeUInt32(mode);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_AUDIO_MODE\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetInputDevice, (lua_State* L)) {
+    std::string deviceId = ClientLua::GetString(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_INPUT_DEVICE);
+    packet.writeString(deviceId);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_INPUT_DEVICE\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetOutputDevice, (lua_State* L)) {
+    std::string deviceId = ClientLua::GetString(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_OUTPUT_DEVICE);
+    packet.writeString(deviceId);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_OUTPUT_DEVICE\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetAutomaticGainControl, (lua_State* L)) {
+    bool enabled = ClientLua::GetNumber(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL);
+    packet.writeBool(enabled);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetEchoCancellation, (lua_State* L)) {
+    bool enabled = ClientLua::GetNumber(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_ECHO_CANCELLATION);
+    packet.writeBool(enabled);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_ECHO_CANCELLATION\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetNoiseSuppression, (lua_State* L)) {
+    bool enabled = ClientLua::GetNumber(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION);
+    packet.writeBool(enabled);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_NOISE_SUPPRESSION\n";
+    return 0;
+}

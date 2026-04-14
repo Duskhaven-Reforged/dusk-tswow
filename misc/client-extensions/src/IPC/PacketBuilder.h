@@ -5,6 +5,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "IPCClient.h"
+#include "Logger.h"
 #include "Opcodes.h"
 
 

@@ -227,6 +227,10 @@ export class Client {
             //wowbin = wowbin.slice(0,0x75dc00)   // Aleist3r: change requires our custom resized exe, better to not run that otherwise
             ipaths.bin.ClientExtensions_dll
                 .copy(this.path.ClientExtensions_dll)
+            ipaths.bin.ClientExtensions64_exe
+                .copy(this.path.ClientExtensions64_exe)
+            ipaths.bin.DiscordPartnerSDK_dll
+                .copy(this.path.DiscordPartnerSDK_dll)
         }
 
         term.debug('client', `Applying client patches`)
