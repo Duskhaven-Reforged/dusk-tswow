@@ -6598,7 +6598,7 @@ declare interface TSUnit extends TSWorldObject {
      *
      * @return [Unit] victim
      */
-    GetVictim() : TSUnit | undefined
+    GetVictim() : TSUnit
 
     /**
      * Returns the currently casted [Spell] of given type or nil.
@@ -6994,7 +6994,7 @@ declare interface TSUnit extends TSWorldObject {
      *
      * @return [Vehicle] vehicle
      */
-    GetVehicleKit() : TSVehicle | undefined
+    GetVehicleKit() : TSVehicle
     GetVehicle() : TSVehicle | undefined
 
     /**

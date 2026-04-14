@@ -1204,12 +1204,24 @@ namespace {
         if (!tooltip || !itemCache) {
             return;
         }
-
+        
+        bool shouldAddline = true;
         for (size_t socketIndex = 0; socketIndex < std::size(itemCache->socketColor); ++socketIndex) {
             uint32_t socketColor = itemCache->socketColor[socketIndex];
             const char* colorName = GetSocketColorName(socketColor);
             if (!colorName || !colorName[0]) {
                 continue;
+            }
+
+            if (shouldAddline) {
+                CGTooltip::AddLine(
+                    tooltip,
+                    const_cast<char*>(" "),
+                    nullptr,
+                    reinterpret_cast<void*>(kColorDarkYellow),
+                    reinterpret_cast<void*>(kColorDarkYellow),
+                1);
+                shouldAddline = false;
             }
 
             int32_t enchantmentId = GetSocketEnchantmentId(itemObject, socketIndex);
@@ -4909,19 +4921,11 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
 
     AddDirectStatLines(tooltip, itemCache);
     AddResistanceLines(tooltip, itemCache);
+    AddAppliedEnchantmentLines(tooltip, itemCache, itemObject, activePlayer);
     AddProposedEnchantLines(tooltip);
-
-    CGTooltip::AddLine(
-        tooltip,
-        const_cast<char*>(" "),
-        nullptr,
-        reinterpret_cast<void*>(kColorDarkYellow),
-        reinterpret_cast<void*>(kColorDarkYellow),
-    1);
 
     AddSocketLines(tooltip, itemCache, itemObject, activePlayer);
     AddGemPropertiesLines(tooltip, itemCache, activePlayer, arg10);
-    AddAppliedEnchantmentLines(tooltip, itemCache, itemObject, activePlayer);
     AddSocketRequirementLines(tooltip, itemCache, activePlayer);
     AddSocketBonusLine(tooltip, itemCache, itemObject);
     AddRandomEnchantLine(tooltip, itemCache);

@@ -30,6 +30,7 @@ const EAGER_PRELOAD_TABLES = new Set<string>([
 ]);
 const AUTO_EAGER_PRELOAD_QUERY_THRESHOLD = 32;
 const AUTO_EAGER_PRELOAD_TIME_THRESHOLD_MS = 250;
+const MYSQL_MAX_PREPARED_PLACEHOLDERS = 65535;
 
 export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
     private cachedRows: {[key: string]: R} = {};
@@ -223,6 +224,17 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
         const values = table.cachedValues.filter(SqlRow.isDirty);
         if (values.length === 0)
             return;
+
+        const insertValueCount = Math.max(1, SqlRow.getPreparedStatementValueCount(dummyRow));
+        const deleteValueCount = Math.max(1, SqlRow.getPreparedDeleteValueCount(dummyRow));
+        const insertChunkSize = Math.max(
+            1,
+            Math.min(table.chunk_size, Math.floor(MYSQL_MAX_PREPARED_PLACEHOLDERS / insertValueCount))
+        );
+        const deleteChunkSize = Math.max(
+            1,
+            Math.min(table.chunk_size, Math.floor(MYSQL_MAX_PREPARED_PLACEHOLDERS / deleteValueCount))
+        );
     
         /** Chunking */
         let totalInserts = 0;
@@ -238,7 +250,7 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
                 totalDeletes++;
                 currentDeleteChunk.push(SqlRow.getPreparedDeleteStatement(x));
     
-                if (currentDeleteChunk.length >= table.chunk_size) {
+                if (currentDeleteChunk.length >= deleteChunkSize) {
                     deleteChunks.push(currentDeleteChunk);
                     currentDeleteChunk = [];
                 }
@@ -246,7 +258,7 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
                 totalInserts++;
                 currentInsertChunk.push(SqlRow.getPreparedStatement(x));
     
-                if (currentInsertChunk.length >= table.chunk_size) {
+                if (currentInsertChunk.length >= insertChunkSize) {
                     insertChunks.push(currentInsertChunk);
                     currentInsertChunk = [];
                 }

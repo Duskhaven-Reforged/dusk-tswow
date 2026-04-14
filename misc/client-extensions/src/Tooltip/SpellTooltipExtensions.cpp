@@ -1077,21 +1077,45 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
         v112 = 1;
     }
     if (!a3) {
-        // Dodge / Parry / Block / Crit (disas 923-949): when !a3 and (effect 78 or v155+effect 20/22/23).
-        // no clue what minID is at this point in the disas, block made to test stats
-        // if ((spell->m_effect[0] == 78 || (v155 && (spell->m_effect[0] == 20 || spell->m_effect[0] == 22 || spell->m_effect[0] == 23)))) {
-        //     float* stats = reinterpret_cast<float*>(reinterpret_cast<char*>(activePlayer) + 0x7D4);
-        //     const char* keys[] = { "CHANCE_TO_DODGE", "CHANCE_TO_PARRY", "CHANCE_TO_BLOCK", "CHANCE_TO_CRIT" };
-        //     for (int s = 0; s < 4; ++s) {
-        //         if (stats[s] <= 0.0f) continue;
-        //         const char* lbl = FrameScript::GetText(const_cast<char*>(keys[s]), -1, 0);
-        //         if (lbl) {
-        //             SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(lbl), stats[s]);
-        //             CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
-        //             v112 = 1;
-        //         }
-        //     }
-        // }
+        // Dodge / Parry / Block / Crit (disas 923-949).
+        // Stock selects exactly one localized string/value pair from the first effect:
+        //   20 -> dodge, 22 -> parry, 23 -> block, 78 -> crit
+        // Effects 20/22/23 are only allowed through when v155 is set.
+        const uint32_t effect0 = spell->m_effect[0];
+        if (effect0 == 78 || (v155 && (effect0 == 20 || effect0 == 22 || effect0 == 23))) {
+            const char* statKey = nullptr;
+            float statValue = 0.0f;
+
+            switch (effect0) {
+                case 20:
+                    statKey = "CHANCE_TO_DODGE";
+                    statValue = activePlayer->PlayerData->dodgePct;
+                    break;
+                case 22:
+                    statKey = "CHANCE_TO_PARRY";
+                    statValue = activePlayer->PlayerData->parryPct;
+                    break;
+                case 23:
+                    statKey = "CHANCE_TO_BLOCK";
+                    statValue = activePlayer->PlayerData->blockPct;
+                    break;
+                case 78:
+                    statKey = "CHANCE_TO_CRIT";
+                    statValue = activePlayer->PlayerData->critPct;
+                    break;
+                default:
+                    break;
+            }
+
+            if (statKey) {
+                const char* lbl = FrameScript::GetText(const_cast<char*>(statKey), -1, 0);
+                if (lbl) {
+                    SStr::Printf(lineLeft, sizeof(lineLeft), const_cast<char*>(lbl), statValue);
+                    CGTooltip::AddLine(tooltip, lineLeft, nullptr, sColorHexWhite, sColorHexWhite, 0);
+                    v112 = 1;
+                }
+            }
+        }
 
         // "Use all power" line (disas 950-955).
         if (spell->m_attributesEx & 2 != 0) {

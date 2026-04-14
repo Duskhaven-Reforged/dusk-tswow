@@ -196,6 +196,14 @@ export abstract class SqlRow<C, Q> extends Row<C, Q> {
         return row._getPreparedDeleteValues();
     }
 
+    static getPreparedStatementValueCount(row: SqlRow<any,any>) {
+        return row._getPreparedStatements().length;
+    }
+
+    static getPreparedDeleteValueCount(row: SqlRow<any,any>) {
+        return row._getPreparedDeleteValues().length;
+    }
+
     protected generateSql() {
         const obj = this.objectify();
         translate(this.table.name,obj,'OUT')
