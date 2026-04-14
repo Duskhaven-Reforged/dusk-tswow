@@ -396,6 +396,20 @@ namespace {
         AddSingleLine(tooltip, text, reinterpret_cast<void*>(kColorDarkYellow), wrap);
     }
 
+    void AddSpacerLine(void* tooltip) {
+        if (!tooltip) {
+            return;
+        }
+
+        CGTooltip::AddLine(
+            tooltip,
+            const_cast<char*>(" "),
+            nullptr,
+            reinterpret_cast<void*>(kColorDarkYellow),
+            reinterpret_cast<void*>(kColorDarkYellow),
+            1);
+    }
+
     void AddLightBlueLine(void* tooltip, char* text, uint32_t wrap = 0) {
         AddSingleLine(tooltip, text, reinterpret_cast<void*>(kColorLightBlue1), wrap);
     }
@@ -1204,24 +1218,12 @@ namespace {
         if (!tooltip || !itemCache) {
             return;
         }
-        
-        bool shouldAddline = true;
+
         for (size_t socketIndex = 0; socketIndex < std::size(itemCache->socketColor); ++socketIndex) {
             uint32_t socketColor = itemCache->socketColor[socketIndex];
             const char* colorName = GetSocketColorName(socketColor);
             if (!colorName || !colorName[0]) {
                 continue;
-            }
-
-            if (shouldAddline) {
-                CGTooltip::AddLine(
-                    tooltip,
-                    const_cast<char*>(" "),
-                    nullptr,
-                    reinterpret_cast<void*>(kColorDarkYellow),
-                    reinterpret_cast<void*>(kColorDarkYellow),
-                1);
-                shouldAddline = false;
             }
 
             int32_t enchantmentId = GetSocketEnchantmentId(itemObject, socketIndex);
@@ -1462,6 +1464,77 @@ namespace {
         return false;
     }
 
+    bool IsSocketEnchantmentSlot(int slotIndex);
+
+    bool HasStatSectionLines(const ItemCacheTooltipView* itemCache) {
+        if (!itemCache) {
+            return false;
+        }
+
+        if (itemCache->armor != 0 || itemCache->shieldBlock != 0) {
+            return true;
+        }
+
+        for (size_t i = 0; i < std::size(itemCache->statType); ++i) {
+            if (itemCache->statType[i] >= 0 && itemCache->statValue[i] != 0) {
+                return true;
+            }
+        }
+
+        for (int32_t resistance : itemCache->resistances) {
+            if (resistance != 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool HasItemSpellEntries(const ItemCacheTooltipView* itemCache) {
+        if (!itemCache) {
+            return false;
+        }
+
+        for (uint32_t spellId : itemCache->spellId) {
+            if (spellId != 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool HasAppliedEnchantmentEntries(const ItemCacheTooltipView* itemCache, void* itemObject) {
+        if (!itemCache || !itemObject) {
+            return false;
+        }
+
+        for (int slotIndex = 0; slotIndex < 12; ++slotIndex) {
+            if (IsSocketEnchantmentSlot(slotIndex)) {
+                continue;
+            }
+
+            const int32_t enchantmentId = GetItemEnchantmentIdBySlot(itemObject, slotIndex);
+            if (enchantmentId == 0) {
+                continue;
+            }
+
+            auto* enchantRow = FindSpellItemEnchantmentRowSigned(enchantmentId);
+            if (!enchantRow) {
+                continue;
+            }
+
+            if (itemCache->socketBonusEnchantId != 0 &&
+                static_cast<uint32_t>(enchantmentId < 0 ? -enchantmentId : enchantmentId) == itemCache->socketBonusEnchantId) {
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     uint32_t GetItemSetItemCount(const ItemSetRow* itemSetRow) {
         if (!itemSetRow) {
             return 0;
@@ -1683,13 +1756,6 @@ namespace {
 
         bool equippedMask[17] = {};
         uint32_t equippedItemCount = BuildItemSetEquippedMask(activePlayer, &itemSetRow, equippedMask);
-        CGTooltip::AddLine(
-            tooltip,
-            const_cast<char*>(" "),
-            nullptr,
-            reinterpret_cast<void*>(kColorDarkYellow),
-            reinterpret_cast<void*>(kColorDarkYellow),
-            1);
 
         char* formatText = FrameScript::GetText(const_cast<char*>("ITEM_SET_NAME"), -1, 0);
         if (formatText && formatText[0]) {
@@ -1749,14 +1815,6 @@ namespace {
                 0);
         }
 
-        CGTooltip::AddLine(
-            tooltip,
-            const_cast<char*>(" "),
-            nullptr,
-            reinterpret_cast<void*>(kColorDarkYellow),
-            reinterpret_cast<void*>(kColorDarkYellow),
-            1);
-
         std::vector<size_t> bonusIndices;
         bonusIndices.reserve(std::size(itemSetRow.spellId));
         for (size_t i = 0; i < std::size(itemSetRow.spellId); ++i) {
@@ -1803,6 +1861,10 @@ namespace {
                 continue;
             }
 
+            if (!addedBonusLine) {
+                AddSpacerLine(tooltip);
+            }
+
             char line[1024] = {};
             if (isActive) {
                 SStr::Printf(line, sizeof(line), formatText, spellText);
@@ -1813,6 +1875,10 @@ namespace {
             }
 
             addedBonusLine = true;
+        }
+
+        if (addedBonusLine) {
+            AddSpacerLine(tooltip);
         }
     }
 
@@ -2099,7 +2165,9 @@ namespace {
                 }
             }
 
-            AddSingleLine(tooltip, finalLine, reinterpret_cast<void*>(lineColor), 0);
+            char prefixedLine[1280] = {};
+            SStr::Printf(prefixedLine, sizeof(prefixedLine), const_cast<char*>("Enchanted: %s"), finalLine);
+            AddSingleLine(tooltip, prefixedLine, reinterpret_cast<void*>(lineColor), 0);
             AddEnchantmentRequirementLines(tooltip, enchantRow, activePlayer);
 
             if (slotIndex >= 7) {
@@ -4921,6 +4989,11 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
 
     AddDirectStatLines(tooltip, itemCache);
     AddResistanceLines(tooltip, itemCache);
+
+    if (HasStatSectionLines(itemCache) && (HasAppliedEnchantmentEntries(itemCache, itemObject) || HasItemSpellEntries(itemCache))) {
+        AddSpacerLine(tooltip);
+    }
+
     AddAppliedEnchantmentLines(tooltip, itemCache, itemObject, activePlayer);
     AddProposedEnchantLines(tooltip);
 
@@ -4940,14 +5013,6 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
     AddLiveItemCooldownLine(tooltip, arg10);
     AddLeaveCombatCooldownLine(tooltip, itemObject, arg10);
     SafeAddItemSetLines(tooltip, itemCache, static_cast<uint32_t>(itemId), activePlayer);
-
-    CGTooltip::AddLine(
-    tooltip,
-    const_cast<char*>(" "),
-    nullptr,
-    reinterpret_cast<void*>(kColorDarkYellow),
-    reinterpret_cast<void*>(kColorDarkYellow),
-    1);
 
     // Stock returns here for the compare/loading-style path after cooldown handling.
     if (arg5 != 0) {
@@ -4970,7 +5035,6 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
     SafeAddEquipmentSetsLine(tooltip, objectGuidPtr, objectGuidLow, objectGuidHigh);
     SafeAddRefundTimeLine(tooltip, itemObject, activePlayer);
     SafeAddBindTradeTimeLine(tooltip, itemObject, activePlayer);
-    AddDurabilityLine(tooltip, itemObject);
     AddRequiredLevelLine(tooltip, itemCache, activePlayer, arg10);
     AddRaceClassRestrictionLine(tooltip, itemCache, activePlayer, arg10);
     AddAllowedRaceLine(tooltip, itemCache, activePlayer, arg10);
