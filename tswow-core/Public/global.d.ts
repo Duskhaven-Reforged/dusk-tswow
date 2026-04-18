@@ -194,6 +194,13 @@ declare const enum Powers /**@realType:int8 */ {
 } /**@realType:int8 */
 declare const enum CreatureType {} /** SharedDefines.h:CreatureType */
 declare const enum ReactStates {} /** UnitDefines.h:ReactStates */
+declare const enum SelectTargetType /**@realType:uint32 */ {
+    SELECT_TARGET_RANDOM = 0,
+    SELECT_TARGET_TOPAGGRO = 1,
+    SELECT_TARGET_BOTTOMAGGRO = 2,
+    SELECT_TARGET_NEAREST = 3,
+    SELECT_TARGET_FARTHEST = 4,
+} /** TSCreature.cpp:SelectTargetMethod */
 declare const enum LocaleConstant {} /** Common.h:LocaleConstant */
 declare const enum UnitMoveType {} /** UnitDefines.h:UnitMoveType */
 declare const enum MovementGeneratorType {} /** MovementDefines.h:MovementGeneratorType */
@@ -3096,7 +3103,7 @@ declare interface TSCreature extends TSUnit {
      * @param float o
      */
     SetHomePosition(x : float,y : float,z : float,o : float) : void
-    FindThreatListEntry(targetType : uint32,playerOnly : bool,position : uint32,dist : float,aura : int32) : TSUnit | undefined
+    FindThreatListEntry(targetType : SelectTargetType,playerOnly : bool,position : uint32,dist : float,aura : int32) : TSUnit | undefined
     GetThreatList() : TSArray<TSUnit>
 
     /**

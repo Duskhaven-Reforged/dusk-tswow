@@ -177,6 +177,15 @@ declare function GetQuestLogSelection(): number;
 declare function GetQuestLink(index: number): string;
 declare function DrawLine(texture: WoWAPI.Texture, canvasFrame: WoWAPI.Frame, startX: number, startY: number, endX: number, endY: number, lineWidth: number, lineFactor: number, relPoint: Point)
 declare function StringContainsString(Name: string, Lookup: string): string
+declare function MidnightDropDown_CreateMenu(config?: any): any;
+declare function MidnightDropDown_AddEntry(menu: any, entry: any): any;
+declare function MidnightDropDown_AddButton(menu: any, text: string, value?: any, func?: (...args: any[]) => void, extra?: any): any;
+declare function MidnightDropDown_AddSubmenu(menu: any, text: string, childMenu: any, extra?: any): any;
+declare function MidnightDropDown_AddDivider(menu: any, extra?: any): any;
+declare function MidnightDropDown_AddFrame(menu: any, extra?: any): any;
+declare function MidnightDropDown_CloseAll(): void;
+declare function MidnightUI_GetThemeColor(key: string): LuaMultiReturn<[number, number, number, number]>;
+declare function MidnightUI_GetThemeColorTable(key: string): [number, number, number, number];
 
 declare function GetCurrentMapContinent(): number;
 declare function GetCurrentMapZone(): number;
@@ -13513,7 +13522,7 @@ declare namespace WoWAPI {
          * @see https://wow.gamepedia.com/API_Frame_SetBackdropColor
          */
         SetBackdropColor(red: number, green: number, blue: number, alpha: number): void;
-
+        SetBackdropBorderColor(red: number, green: number, blue: number, alpha: number): void;
         /**
          * Using 'nil' as the only parameter will remove the backdrop on the indicated frame
          * @param options
