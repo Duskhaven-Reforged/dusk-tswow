@@ -25,6 +25,32 @@ struct HitTestResult
     float rayEndZ;     // 0x2C
 };
 
+struct DecodedGuid
+{
+    uint64_t full;
+    uint16_t type;
+    uint32_t entry;
+    uint32_t low;
+};
+
+static DecodedGuid DecodeClientGuid(uint32_t rawLow, uint32_t rawHigh)
+{
+    DecodedGuid g{};
+    g.full  = (uint64_t(rawHigh) << 32) | rawLow;
+    g.type  = (uint16_t)(g.full >> 48);
+    g.entry = (uint32_t)((g.full >> 24) & 0xFFFFFF);
+    g.low   = (uint32_t)(g.full & 0xFFFFFF);
+    return g;
+}
+
+const char* GuidToString(uint64_t guid)
+{
+    static char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)guid);
+    return buffer;
+}
+
+DecodedGuid lastMouseGUID;
 float lastMouseHitX;
 float lastMouseHitY;
 float lastMouseHitZ;
@@ -36,9 +62,11 @@ CLIENT_DETOUR_THISCALL(CGWorldFrame__HitTestPoint, 0x004F9DA0, int, (float a2, f
     if (a5)
     {
         HitTestResult* lastMouseHit = reinterpret_cast<HitTestResult*>(a5);
-        lastMouseHitX               = lastMouseHit->x;
-        lastMouseHitY               = lastMouseHit->y;
-        lastMouseHitZ               = lastMouseHit->z;
+        lastMouseGUID =
+            result >= 2 ? DecodeClientGuid(lastMouseHit->guidLow, lastMouseHit->guidHigh) : DecodeClientGuid(0, 0);
+        lastMouseHitX = lastMouseHit->x;
+        lastMouseHitY = lastMouseHit->y;
+        lastMouseHitZ = lastMouseHit->z;
     }
 
     return result;
@@ -50,4 +78,13 @@ LUA_FUNCTION(GetMouseWorldPosition, (lua_State * L))
     ClientLua::PushNumber(L, lastMouseHitY);
     ClientLua::PushNumber(L, lastMouseHitZ);
     return 3;
+}
+
+LUA_FUNCTION(GetLastMouseoverGUID, (lua_State * L))
+{
+    ClientLua::PushString(L, GuidToString(lastMouseGUID.full));
+    ClientLua::PushNumber(L, lastMouseGUID.entry);
+    ClientLua::PushNumber(L, lastMouseGUID.low);
+    ClientLua::PushNumber(L, lastMouseGUID.type);
+    return 4;
 }
