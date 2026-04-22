@@ -88,3 +88,15 @@ LUA_FUNCTION(GetLastMouseoverGUID, (lua_State * L))
     ClientLua::PushNumber(L, lastMouseGUID.type);
     return 4;
 }
+
+// struct CObject {
+
+// };
+
+// LUA_FUNCTION(RotateGobPointer, (lua_State* L))
+// {
+//     CObject* data = static_cast<CObject*>(
+//         ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT)
+//     );
+//     return 0;
+// }
