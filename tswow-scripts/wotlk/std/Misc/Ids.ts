@@ -203,6 +203,9 @@ export const Ids = {
     /** Starts at 2600, highest base value is 2513*/
     SpellRuneCost: new DynamicIDGenerator('SpellRuneCost',2600),
 
+    /** Starts at 1000, custom SQL ids */
+    jump_charge_params: new StaticIDGenerator('jump_charge_params',1000),
+
     /** Starts at 3000, highest base value is 2935*/
     SummonProperties: new DynamicIDGenerator('SummonProperties',3000),
 

@@ -83,6 +83,7 @@ import { SoundEntryRegistry } from "./std/Sound/SoundEntry";
 import { ZoneIntroMusicRegistry } from "./std/Sound/ZoneIntroMusic";
 import { ZoneMusicRegistry } from "./std/Sound/ZoneMusic";
 import { SpawnGroupRegistry } from "./std/SpawnGroup/SpawnGroupRegistry";
+import { JumpChargeParamsRegistry } from "./std/Spell/JumpChargeParams";
 import { SpellMissileRegistry } from "./std/Spell/SpellMissile";
 import { SpellRuneCostRegistry } from "./std/Spell/SpellPower";
 import { SpellRangeRegistry } from "./std/Spell/SpellRange";
@@ -118,6 +119,7 @@ export const std = {
     SpellVisualKits: SpellVisualKitRegistry,
     SpellVisualEffects: SpellVisualEffectRegistry,
     SpellMissile: SpellMissileRegistry,
+    JumpChargeParams: JumpChargeParamsRegistry,
     SpellRuneCost: SpellRuneCostRegistry,
     SpellRange: SpellRangeRegistry,
     Languages : LanguageRegistry,

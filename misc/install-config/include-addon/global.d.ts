@@ -164,6 +164,8 @@ declare const ActionButtonMap: any[]
 
 declare function ActionButton_UpdateUsable(self: WoWAPI.Button): void;
 
+declare function SetFrameChildClipping(frame: WoWAPI.Frame, on: number): void;
+
 declare function HideUIPanel(frame: WoWAPI.Frame): void;
 declare function format(formatString: String, input:String):String;
 declare function format(formatString: String, input:number):String;

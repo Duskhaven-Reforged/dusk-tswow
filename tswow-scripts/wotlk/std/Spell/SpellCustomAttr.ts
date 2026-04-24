@@ -149,7 +149,7 @@ export class SpellCustomAttr extends MaskCell<Spell> {
     get DROP_STACK_ON_EXPIRE()          { return this.bit(52); }
     get COMBODAMAGE()                   { return this.bit(53); }
     get COMBODURATION()                 { return this.bit(54); }
-    get UNUSED56()                      { return this.bit(55); }
+    get ENFORCE_ITEMEQ_ALL_SLOTS()      { return this.bit(55); }
     get UNUSED57()                      { return this.bit(56); }
     get UNUSED58()                      { return this.bit(57); }
     get UNUSED59()                      { return this.bit(58); }

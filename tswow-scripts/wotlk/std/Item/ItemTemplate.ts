@@ -75,28 +75,24 @@ import { ItemDescription, ItemName } from "./ItemText";
 import { PageMaterialCell } from "./PageMaterial";
 import { Stat } from "./ItemStats";
 
-/**
- * Loothaven Item Registry (embedded)
- *
- * This is intentionally embedded in the base ItemTemplate implementation so:
- * - `.Loothaven.set(true)` is always available without cross-module imports
- * - runtime and types come from the same place
- */
-
 type LoothavenRegistrationOptions = {
     moduleName?: string;
     filePath?: string;
-    /** Item tag (second argument of std.Items.create). No const required. */
     tagName?: string;
-    /** Variable name holding the item (e.g. from `const beltofarugal = std.Items.create(...)`). */
     constName?: string;
-    /** Parent/display ID from create call when present (third argument of std.Items.create(mod, tag, parentedId)). */
     parentedId?: number | null;
+    scriptKind?: "create" | "load" | string;
     metadata?: any;
 };
 
-// Single source of truth: loothaven_registry is created only here (world_dest).
-// We DROP then CREATE so the schema always matches; the table is repopulated by the finish("loothaven-register-items") callback in this file.
+type ExtractedLoothavenRegistration = {
+    scriptKind: "create" | "load";
+    moduleNameArg: string | null;
+    tag: string | null;
+    constName: string | null;
+    parentedId: number | null;
+};
+
 console.log("Creating loothaven_registry table.");
 SQL.Databases.world_dest.writeEarly(`
 DROP TABLE IF EXISTS \`loothaven_registry\`;
@@ -112,6 +108,7 @@ CREATE TABLE \`loothaven_registry\` (
     required_level INT NOT NULL DEFAULT 0,
     module_name VARCHAR(100) NOT NULL DEFAULT '',
     file_path VARCHAR(500) NOT NULL DEFAULT '',
+    script_kind VARCHAR(20) NOT NULL DEFAULT 'create',
     tag_name VARCHAR(100) NOT NULL DEFAULT '',
     parented_id INT NULL,
     const_name VARCHAR(100) NOT NULL DEFAULT '',
@@ -125,7 +122,6 @@ CREATE TABLE \`loothaven_registry\` (
 ) ENGINE=INNODB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 `);
 
-// Track items that need to be registered
 const loothavenItemsToRegister: Array<{ item: ItemTemplate; options: LoothavenRegistrationOptions }> = [];
 const loothavenRegistered = new WeakSet<object>();
 
@@ -134,7 +130,6 @@ function escapeSql(str: string): string
     return str.replace(/'/g, "''").replace(/\\/g, "\\\\");
 }
 
-// Backwards-compatible explicit registration (for legacy `registerItem()` wrappers).
 export function registerLoothavenItemExplicit(item: ItemTemplate, options: LoothavenRegistrationOptions = {}): void
 {
     loothavenItemsToRegister.push({ item, options });
@@ -149,27 +144,28 @@ function registerLoothavenItemAuto(item: ItemTemplate, metadata?: any): void
         return;
     }
 
-    const extracted = extractItemTag(callSite.filePath, callSite.line);
+    const extracted = extractItemRegistration(callSite.filePath, callSite.line);
     if (!extracted)
     {
-        console.error(`Loothaven: could not extract item tag from ${callSite.filePath}:${callSite.line}`);
+        console.error(`Loothaven: could not extract item registration from ${callSite.filePath}:${callSite.line}`);
         console.error(`Loothaven: stack trace was: ${new Error().stack}`);
         return;
     }
 
-    const moduleName = extractModuleName(callSite.filePath);
+    const moduleName = extracted.moduleNameArg || extractModuleName(callSite.filePath);
     const relativeFilePath = getRelativeFilePath(callSite.filePath);
     
-    console.log(`Loothaven: registering item with tag "${extracted.tag}", filePath: "${relativeFilePath}"`);
+    console.log(`Loothaven: registering item with script "${extracted.scriptKind}"${extracted.tag ? `, tag "${extracted.tag}"` : ""}, filePath: "${relativeFilePath}"`);
 
     loothavenItemsToRegister.push({
         item,
         options: {
             moduleName,
             filePath: relativeFilePath,
-            tagName: extracted.tag,
+            tagName: extracted.tag ?? undefined,
             constName: extracted.constName ?? undefined,
             parentedId: extracted.parentedId ?? undefined,
+            scriptKind: extracted.scriptKind,
             metadata: metadata && Object.keys(metadata).length > 0 ? metadata : undefined,
         },
     });
@@ -179,23 +175,17 @@ function normalizeStackFilePath(raw: string): string
 {
     let filePath = raw.trim();
     
-    // Remove file:/// or file:// prefix
     if (filePath.startsWith("file:///"))
         filePath = filePath.substring("file:///".length);
     else if (filePath.startsWith("file://"))
         filePath = filePath.substring("file://".length);
     
-    // Remove any leading/trailing parentheses or whitespace
     filePath = filePath.replace(/^[\(\s]+|[\)\s]+$/g, "");
-    
-    // Normalize separators (but preserve Windows drive letters)
-    // Handle Windows paths like "C:/path" or "C:\path" or "C:/.path"
     const windowsDriveMatch = filePath.match(/^([A-Za-z]):(.*)$/);
     if (windowsDriveMatch)
     {
         const drive = windowsDriveMatch[1].toUpperCase();
         const rest = windowsDriveMatch[2];
-        // Normalize separators in the rest of the path
         filePath = drive + ":" + rest.split("\\").join("/");
     }
     else
@@ -215,7 +205,6 @@ function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: n
     const lines = stack.split("\n");
     for (const rawLine of lines)
     {
-        // Skip internal frames and this file
         if (rawLine.includes("node:internal") || rawLine.includes("/internal/"))
             continue;
         if (rawLine.includes("std/Item/ItemTemplate") || rawLine.includes("ItemTemplate.ts") || rawLine.includes("ItemTemplate.js"))
@@ -223,10 +212,6 @@ function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: n
         if (rawLine.includes("createLoothavenRegistrar") || rawLine.includes("registerLoothavenItemAuto"))
             continue;
 
-        // Try to match stack trace formats:
-        // "    at Object.<anonymous> (C:/path/file.ts:123:45)"
-        // "    at C:/path/file.ts:123:45"
-        // "    at file:///C:/path/file.ts:123:45"
         let match = rawLine.match(/\(([^)]+):(\d+):(\d+)\)/);
         if (!match)
             match = rawLine.match(/([^:\s]+\.(ts|js)):(\d+):(\d+)/);
@@ -240,32 +225,23 @@ function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: n
 
         filePath = normalizeStackFilePath(filePath);
 
-        // If we got a built .js path, map it back to the .ts file (best-effort)
         if (filePath.endsWith(".js"))
         {
             const normalized = filePath.replace(/\\/g, "/");
-            
-            // Try to map build/ path back to datascripts/ path
-            // e.g., .../build/Instances/sfk/cloth.js -> .../datascripts/Instances/sfk/cloth.ts
             const buildIndex = normalized.indexOf("/build/");
             if (buildIndex !== -1)
             {
-                // Extract everything before /build/ and everything after /build/
                 const beforeBuild = normalized.substring(0, buildIndex);
                 const afterBuild = normalized.substring(buildIndex + "/build/".length);
                 
-                // Replace /build/ with /datascripts/ and change .js to .ts
                 filePath = (beforeBuild + "/datascripts/" + afterBuild).replace(/\.js$/, ".ts");
                 filePath = normalizeStackFilePath(filePath);
             }
             else
             {
-                // Fallback: just change .js to .ts
                 filePath = filePath.replace(/\.js$/, ".ts");
             }
         }
-
-        // Verify the file exists before returning
         if (fs.existsSync(filePath) || fs.existsSync(filePath.split("\\").join("/")))
         {
             return { filePath, line, column };
@@ -275,11 +251,22 @@ function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: n
     return null;
 }
 
-function extractItemTag(filePath: string, line: number): { tag: string; constName: string | null; parentedId: number | null } | null
+function extractConstNameNearCall(lines: string[], callLineIndex: number): string | null
+{
+    for (let i = callLineIndex; i >= Math.max(0, callLineIndex - 2); i--)
+    {
+        const match = lines[i].trim().match(/^(export\s+)?const\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/);
+        if (match)
+            return match[2];
+    }
+
+    return null;
+}
+
+function extractItemRegistration(filePath: string, line: number): ExtractedLoothavenRegistration | null
 {
     try
     {
-        // Try multiple path variations
         let actualPath: string | null = null;
         const pathVariations = [
             filePath,
@@ -305,49 +292,32 @@ function extractItemTag(filePath: string, line: number): { tag: string; constNam
         const sourceCode = fs.readFileSync(actualPath, "utf-8");
         const lines = sourceCode.split("\n");
 
-        // Search backwards from the call site line to find the const declaration
         const startLine = Math.min(line - 1, lines.length - 1);
         const searchRange = 100;
-        let constLineIndex = -1;
-        let extractedConstName: string | null = null;
-
+        let searchStartLine = -1;
         for (let i = startLine; i >= Math.max(0, startLine - searchRange); i--)
         {
-            const lineText = lines[i].trim();
-            
-            // Look for "export const VARIABLENAME =" or "const VARIABLENAME ="
-            const exportMatch = lineText.match(/^(export\s+)?const\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=/);
-            if (exportMatch)
+            const lineText = lines[i];
+            const lineLower = lineText.toLowerCase();
+            if (
+                lineLower.includes("std.items.create(")
+                || lineLower.includes("items.create(")
+                || lineLower.includes("std.items.load(")
+                || lineLower.includes("items.load(")
+            )
             {
-                constLineIndex = i;
-                extractedConstName = exportMatch[2];
+                searchStartLine = i;
                 break;
             }
         }
-
-        // If no const declaration, search backwards for std.Items.create( (unchained pattern)
-        let searchStartLine = constLineIndex;
         if (searchStartLine === -1)
         {
-            for (let i = startLine; i >= Math.max(0, startLine - searchRange); i--)
-            {
-                const lineText = lines[i];
-                const lineLower = lineText.toLowerCase();
-                if (lineLower.includes("std.items.create(") || lineLower.includes("items.create("))
-                {
-                    searchStartLine = i;
-                    break;
-                }
-            }
-        }
-        if (searchStartLine === -1)
-        {
-            console.error(`Loothaven: no const declaration and no std.Items.create( found in ${actualPath} searching backwards from line ${line}`);
+            console.error(`Loothaven: no std.Items.create/load call found in ${actualPath} searching backwards from line ${line}`);
             return null;
         }
 
-        // Now search forward from the start line to find std.Items.create() call
-        // The call might span multiple lines, so we need to handle that
+        const extractedConstName = extractConstNameNearCall(lines, searchStartLine);
+
         let createCallStart = -1;
         let createCallEnd = -1;
         let openParens = 0;
@@ -359,7 +329,6 @@ function extractItemTag(filePath: string, line: number): { tag: string; constNam
         {
             const lineText = lines[i];
             
-            // Check if this line contains std.Items.create before searching character by character
             const lineLower = lineText.toLowerCase();
             const hasCreateCall = lineLower.includes('std.items.create') || lineLower.includes('items.create');
             
@@ -368,7 +337,6 @@ function extractItemTag(filePath: string, line: number): { tag: string; constNam
                 const char = lineText[j];
                 const prevChar = j > 0 ? lineText[j - 1] : '';
                 
-                // Handle string literals
                 if (!inString && (char === '"' || char === "'" || char === '`'))
                 {
                     inString = true;
@@ -382,24 +350,27 @@ function extractItemTag(filePath: string, line: number): { tag: string; constNam
                 
                 if (inString) continue;
                 
-                // Track parentheses
                 if (char === '(')
                 {
                     if (openParens === 0 && createCallStart === -1)
                     {
-                        // Check if this is std.Items.create(
+                        // Check if this is std.Items.create/load(
                         // Look backwards up to 50 characters to find the function name
                         const searchStart = Math.max(0, j - 50);
                         const beforeParen = lineText.substring(searchStart, j).trim();
-                        // Also check previous line if we're at the start of this line
                         let fullContext = beforeParen;
                         if (j < 10 && i > searchStartLine)
                         {
                             fullContext = lines[i - 1].trim() + ' ' + beforeParen;
                         }
                         
-                        if (fullContext.toLowerCase().includes('std.items.create') || 
-                            fullContext.toLowerCase().includes('items.create'))
+                        const lowerContext = fullContext.toLowerCase();
+                        if (
+                            lowerContext.includes('std.items.create')
+                            || lowerContext.includes('items.create')
+                            || lowerContext.includes('std.items.load')
+                            || lowerContext.includes('items.load')
+                        )
                         {
                             createCallStart = i;
                             openParens = 1;
@@ -434,28 +405,49 @@ function extractItemTag(filePath: string, line: number): { tag: string; constNam
 
         if (createCallStart === -1 || createCallEnd === -1)
         {
-            console.error(`Loothaven: could not find std.Items.create() call starting from line ${searchStartLine + 1} in ${actualPath}`);
+            console.error(`Loothaven: could not find std.Items.create/load() call starting from line ${searchStartLine + 1} in ${actualPath}`);
             return null;
         }
-
-        // Extract the tag (second argument), optional parented ID (third argument) from std.Items.create('mod', 'tag'[, parentedId])
-        // Note: createCallText starts with '(' since we captured from the opening parenthesis
-        // Normalize whitespace and handle quotes properly
         const normalizedCall = createCallText.replace(/\s+/g, ' ').trim();
-        
-        // Match the arguments: ('mod', 'tag') or ("mod", "tag") or ('mod', 'tag', 6392)
+
+        const callPrefix = lines[createCallStart].toLowerCase();
+        const isLoadCall = callPrefix.includes("items.load");
+
+        if (isLoadCall)
+        {
+            const loadMatch = normalizedCall.match(/\(\s*(\d+)\s*\)/);
+            if (loadMatch)
+            {
+                console.log(`Loothaven: extracted load call${extractedConstName ? `, const "${extractedConstName}"` : ""} at line ${createCallStart + 1} in ${actualPath}`);
+                return {
+                    scriptKind: "load",
+                    moduleNameArg: null,
+                    tag: null,
+                    constName: extractedConstName,
+                    parentedId: null,
+                };
+            }
+        }
+
         const tagMatch = normalizedCall.match(/\(\s*(['"`])((?:[^\\]|\\.)*?)\1\s*,\s*(['"`])((?:[^\\]|\\.)*?)\3(?:\s*,\s*(\d+))?\s*\)/);
         if (tagMatch && tagMatch[4])
         {
-            // Unescape the tag string
+            let moduleNameArg = tagMatch[2];
             let tag = tagMatch[4];
-            tag = tag.replace(/\\(.)/g, '$1'); // Unescape characters
+            moduleNameArg = moduleNameArg.replace(/\\(.)/g, '$1');
+            tag = tag.replace(/\\(.)/g, '$1');
             const parentedId = tagMatch[5] ? parseInt(tagMatch[5], 10) : null;
-            console.log(`Loothaven: extracted tag "${tag}"${extractedConstName ? `, const "${extractedConstName}"` : ""}${parentedId !== null ? `, parentedId ${parentedId}` : ""} from std.Items.create() call at line ${createCallStart + 1} in ${actualPath}`);
-            return { tag, constName: extractedConstName, parentedId };
+            console.log(`Loothaven: extracted create call with tag "${tag}"${extractedConstName ? `, const "${extractedConstName}"` : ""}${parentedId !== null ? `, parentedId ${parentedId}` : ""} from std.Items.create() call at line ${createCallStart + 1} in ${actualPath}`);
+            return {
+                scriptKind: "create",
+                moduleNameArg,
+                tag,
+                constName: extractedConstName,
+                parentedId,
+            };
         }
 
-        console.error(`Loothaven: could not extract tag from std.Items.create() call: ${normalizedCall.substring(0, 200)}`);
+        console.error(`Loothaven: could not extract registration from item call: ${normalizedCall.substring(0, 200)}`);
         return null;
     }
     catch (error)
@@ -470,7 +462,6 @@ function extractModuleName(filePath: string): string
 {
     const p = filePath.split("\\").join("/");
 
-    // Prefer explicit dh-* submodule names when present
     if (p.includes("/dh-loot/"))
         return "dh-loot";
     if (p.includes("/dh-professions/") || p.includes("/crafting/items/"))
@@ -481,16 +472,12 @@ function extractModuleName(filePath: string): string
 
 function getRelativeFilePath(filePath: string): string
 {
-    // Normalize path separators
     const p = filePath.split("\\").join("/");
     const pLower = p.toLowerCase();
     
-    // Find the /release/ directory in the path (case-insensitive search)
     let releaseIdx = pLower.indexOf("/release/");
     if (releaseIdx === -1)
     {
-        // Also check for paths that start with "release/" (no leading slash)
-        // This handles relative paths or paths without drive letters
         if (pLower.startsWith("release/"))
         {
             releaseIdx = 0;
@@ -502,17 +489,14 @@ function getRelativeFilePath(filePath: string): string
     
     if (releaseIdx !== -1)
     {
-        // Extract the substring starting from /release/ to get the relative path
         const relativePath = p.substring(releaseIdx + "/release/".length);
         console.log(`Loothaven: file path "${filePath}" -> relative path "${relativePath}"`);
         return relativePath;
     }
     
-    // Fallback: try to find datascripts/ if /release/ not found
     let datascriptsIdx = pLower.indexOf("datascripts/");
     if (datascriptsIdx === -1)
     {
-        // Check if path starts with datascripts/
         if (pLower.startsWith("datascripts/"))
         {
             datascriptsIdx = 0;
@@ -581,7 +565,8 @@ finish("loothaven-register-items", () =>
 
             const moduleName = options.moduleName || extractModuleName(options.filePath || "");
             const filePath = options.filePath || "";
-            const tagName = options.tagName ?? options.constName ?? "";
+            const scriptKind = options.scriptKind === "load" ? "load" : "create";
+            const tagName = options.tagName ?? (scriptKind === "create" ? (options.constName ?? "") : "");
             const constName = options.constName ?? "";
             const parentedId = options.parentedId != null ? options.parentedId : null;
             const metadataJson = options.metadata ? JSON.stringify(options.metadata) : null;
@@ -590,7 +575,7 @@ finish("loothaven-register-items", () =>
                 INSERT INTO \`loothaven_registry\` (
                     item_entry, item_name, item_level, item_class, item_subclass,
                     item_quality, inventory_type, required_level,
-                    module_name, file_path, tag_name, parented_id, const_name, metadata
+                    module_name, file_path, script_kind, tag_name, parented_id, const_name, metadata
                 ) VALUES (
                     ${itemId},
                     '${escapeSql(itemName)}',
@@ -602,6 +587,7 @@ finish("loothaven-register-items", () =>
                     ${requiredLevel},
                     '${escapeSql(moduleName)}',
                     '${escapeSql(filePath)}',
+                    '${escapeSql(scriptKind)}',
                     '${escapeSql(tagName)}',
                     ${parentedId !== null ? parentedId : "NULL"},
                     '${escapeSql(constName)}',
@@ -617,6 +603,7 @@ finish("loothaven-register-items", () =>
                     required_level = VALUES(required_level),
                     module_name = VALUES(module_name),
                     file_path = VALUES(file_path),
+                    script_kind = VALUES(script_kind),
                     tag_name = VALUES(tag_name),
                     parented_id = VALUES(parented_id),
                     const_name = VALUES(const_name),

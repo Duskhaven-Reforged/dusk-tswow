@@ -117,6 +117,7 @@ function syncSpellDBCRow(spell: Spell, parent: number) {
     sqlRow.SpellFamilyFlags2.set(spell.row.SpellClassMask.getIndex(1))
     sqlRow.SpellFamilyFlags3.set(spell.row.SpellClassMask.getIndex(2))
     sqlRow.MaxAffectedTargets.set(spell.row.MaxTargets.get())
+    sqlRow.DmgClass.set(spell.row.DefenseType.get())
     sqlRow.PreventionType.set(spell.row.PreventionType.get())
     sqlRow.DmgMultiplier1.set(spell.row.EffectBonusMultiplier.getIndex(0))
     sqlRow.DmgMultiplier2.set(spell.row.EffectBonusMultiplier.getIndex(1))
