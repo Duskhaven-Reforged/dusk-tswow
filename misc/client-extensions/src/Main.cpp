@@ -1,24 +1,21 @@
-#include <Windows.h>
-#include <detours.h>
-#include "scripts.generated.h"
-
 #include <ClientArguments.h>
 #include <ClientDetours.h>
-#include <FileIntegrity/FileIntegrity.h>
 #include <ClientExtensions.h>
-#include <Clientlua.h>
 #include <ClientNetwork.h>
+#include <Clientlua.h>
+#include <FileIntegrity/FileIntegrity.h>
 #include <FrameXMLExtensions.h>
 #include <Logger.h>
+#include <SavedConfigs/DHConfig.h>
+#include <Windows.h>
+#include <detours.h>
 #include "IPC/VoiceUpdateIPC.h"
-
-#include <vector>
+#include "IPC/x64FileStartup.h"
+#include "scripts.generated.h"
 
 class Main
 {
   public:
-    static inline PROCESS_INFORMATION pi = {0};
-    static inline HANDLE hJob            = NULL;
     static void startup()
     {
         LOG_INFO << "Client starting up";
@@ -27,6 +24,8 @@ class Main
         LOG_INFO << "Time offset set.";
         __init_scripts();
         LOG_INFO << "Client init scripts";
+        DHConfig::Initialize();
+        LOG_INFO << "Save file initialized";
         ClientLua::allowOutOfBoundsPointer();
         LOG_INFO << "Client pointer extension applied";
         ClientNetwork::initialize();
@@ -45,42 +44,6 @@ class Main
         FrameXMLExtensions::Apply();
         LOG_INFO << "FrameXMLExtensions applied";
     }
-
-    static void StartDHV() {
-        STARTUPINFOA si;
-        ZeroMemory(&si, sizeof(si));
-        si.cb = sizeof(si);
-        ZeroMemory(&pi, sizeof(pi));
-        si.dwFlags = STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-
-        // Command line construction
-        const char* executable = "./ClientExtensions64.exe";
-        const char* args       = ""; // e.g. "-debug -port 8080"
-
-        char cmd[4096];
-        if (strlen(args) > 0)
-            snprintf(cmd, sizeof(cmd), "%s %s", executable, args);
-        else
-            snprintf(cmd, sizeof(cmd), "%s", executable);
-
-        // Create a job object to ensure the child process is killed when the parent is killed
-        hJob = CreateJobObjectA(NULL, NULL);
-        if (hJob)
-        {
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {0};
-            jeli.BasicLimitInformation.LimitFlags     = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
-            if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
-            {
-                LOG_INFO << "Started " << executable;
-                if (hJob)
-                {
-                    AssignProcessToJobObject(hJob, pi.hProcess);
-                }
-            }
-        }
-    }
 };
 
 extern "C"
@@ -96,14 +59,18 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
         LOG_INFO << "Attach";
         DisableThreadLibraryCalls(hinstDLL);
         LOG_INFO << "Pass DisableThreadLibraryCalls";
-        CreateThread(nullptr, 0, [](LPVOID) -> DWORD {
-            LOG_INFO << "Thread Made";
-            Main::startup();
-            LOG_INFO << "Main Done";
-            Main::StartDHV();
-            LOG_INFO << "StartDHV Done";
-            return 0;
-        }, nullptr, 0, nullptr);
+        CreateThread(
+            nullptr, 0,
+            [](LPVOID) -> DWORD
+            {
+                LOG_INFO << "Thread Made";
+                Main::startup();
+                LOG_INFO << "Main Done";
+                X64FileStartup::StartDHV();
+                LOG_INFO << "StartDHV Done";
+                return 0;
+            },
+            nullptr, 0, nullptr);
     }
     return TRUE;
 }
