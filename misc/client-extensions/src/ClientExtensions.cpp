@@ -11,6 +11,8 @@ void ClientExtensions::initialize() {
     LOG_INFO << "Character creation fixes applied";
     CharacterExtensions::Apply();
     LOG_INFO << "Character extensions applied";
+    VisibleItemOverrides::Apply();
+    LOG_INFO << "Visible item overrides applied";
     WorldDataExtensions::Apply();
     LOG_INFO << "World data extensions applied";
     WMOLogging::Apply();

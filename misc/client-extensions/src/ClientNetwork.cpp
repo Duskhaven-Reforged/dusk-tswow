@@ -367,6 +367,19 @@ typedef bool(* ClientPacketHandler)
     , ClientPacket* msg
 );
 
+namespace
+{
+    bool HandleServerToClientPacket(void*, uint32_t, int, ClientPacket* packet)
+    {
+        if (!packet || packet->m_size <= 2)
+            return true;
+
+        LOG_INFO << "SERVER_TO_CLIENT custom packet received, raw size=" << packet->m_size;
+        clientBuffer.ReceivePacket(packet->m_size - 2, reinterpret_cast<char*>(packet->m_buffer) + 2);
+        return true;
+    }
+}
+
 CLIENT_DETOUR(
       OnSetMessageHandler
     , 0x006B0B80
@@ -377,16 +390,8 @@ CLIENT_DETOUR(
     // the last opcodes in each batch that seems to register them
     if (opcode == 253 || opcode == 50 || opcode == 532)
     {
-        OnSetMessageHandler(
-                SERVER_TO_CLIENT_OPCODE
-            , [](void* a, uint32_t b, int time, ClientPacket* c) {
-                    if (c->m_size <= 2) return true; // can this ever happen?
-                    // -2 is ok, we already safety checked
-                    clientBuffer.ReceivePacket(c->m_size - 2, (char*)c->m_buffer + 2);
-                    return true;
-            }
-            , nullptr
-            );
+        LOG_INFO << "Intercepted opcode registration batch marker " << opcode << ", hooking SERVER_TO_CLIENT custom packet handler";
+        OnSetMessageHandler(SERVER_TO_CLIENT_OPCODE, HandleServerToClientPacket, nullptr);
     }
     return OnSetMessageHandler(opcode, handler, param);
 }

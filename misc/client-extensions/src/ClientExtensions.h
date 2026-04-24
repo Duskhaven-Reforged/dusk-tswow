@@ -2,6 +2,7 @@
 
 #include <Character/CharacterExtensions.h>
 #include <Character/CharacterFixes.h>
+#include <Character/VisibleItemOverrides.h>
 #include <Misc/MiscFixes.h>
 #include <Spells/Spells.h>
 #include <Tooltip/ItemTooltipExtensions.h>
