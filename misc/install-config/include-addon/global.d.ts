@@ -101,6 +101,19 @@ declare function GetCombatRatingScalar(rating: number): number;
 declare function GetModCastSpeed(): number;
 
 declare function UnitCustomCastingData(unit: string): LuaMultiReturn<[number, number, number]>
+
+// DHConfig saved config API
+declare function DHConfigRead(key: string, defaultValue?: string): string;
+declare function DHConfigReadString(key: string, defaultValue?: string): string;
+declare function DHConfigReadInt(key: string, defaultValue?: number): number;
+declare function DHConfigReadFloat(key: string, defaultValue?: number): number;
+declare function DHConfigWrite(key: string, value: string): void;
+declare function DHConfigWriteTable(key: string, value: any): void;
+declare function DHConfigReadTable(key: string, defaultValue?: any): any;
+declare function DHConfigAddDefault(key: string, value: string): void;
+declare function DHConfigWriteDefaults(): void;
+declare function DHConfigHas(key: string): boolean;
+
 //duskhaven additions
 declare const CharacterAttributesFrame: WoWAPI.Frame
 declare const CharacterModelFrame: WoWAPI.Frame
