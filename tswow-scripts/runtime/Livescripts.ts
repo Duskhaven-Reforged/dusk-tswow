@@ -446,6 +446,43 @@ export class Livescripts {
                     {
                         await module.livescripts.build(dataset,buildType,args);
                     }
+
+                    const validLivescriptModules = dataset.modules()
+                        .filter(x=>x.livescripts.exists())
+                        .map(x=>x.fullName);
+
+                    dataset.path.lib.iterateDef(subdir=>{
+                        if(!subdir.isDirectory()) return;
+                        subdir.toDirectory().iterateDef(file=>{
+                            if(file.isFile()) {
+                                if(file.endsWith('.dll') || file.endsWith('.so') || file.endsWith('.pdb')) {
+                                    let match = false;
+                                    for(const modName of validLivescriptModules) {
+                                        if(file.basename().startsWith(modName + '.')) {
+                                            match = true;
+                                            break;
+                                        }
+                                    }
+                                    if(!match) {
+                                        term.log('livescripts',`Cleaning up leftover library: ${file.basename().get()}`);
+                                        file.remove();
+                                    }
+                                }
+                            } else if (file.isDirectory() && subdir.basename().get() === 'lua') {
+                                let match = false;
+                                for(const modName of validLivescriptModules) {
+                                    if(file.basename().get() === modName) {
+                                        match = true;
+                                        break;
+                                    }
+                                }
+                                if(!match) {
+                                    term.log('livescripts',`Cleaning up leftover lua module: ${file.basename().get()}`);
+                                    file.remove();
+                                }
+                            }
+                        });
+                    });
                 };
 
                 // Reload scripts
