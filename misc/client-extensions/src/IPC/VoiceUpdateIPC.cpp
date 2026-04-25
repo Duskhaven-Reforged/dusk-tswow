@@ -27,12 +27,82 @@ struct QueuedVoiceUpdate
     std::vector<uint8_t> payload;
 };
 
+struct DeviceSnapshot
+{
+    std::vector<std::string> ids;
+    std::string currentId;
+};
+
 std::atomic<bool> g_started{false};
 std::mutex g_queueMutex;
 std::deque<QueuedVoiceUpdate> g_updates;
+std::mutex g_deviceMutex;
+DeviceSnapshot g_inputDevices;
+DeviceSnapshot g_outputDevices;
+
+void CacheDeviceUpdate(Opcode opcode, const std::vector<uint8_t>& payload);
+
+DeviceSnapshot& DeviceSnapshotFor(bool inputDevices)
+{
+    return inputDevices ? g_inputDevices : g_outputDevices;
+}
+
+void ClearDeviceSnapshot(bool inputDevices, const std::optional<std::string>& currentId)
+{
+    std::lock_guard<std::mutex> lock(g_deviceMutex);
+    DeviceSnapshot& snapshot = DeviceSnapshotFor(inputDevices);
+    snapshot.ids.clear();
+    snapshot.currentId = currentId.value_or(std::string{});
+}
+
+void UpsertDeviceSnapshot(bool inputDevices, const std::string& deviceId, bool isCurrent)
+{
+    std::lock_guard<std::mutex> lock(g_deviceMutex);
+    DeviceSnapshot& snapshot = DeviceSnapshotFor(inputDevices);
+
+    bool found = false;
+    for (const std::string& existingId : snapshot.ids)
+    {
+        if (existingId == deviceId)
+        {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found)
+    {
+        snapshot.ids.push_back(deviceId);
+    }
+
+    if (isCurrent)
+    {
+        snapshot.currentId = deviceId;
+    }
+}
+
+std::vector<std::string> CopyDeviceIds(bool inputDevices)
+{
+    std::lock_guard<std::mutex> lock(g_deviceMutex);
+    return DeviceSnapshotFor(inputDevices).ids;
+}
+
+std::optional<std::string> CopyCurrentDeviceId(bool inputDevices)
+{
+    std::lock_guard<std::mutex> lock(g_deviceMutex);
+    const std::string& currentId = DeviceSnapshotFor(inputDevices).currentId;
+    if (currentId.empty())
+    {
+        return std::nullopt;
+    }
+
+    return currentId;
+}
 
 void QueueUpdate(Opcode opcode, std::vector<uint8_t> payload)
 {
+    CacheDeviceUpdate(opcode, payload);
+
     std::lock_guard<std::mutex> lock(g_queueMutex);
     if (g_updates.size() >= kMaxQueuedUpdates)
     {
@@ -299,6 +369,12 @@ int PushDevicesClear(lua_State* L, Opcode opcode, const std::vector<uint8_t>& pa
         return PushMalformedUpdate(L, opcode);
     }
 
+    std::string currentId;
+    if (reader.readString(currentId))
+    {
+        return PushUpdate(L, "devices_clear", DeviceDirection(inputDevices), currentId);
+    }
+
     return PushUpdate(L, "devices_clear", DeviceDirection(inputDevices));
 }
 
@@ -317,6 +393,74 @@ int PushDeviceState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& pay
     }
 
     return PushUpdate(L, "device", DeviceDirection(inputDevices), deviceId, deviceName, isDefault, isCurrent);
+}
+
+void CacheDeviceUpdate(Opcode opcode, const std::vector<uint8_t>& payload)
+{
+    PayloadReader reader(payload.data(), payload.size());
+
+    switch (opcode.raw())
+    {
+        case Opcode::SMSG_VOICE_DEVICES:
+        {
+            bool inputDevices = false;
+            if (ReadValues(reader, inputDevices))
+            {
+                std::string currentId;
+                const bool hasCurrentId = reader.readString(currentId);
+                ClearDeviceSnapshot(
+                    inputDevices,
+                    hasCurrentId ? std::optional<std::string>{currentId} : std::nullopt);
+            }
+            break;
+        }
+        case Opcode::SMSG_VOICE_DEVICE_STATE:
+        {
+            bool inputDevices = false;
+            std::string deviceId;
+            std::string deviceName;
+            bool isDefault = false;
+            bool isCurrent = false;
+
+            if (ReadValues(reader, inputDevices, deviceId, deviceName, isDefault, isCurrent))
+            {
+                UpsertDeviceSnapshot(inputDevices, deviceId, isCurrent);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+int PushDeviceIdTable(lua_State* L, const std::vector<std::string>& ids)
+{
+    ClientLua::CreateTable(L, static_cast<int>(ids.size()), 0);
+    for (size_t i = 0; i < ids.size(); ++i)
+    {
+        ClientLua::PushNumber(L, static_cast<double>(i + 1));
+        ClientLua::PushString(L, ids[i].c_str());
+        ClientLua::RawSet(L, -3);
+    }
+    return 1;
+}
+
+int PushDeviceIds(lua_State* L, bool inputDevices)
+{
+    return PushDeviceIdTable(L, CopyDeviceIds(inputDevices));
+}
+
+int PushCurrentDeviceId(lua_State* L, bool inputDevices)
+{
+    std::optional<std::string> currentId = CopyCurrentDeviceId(inputDevices);
+    if (!currentId.has_value())
+    {
+        ClientLua::PushNil(L);
+        return 1;
+    }
+
+    ClientLua::PushString(L, currentId->c_str());
+    return 1;
 }
 
 int PushVoiceError(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
@@ -449,4 +593,24 @@ LUA_FUNCTION(getVoiceUpdateState, (lua_State* L))
         default:
             return PushUpdate(L, "unknown", update->opcode.raw());
     }
+}
+
+LUA_FUNCTION(VoiceGetInputDeviceIds, (lua_State* L))
+{
+    return PushDeviceIds(L, true);
+}
+
+LUA_FUNCTION(VoiceGetOutputDeviceIds, (lua_State* L))
+{
+    return PushDeviceIds(L, false);
+}
+
+LUA_FUNCTION(VoiceGetCurrentInputDeviceId, (lua_State* L))
+{
+    return PushCurrentDeviceId(L, true);
+}
+
+LUA_FUNCTION(VoiceGetCurrentOutputDeviceId, (lua_State* L))
+{
+    return PushCurrentDeviceId(L, false);
 }

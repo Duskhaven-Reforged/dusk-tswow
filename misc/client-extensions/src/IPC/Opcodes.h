@@ -53,7 +53,7 @@ class Opcode
         SMSG_VOICE_SPEAKING         = 0x2102, // lobbyId, userId, bool speaking
         SMSG_VOICE_SELF_STATE       = 0x2103, // lobbyId, muted, deafened, inputVol, outputVol, mode...
         SMSG_VOICE_PARTICIPANT_STATE = 0x2104, // lobbyId, userId, speaking, selfMute, selfDeaf, localMute, volume
-        SMSG_VOICE_DEVICES          = 0x2105, // bool inputDevices (clear/rebuild device snapshot)
+        SMSG_VOICE_DEVICES          = 0x2105, // bool inputDevices, string currentDeviceId (clear/rebuild device snapshot)
         SMSG_VOICE_DEVICE_STATE     = 0x2106, // bool inputDevices, deviceId, name, isDefault, isCurrent
         SMSG_VOICE_ERROR            = 0x21FF  // op, errorCode, message(optional)
     };

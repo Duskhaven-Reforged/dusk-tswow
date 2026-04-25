@@ -8,6 +8,14 @@
 #include <optional>
 #include <utility>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <mmdeviceapi.h>
+#include <objbase.h>
+#include <propidl.h>
+#include <propsys.h>
+#endif
+
 namespace
 {
 constexpr uint64_t kAccessTokenRefreshLeadTimeMs = 24ull * 60ull * 60ull * 1000ull;
@@ -148,6 +156,143 @@ const char* DeviceTypeName(bool inputDevice)
     return inputDevice ? "input" : "output";
 }
 
+#ifdef _WIN32
+constexpr PROPERTYKEY kDeviceFriendlyNameProperty = {
+    {0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}},
+    14};
+
+std::wstring Utf8ToWide(const std::string& value)
+{
+    if (value.empty())
+    {
+        return {};
+    }
+
+    const int length = MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+    if (length <= 0)
+    {
+        return {};
+    }
+
+    std::wstring wide(length, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), wide.data(), length);
+    return wide;
+}
+
+std::string WideToUtf8(const wchar_t* value)
+{
+    if (!value || value[0] == L'\0')
+    {
+        return {};
+    }
+
+    const int length = WideCharToMultiByte(CP_UTF8, 0, value, -1, nullptr, 0, nullptr, nullptr);
+    if (length <= 1)
+    {
+        return {};
+    }
+
+    std::string utf8(length, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, value, -1, utf8.data(), length, nullptr, nullptr);
+    if (!utf8.empty() && utf8.back() == '\0')
+    {
+        utf8.pop_back();
+    }
+    return utf8;
+}
+
+std::optional<std::string> ResolveWindowsAudioDeviceName(const std::string& deviceId)
+{
+    const std::wstring wideId = Utf8ToWide(deviceId);
+    if (wideId.empty())
+    {
+        return std::nullopt;
+    }
+
+    const HRESULT coInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool shouldUninitialize = coInit == S_OK || coInit == S_FALSE;
+    if (FAILED(coInit) && coInit != RPC_E_CHANGED_MODE)
+    {
+        return std::nullopt;
+    }
+
+    std::optional<std::string> result;
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice* device = nullptr;
+    IPropertyStore* properties = nullptr;
+
+    if (SUCCEEDED(CoCreateInstance(
+            __uuidof(MMDeviceEnumerator),
+            nullptr,
+            CLSCTX_ALL,
+            IID_PPV_ARGS(&enumerator))) &&
+        SUCCEEDED(enumerator->GetDevice(wideId.c_str(), &device)) &&
+        SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties)))
+    {
+        PROPVARIANT friendlyName;
+        PropVariantInit(&friendlyName);
+        if (SUCCEEDED(properties->GetValue(kDeviceFriendlyNameProperty, &friendlyName)) &&
+            friendlyName.vt == VT_LPWSTR)
+        {
+            std::string name = TrimWhitespace(WideToUtf8(friendlyName.pwszVal));
+            if (!name.empty())
+            {
+                result = std::move(name);
+            }
+        }
+        PropVariantClear(&friendlyName);
+    }
+
+    if (properties)
+    {
+        properties->Release();
+    }
+    if (device)
+    {
+        device->Release();
+    }
+    if (enumerator)
+    {
+        enumerator->Release();
+    }
+    if (shouldUninitialize)
+    {
+        CoUninitialize();
+    }
+
+    return result;
+}
+#endif
+
+bool LooksLikeWindowsEndpointId(const std::string& value)
+{
+    return value.rfind("{0.0.0.", 0) == 0;
+}
+
+std::string DisplayNameForDevice(bool inputDevices, const discordpp::AudioDevice& device)
+{
+    const std::string deviceId = device.Id();
+    std::string deviceName = TrimWhitespace(device.Name());
+
+#ifdef _WIN32
+    if (!inputDevices &&
+        (deviceName.empty() || deviceName == deviceId || LooksLikeWindowsEndpointId(deviceName)))
+    {
+        if (std::optional<std::string> resolvedName = ResolveWindowsAudioDeviceName(deviceId))
+        {
+            return *resolvedName;
+        }
+    }
+#endif
+
+    if (!deviceName.empty())
+    {
+        return deviceName;
+    }
+
+    return deviceId;
+}
+
 Opcode DeviceSetOpcode(bool inputDevice)
 {
     return inputDevice ? Opcode::CMSG_VOICE_SET_INPUT_DEVICE
@@ -160,17 +305,21 @@ void PushDeviceEntries(
     const std::string& currentId,
     const std::vector<discordpp::AudioDevice>& devices)
 {
-    SendUpdatePacket(updatePipe, Opcode::SMSG_VOICE_DEVICES, [inputDevices](PacketBuilder& packet)
-                     { packet.writeBool(inputDevices); });
+    SendUpdatePacket(updatePipe, Opcode::SMSG_VOICE_DEVICES, [inputDevices, currentId](PacketBuilder& packet)
+                     {
+                         packet.writeBool(inputDevices);
+                         packet.writeString(currentId);
+                     });
 
     for (const auto& device : devices)
     {
         const std::string deviceId = device.Id();
+        const std::string deviceName = DisplayNameForDevice(inputDevices, device);
         SendUpdatePacket(updatePipe, Opcode::SMSG_VOICE_DEVICE_STATE, [&](PacketBuilder& packet)
                          {
                              packet.writeBool(inputDevices);
                              packet.writeString(deviceId);
-                             packet.writeString(device.Name());
+                             packet.writeString(deviceName);
                              packet.writeBool(device.IsDefault());
                              packet.writeBool(!currentId.empty() && deviceId == currentId);
                          });

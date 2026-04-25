@@ -144,6 +144,10 @@ declare function VoiceSetVADThreshold(automatic: boolean, threshold: number): vo
 declare function VoiceSetAudioMode(mode: number): void;
 declare function VoiceSetInputDevice(deviceId?: string): void;
 declare function VoiceSetOutputDevice(deviceId?: string): void;
+declare function VoiceGetInputDeviceIds(): string[];
+declare function VoiceGetOutputDeviceIds(): string[];
+declare function VoiceGetCurrentInputDeviceId(): string | null;
+declare function VoiceGetCurrentOutputDeviceId(): string | null;
 declare function VoiceSetAutomaticGainControl(enabled: boolean): void;
 declare function VoiceSetEchoCancellation(enabled: boolean): void;
 declare function VoiceSetNoiseSuppression(enabled: boolean): void;
