@@ -12735,6 +12735,8 @@ declare namespace WoWAPI {
         | "SimpleHTML" | "Slider" | "StatusBar";
 
     interface Object {
+        [key: string]: any;
+        [key: number]: any;
         /**
          * get the type of this object
          */
@@ -13387,6 +13389,8 @@ declare namespace WoWAPI {
      */
     interface Frame extends Region, ObjectHookScript<Frame>, ObjectSetScript<Frame> {
 		reagentIndex: number;
+        [key: string]: any;
+        [key: number]: any;
 
         /**
          * Creates a new FontString as a child of a frame.
