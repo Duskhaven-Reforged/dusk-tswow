@@ -1,6 +1,9 @@
 ﻿#define DISCORDPP_IMPLEMENTATION
 #include "discordpp.h"
 #include "DiscordManager.h"
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+#include "../Voice/VoiceManager.h"
+#endif
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -334,6 +337,10 @@ DiscordManager *DiscordManager::Get()
     return instance_;
 }
 
+DiscordManager::DiscordManager() = default;
+
+DiscordManager::~DiscordManager() = default;
+
 bool DiscordManager::Start(uint64_t appId)
 {
     if (running_.exchange(true))
@@ -366,6 +373,15 @@ void DiscordManager::ThreadMain(uint64_t appId)
 
     // Create client
     client_ = std::make_shared<discordpp::Client>();
+
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    voiceManager_ = std::make_unique<VoiceManager>();
+    if (!voiceManager_->InitFMOD())
+    {
+        std::cerr << "⚠️ FMOD proximity voice disabled: init failed\n";
+        voiceManager_.reset();
+    }
+#endif
 
     // Set up logging callback
     // TODO: make this write to a file or something else.
@@ -401,6 +417,13 @@ void DiscordManager::ThreadMain(uint64_t appId)
             }
         }
         discordpp::RunCallbacks();
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+        if (voiceManager_)
+        {
+            voiceManager_->UpdateVoicePositions();
+            voiceManager_->Update();
+        }
+#endif
         std::this_thread::sleep_for(std::chrono::milliseconds(10)); // 10ms is what discord had in docs.
     }
 
@@ -418,6 +441,9 @@ void DiscordManager::ThreadMain(uint64_t appId)
     cachedToken_.reset();
     ClearCallCaches();
     call_.reset();
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    voiceManager_.reset();
+#endif
     client_.reset();
 }
 
@@ -756,6 +782,36 @@ ENQUEUE_DISCORD_CALL1(SetAutomaticGainControl, bool, enabled, SetAutomaticGainCo
 ENQUEUE_DISCORD_CALL1(SetEchoCancellation, bool, enabled, SetEchoCancellation_Internal(enabled))
 ENQUEUE_DISCORD_CALL1(SetNoiseSuppression, bool, enabled, SetNoiseSuppression_Internal(enabled))
 
+void DiscordManager::SetVoiceListenerPosition(float x, float y, float z, float forwardX, float forwardY, float forwardZ)
+{
+    Enqueue([this, x, y, z, forwardX, forwardY, forwardZ]()
+            { SetVoiceListenerPosition_Internal(x, y, z, forwardX, forwardY, forwardZ); });
+}
+
+void DiscordManager::SetVoicePlayerMapping(uint64_t discordUserId, uint64_t playerId)
+{
+    Enqueue([this, discordUserId, playerId]()
+            { SetVoicePlayerMapping_Internal(discordUserId, playerId); });
+}
+
+void DiscordManager::RemoveVoicePlayerMapping(uint64_t discordUserId)
+{
+    Enqueue([this, discordUserId]()
+            { RemoveVoicePlayerMapping_Internal(discordUserId); });
+}
+
+void DiscordManager::SetVoicePlayerPosition(uint64_t playerId, float x, float y, float z)
+{
+    Enqueue([this, playerId, x, y, z]()
+            { SetVoicePlayerPosition_Internal(playerId, x, y, z); });
+}
+
+void DiscordManager::RemoveVoicePlayerPosition(uint64_t playerId)
+{
+    Enqueue([this, playerId]()
+            { RemoveVoicePlayerPosition_Internal(playerId); });
+}
+
 #undef ENQUEUE_DISCORD_CALL0
 #undef ENQUEUE_DISCORD_CALL1
 #undef ENQUEUE_DISCORD_CALL2
@@ -1027,6 +1083,34 @@ void DiscordManager::StartCall_Internal(uint64_t lobbyId)
 
     activeLobbyId_ = lobbyId;
 
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    if (voiceManager_)
+    {
+        call_ = client_->StartCallWithAudioCallbacks(
+            lobbyId,
+            [this](uint64_t userId,
+                   int16_t* data,
+                   uint64_t samplesPerChannel,
+                   int32_t sampleRate,
+                   uint64_t channels,
+                   bool& outShouldMuteData)
+            {
+                outShouldMuteData = true;
+                if (voiceManager_)
+                {
+                    voiceManager_->OnUserAudio(userId, data, samplesPerChannel, sampleRate, channels, outShouldMuteData);
+                }
+            },
+            [](int16_t* data, uint64_t samplesPerChannel, int32_t sampleRate, uint64_t channels)
+            {
+                (void)data;
+                (void)samplesPerChannel;
+                (void)sampleRate;
+                (void)channels;
+            });
+    }
+    else
+#endif
     // StartCall returns a Call handle (invalid if it fails).
     call_ = client_->StartCall(lobbyId);
     if (!call_ || !(*call_))
@@ -1276,6 +1360,75 @@ void DiscordManager::SetNoiseSuppression_Internal(bool enabled)
     if (!HasReadyClient())
         return;
     client_->SetNoiseSuppression(enabled);
+}
+
+void DiscordManager::SetVoiceListenerPosition_Internal(float x, float y, float z, float forwardX, float forwardY, float forwardZ)
+{
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    if (voiceManager_)
+    {
+        voiceManager_->SetListenerPosition({x, y, z}, {forwardX, forwardY, forwardZ});
+    }
+#else
+    (void)x;
+    (void)y;
+    (void)z;
+    (void)forwardX;
+    (void)forwardY;
+    (void)forwardZ;
+#endif
+}
+
+void DiscordManager::SetVoicePlayerMapping_Internal(uint64_t discordUserId, uint64_t playerId)
+{
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    if (voiceManager_)
+    {
+        voiceManager_->SetPlayerMapping(discordUserId, playerId);
+    }
+#else
+    (void)discordUserId;
+    (void)playerId;
+#endif
+}
+
+void DiscordManager::RemoveVoicePlayerMapping_Internal(uint64_t discordUserId)
+{
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    if (voiceManager_)
+    {
+        voiceManager_->RemovePlayerMapping(discordUserId);
+    }
+#else
+    (void)discordUserId;
+#endif
+}
+
+void DiscordManager::SetVoicePlayerPosition_Internal(uint64_t playerId, float x, float y, float z)
+{
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    if (voiceManager_)
+    {
+        voiceManager_->SetPlayerPosition(playerId, {x, y, z});
+    }
+#else
+    (void)playerId;
+    (void)x;
+    (void)y;
+    (void)z;
+#endif
+}
+
+void DiscordManager::RemoveVoicePlayerPosition_Internal(uint64_t playerId)
+{
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+    if (voiceManager_)
+    {
+        voiceManager_->RemovePlayerPosition(playerId);
+    }
+#else
+    (void)playerId;
+#endif
 }
 
 void DiscordManager::HookCallCallbacks()

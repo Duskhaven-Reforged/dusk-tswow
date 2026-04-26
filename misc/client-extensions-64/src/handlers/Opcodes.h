@@ -39,6 +39,13 @@ public:
         CMSG_VOICE_SET_ECHO_CANCELLATION = 0x1143,      // bool
         CMSG_VOICE_SET_NOISE_SUPPRESSION = 0x1144,      // bool
 
+        // Proximity voice spatial data
+        CMSG_VOICE_SET_LISTENER_POSITION = 0x1150,      // x,y,z, forwardX,forwardY,forwardZ
+        CMSG_VOICE_SET_PLAYER_MAPPING = 0x1151,         // discordUserId, playerId
+        CMSG_VOICE_REMOVE_PLAYER_MAPPING = 0x1152,      // discordUserId
+        CMSG_VOICE_SET_PLAYER_POSITION = 0x1153,        // playerId, x,y,z
+        CMSG_VOICE_REMOVE_PLAYER_POSITION = 0x1154,     // playerId
+
         // Rich presence
         CMSG_DISCORD_SET_GAME_PRESENCE = 0x1200,   // characterName, level, className, zoneName
         CMSG_DISCORD_CLEAR_GAME_PRESENCE = 0x1201, // (no payload)

@@ -1,6 +1,22 @@
 #include "IPCTest.h"
 #include "ClientLua.h"
+#include <cstdlib>
 #include <iostream>
+#include <string>
+
+namespace
+{
+uint64_t GetUInt64Arg(lua_State* L, int offset)
+{
+    std::string value = ClientLua::GetString(L, offset);
+    if (!value.empty())
+    {
+        return std::strtoull(value.c_str(), nullptr, 10);
+    }
+
+    return static_cast<uint64_t>(ClientLua::GetNumber(L, offset));
+}
+}
 
 int IPCTest::attemptConnect() {
     return 0;
@@ -176,5 +192,73 @@ LUA_FUNCTION(VoiceSetNoiseSuppression, (lua_State* L)) {
     packet.writeBool(enabled);
     packet.Send();
     LOG_INFO << "Sent CMSG_VOICE_SET_NOISE_SUPPRESSION\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetListenerPosition, (lua_State* L)) {
+    float x = static_cast<float>(ClientLua::GetNumber(L, 1));
+    float y = static_cast<float>(ClientLua::GetNumber(L, 2));
+    float z = static_cast<float>(ClientLua::GetNumber(L, 3));
+    float forwardX = static_cast<float>(ClientLua::GetNumber(L, 4, 0.0));
+    float forwardY = static_cast<float>(ClientLua::GetNumber(L, 5, 1.0));
+    float forwardZ = static_cast<float>(ClientLua::GetNumber(L, 6, 0.0));
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_LISTENER_POSITION);
+    packet.writeFloat(x);
+    packet.writeFloat(y);
+    packet.writeFloat(z);
+    packet.writeFloat(forwardX);
+    packet.writeFloat(forwardY);
+    packet.writeFloat(forwardZ);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_LISTENER_POSITION\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceMapDiscordPlayer, (lua_State* L)) {
+    uint64_t discordUserId = GetUInt64Arg(L, 1);
+    uint64_t playerId = GetUInt64Arg(L, 2);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_PLAYER_MAPPING);
+    packet.writeUInt64(discordUserId);
+    packet.writeUInt64(playerId);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_PLAYER_MAPPING\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceRemoveDiscordPlayer, (lua_State* L)) {
+    uint64_t discordUserId = GetUInt64Arg(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_REMOVE_PLAYER_MAPPING);
+    packet.writeUInt64(discordUserId);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_REMOVE_PLAYER_MAPPING\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceSetPlayerPosition, (lua_State* L)) {
+    uint64_t playerId = GetUInt64Arg(L, 1);
+    float x = static_cast<float>(ClientLua::GetNumber(L, 2));
+    float y = static_cast<float>(ClientLua::GetNumber(L, 3));
+    float z = static_cast<float>(ClientLua::GetNumber(L, 4));
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_PLAYER_POSITION);
+    packet.writeUInt64(playerId);
+    packet.writeFloat(x);
+    packet.writeFloat(y);
+    packet.writeFloat(z);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_SET_PLAYER_POSITION\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceRemovePlayerPosition, (lua_State* L)) {
+    uint64_t playerId = GetUInt64Arg(L, 1);
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_REMOVE_PLAYER_POSITION);
+    packet.writeUInt64(playerId);
+    packet.Send();
+    LOG_INFO << "Sent CMSG_VOICE_REMOVE_PLAYER_POSITION\n";
     return 0;
 }

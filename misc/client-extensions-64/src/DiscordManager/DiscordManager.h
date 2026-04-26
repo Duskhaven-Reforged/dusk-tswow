@@ -14,8 +14,15 @@
 #include "../IPC/CommandQueue.h"
 #include "../IPC/UpdatePipeClient.h"
 
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+class VoiceManager;
+struct Vec3;
+#endif
+
 class DiscordManager {
 public:
+	DiscordManager();
+	~DiscordManager();
 
 	void ThreadMain(uint64_t appId);
 
@@ -67,6 +74,11 @@ public:
 	void SetAutomaticGainControl(bool enabled);
 	void SetEchoCancellation(bool enabled);
 	void SetNoiseSuppression(bool enabled);
+	void SetVoiceListenerPosition(float x, float y, float z, float forwardX, float forwardY, float forwardZ);
+	void SetVoicePlayerMapping(uint64_t discordUserId, uint64_t playerId);
+	void RemoveVoicePlayerMapping(uint64_t discordUserId);
+	void SetVoicePlayerPosition(uint64_t playerId, float x, float y, float z);
+	void RemoveVoicePlayerPosition(uint64_t playerId);
 
 	// Convenience / state accessors (best-effort; mirrors last values we set)
 	bool IsInCall() const { return inCall_; }
@@ -138,6 +150,11 @@ private:
 	void SetNoiseSuppression_Internal(bool enabled);
 	void SetGamePresence_Internal(std::string characterName, uint32_t characterLevel, std::string className, std::string zoneName);
 	void ClearGamePresence_Internal();
+	void SetVoiceListenerPosition_Internal(float x, float y, float z, float forwardX, float forwardY, float forwardZ);
+	void SetVoicePlayerMapping_Internal(uint64_t discordUserId, uint64_t playerId);
+	void RemoveVoicePlayerMapping_Internal(uint64_t discordUserId);
+	void SetVoicePlayerPosition_Internal(uint64_t playerId, float x, float y, float z);
+	void RemoveVoicePlayerPosition_Internal(uint64_t playerId);
 
 	void HookCallCallbacks();
 	void ClearCallCaches();
@@ -160,6 +177,9 @@ private:
 	std::string activityZoneName_;
 	std::optional<uint64_t> activityStartMs_;
 	UpdatePipeClient updatePipe_{ L"duskhaven_social_sdk_updates_pipe" };
+#ifdef DUSKHAVEN_ENABLE_FMOD_VOICE
+	std::unique_ptr<VoiceManager> voiceManager_;
+#endif
 
 	uint64_t applicationId_ = 0;
 	bool usingCachedAccessToken_ = false;

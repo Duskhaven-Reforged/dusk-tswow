@@ -13,6 +13,38 @@ endif()
 
 project ("ClientExtensions64")
 
+option(DUSKHAVEN_ENABLE_FMOD_VOICE "Enable Discord proximity voice through FMOD Core" ON)
+set(FMOD_SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/FMOD" CACHE PATH "FMOD Studio/Core SDK root")
+
+set(DUSKHAVEN_HAVE_FMOD_VOICE OFF)
+if(DUSKHAVEN_ENABLE_FMOD_VOICE)
+    find_path(FMOD_INCLUDE_DIR
+        NAMES fmod.hpp
+        PATHS "${FMOD_SDK_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/FMOD" "$ENV{FMOD_SDK_DIR}"
+        PATH_SUFFIXES api/core/inc inc
+        NO_DEFAULT_PATH
+    )
+    find_library(FMOD_LIBRARY
+        NAMES fmod_vc fmod
+        PATHS "${FMOD_SDK_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/FMOD" "$ENV{FMOD_SDK_DIR}"
+        PATH_SUFFIXES api/core/lib/x64 api/core/lib lib x64
+        NO_DEFAULT_PATH
+    )
+    find_file(FMOD_SHARED_LIB
+        NAMES fmod.dll libfmod.so libfmod.dylib
+        PATHS "${FMOD_SDK_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/FMOD" "$ENV{FMOD_SDK_DIR}"
+        PATH_SUFFIXES api/core/lib/x64 api/core/bin/x64 api/core/lib lib x64
+        NO_DEFAULT_PATH
+    )
+
+    if(FMOD_INCLUDE_DIR AND FMOD_LIBRARY)
+        set(DUSKHAVEN_HAVE_FMOD_VOICE ON)
+        message(STATUS "FMOD proximity voice enabled")
+    else()
+        message(WARNING "FMOD SDK not found. Expected ${CMAKE_CURRENT_SOURCE_DIR}/FMOD or set FMOD_SDK_DIR.")
+    endif()
+endif()
+
 # Collect all sources/headers recursively
 file(GLOB_RECURSE PROJECT_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/src/*.cpp"
@@ -40,6 +72,9 @@ set(DISCORD_SDK_INCLUDE_DIR "${DISCORD_SDK_ROOT}/include")
 
 # Include for Social SDK headers
 target_include_directories(ClientExtensions64 PRIVATE ${DISCORD_SDK_INCLUDE_DIR})
+target_compile_definitions(ClientExtensions64 PRIVATE DUSKHAVEN_ENABLE_FMOD_VOICE=1)
+target_include_directories(ClientExtensions64 PRIVATE ${FMOD_INCLUDE_DIR})
+target_link_libraries(ClientExtensions64 PRIVATE ${FMOD_LIBRARY})
 
 # Platform-specific Social SDK library paths
 if(WIN32)
@@ -76,3 +111,9 @@ add_custom_command(TARGET ClientExtensions64 POST_BUILD
     "${DISCORD_SHARED_LIB}"
     $<TARGET_FILE_DIR:ClientExtensions64>;
 )
+
+add_custom_command(TARGET ClientExtensions64 POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${FMOD_SHARED_LIB}"
+    $<TARGET_FILE_DIR:ClientExtensions64>;
+    

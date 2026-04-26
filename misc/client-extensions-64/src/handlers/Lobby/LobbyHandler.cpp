@@ -24,7 +24,7 @@ void RegisterSimpleHandler(OpcodeDispatcher& dispatcher, Opcode opcode, Handler&
                         { handler(); });
 }
 
-constexpr std::array<Opcode, 20> kRegisteredOpcodes = {
+constexpr std::array<Opcode, 25> kRegisteredOpcodes = {
     Opcode::CMSG_VOICE_START_CALL,
     Opcode::CMSG_VOICE_LEAVE_CALL,
     Opcode::CMSG_VOICE_END_ALL_CALLS,
@@ -43,6 +43,11 @@ constexpr std::array<Opcode, 20> kRegisteredOpcodes = {
     Opcode::CMSG_VOICE_SET_AUTOMATIC_GAIN_CONTROL,
     Opcode::CMSG_VOICE_SET_ECHO_CANCELLATION,
     Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION,
+    Opcode::CMSG_VOICE_SET_LISTENER_POSITION,
+    Opcode::CMSG_VOICE_SET_PLAYER_MAPPING,
+    Opcode::CMSG_VOICE_REMOVE_PLAYER_MAPPING,
+    Opcode::CMSG_VOICE_SET_PLAYER_POSITION,
+    Opcode::CMSG_VOICE_REMOVE_PLAYER_POSITION,
     Opcode::CMSG_DISCORD_SET_GAME_PRESENCE,
     Opcode::CMSG_DISCORD_CLEAR_GAME_PRESENCE,
 };
@@ -90,6 +95,30 @@ void LobbyHandler::Register(OpcodeDispatcher& dispatcher)
                           { DiscordManager::Get()->SetEchoCancellation(reader.readBool()); });
     RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_NOISE_SUPPRESSION, [](PacketReader reader)
                           { DiscordManager::Get()->SetNoiseSuppression(reader.readBool()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_LISTENER_POSITION, [](PacketReader reader)
+                          {
+                              const float x = reader.readFloat();
+                              const float y = reader.readFloat();
+                              const float z = reader.readFloat();
+                              const float forwardX = reader.readFloat();
+                              const float forwardY = reader.readFloat();
+                              const float forwardZ = reader.readFloat();
+                              DiscordManager::Get()->SetVoiceListenerPosition(x, y, z, forwardX, forwardY, forwardZ);
+                          });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_PLAYER_MAPPING, [](PacketReader reader)
+                          { DiscordManager::Get()->SetVoicePlayerMapping(reader.readUInt64(), reader.readUInt64()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_REMOVE_PLAYER_MAPPING, [](PacketReader reader)
+                          { DiscordManager::Get()->RemoveVoicePlayerMapping(reader.readUInt64()); });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_SET_PLAYER_POSITION, [](PacketReader reader)
+                          {
+                              const uint64_t playerId = reader.readUInt64();
+                              const float x = reader.readFloat();
+                              const float y = reader.readFloat();
+                              const float z = reader.readFloat();
+                              DiscordManager::Get()->SetVoicePlayerPosition(playerId, x, y, z);
+                          });
+    RegisterReaderHandler(dispatcher, Opcode::CMSG_VOICE_REMOVE_PLAYER_POSITION, [](PacketReader reader)
+                          { DiscordManager::Get()->RemoveVoicePlayerPosition(reader.readUInt64()); });
     RegisterReaderHandler(dispatcher, Opcode::CMSG_DISCORD_SET_GAME_PRESENCE, [](PacketReader reader)
                           {
                               const std::string characterName = reader.readString();
