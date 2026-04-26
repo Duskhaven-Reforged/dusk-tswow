@@ -21,6 +21,7 @@ export namespace ClientExtensions64 {
                 , 'inherit');
             bpaths.client_extensions_64.exe_path.copy(ipaths.bin.ClientExtensions64_exe)
             bpaths.client_extensions_64.DiscordPartnerSDK_dll_path.copy(ipaths.bin.DiscordPartnerSDK_dll)
+            bpaths.client_extensions_64.FMOD_dll_path.copy(ipaths.bin.FMOD_dll)
         }
     }
 }
