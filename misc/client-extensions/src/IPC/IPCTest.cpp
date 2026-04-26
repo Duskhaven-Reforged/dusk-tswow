@@ -1,6 +1,9 @@
 #include "IPCTest.h"
 #include "ClientLua.h"
+#include <Windows.h>
+#include "SharedDefines.h"
 #include <cstdlib>
+#include <cmath>
 #include <iostream>
 #include <string>
 
@@ -15,6 +18,19 @@ uint64_t GetUInt64Arg(lua_State* L, int offset)
     }
 
     return static_cast<uint64_t>(ClientLua::GetNumber(L, offset));
+}
+
+bool GetUnitTransform(uint64_t guid, C3Vector& position, float& orientation)
+{
+    CGUnit* unit = reinterpret_cast<CGUnit*>(ClntObjMgr::ObjectPtr(guid, TYPEMASK_UNIT));
+    if (!unit || !unit->movementInfo)
+    {
+        return false;
+    }
+
+    position = unit->movementInfo->position;
+    orientation = unit->movementInfo->orientation;
+    return true;
 }
 }
 
@@ -260,5 +276,52 @@ LUA_FUNCTION(VoiceRemovePlayerPosition, (lua_State* L)) {
     packet.writeUInt64(playerId);
     packet.Send();
     LOG_INFO << "Sent CMSG_VOICE_REMOVE_PLAYER_POSITION\n";
+    return 0;
+}
+
+LUA_FUNCTION(VoiceUpdateListenerFromActivePlayer, (lua_State* L)) {
+    C3Vector position{};
+    float orientation = 0.0f;
+    if (!GetUnitTransform(ClntObjMgr::GetActivePlayer(), position, orientation))
+    {
+        return 0;
+    }
+
+    auto packet = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_LISTENER_POSITION);
+    packet.writeFloat(position.x);
+    packet.writeFloat(position.y);
+    packet.writeFloat(position.z);
+    packet.writeFloat(std::cos(orientation));
+    packet.writeFloat(std::sin(orientation));
+    packet.writeFloat(0.0f);
+    packet.Send();
+    return 0;
+}
+
+LUA_FUNCTION(VoiceUpdatePlayerPositionFromGUID, (lua_State* L)) {
+    uint64_t discordUserId = GetUInt64Arg(L, 1);
+    uint64_t playerGuid = GetUInt64Arg(L, 2);
+
+    if (discordUserId == 0 || playerGuid == 0)
+    {
+        return 0;
+    }
+
+    C3Vector position{};
+    float orientation = 0.0f;
+    if (!GetUnitTransform(playerGuid, position, orientation))
+    {
+        auto removePacket = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_REMOVE_PLAYER_POSITION);
+        removePacket.writeUInt64(playerGuid);
+        removePacket.Send();
+        return 0;
+    }
+
+    auto positionPacket = PacketBuilder::CreatePacket(Opcode::CMSG_VOICE_SET_PLAYER_POSITION);
+    positionPacket.writeUInt64(playerGuid);
+    positionPacket.writeFloat(position.x);
+    positionPacket.writeFloat(position.y);
+    positionPacket.writeFloat(position.z);
+    positionPacket.Send();
     return 0;
 }

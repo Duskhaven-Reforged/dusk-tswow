@@ -116,4 +116,5 @@ add_custom_command(TARGET ClientExtensions64 POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     "${FMOD_SHARED_LIB}"
     $<TARGET_FILE_DIR:ClientExtensions64>;
+)
     

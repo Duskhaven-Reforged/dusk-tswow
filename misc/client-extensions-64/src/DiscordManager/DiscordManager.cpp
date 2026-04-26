@@ -463,6 +463,7 @@ void DiscordManager::OnConnect()
     PushParticipantsSnapshot();
     PushDevicesSnapshot(true);
     PushDevicesSnapshot(false);
+    PushCurrentUserUpdate();
 }
 
 void DiscordManager::BeginAuthentication(uint64_t appId)
@@ -980,6 +981,28 @@ void DiscordManager::PushDevicesSnapshot(bool inputDevices)
                                     });
 }
 
+void DiscordManager::PushCurrentUserUpdate()
+{
+    if (!client_)
+    {
+        return;
+    }
+
+    uint64_t userId = 0;
+    if (auto currentUser = client_->GetCurrentUserV2(); currentUser.has_value())
+    {
+        userId = currentUser->Id();
+    }
+
+    if (userId == 0)
+    {
+        return;
+    }
+
+    SendUpdatePacket(updatePipe_, Opcode::SMSG_VOICE_CURRENT_USER, [userId](PacketBuilder& packet)
+                     { packet.writeUInt64(userId); });
+}
+
 void DiscordManager::SetGamePresence_Internal(
     std::string characterName,
     uint32_t characterLevel,
@@ -1143,6 +1166,7 @@ void DiscordManager::StartCall_Internal(uint64_t lobbyId)
     }
 
     PushCallStatusUpdate(call_->GetStatus());
+    PushCurrentUserUpdate();
     PushSelfStateUpdate();
     PushParticipantsSnapshot();
 }

@@ -62,6 +62,7 @@ class Opcode
         SMSG_VOICE_PARTICIPANT_STATE = 0x2104, // lobbyId, userId, speaking, selfMute, selfDeaf, localMute, volume
         SMSG_VOICE_DEVICES          = 0x2105, // bool inputDevices, string currentDeviceId (clear/rebuild device snapshot)
         SMSG_VOICE_DEVICE_STATE     = 0x2106, // bool inputDevices, deviceId, name, isDefault, isCurrent
+        SMSG_VOICE_CURRENT_USER     = 0x2107, // discord userId
         SMSG_VOICE_ERROR            = 0x21FF  // op, errorCode, message(optional)
     };
     constexpr Opcode() : value_(DEFAULT_VALUE) {}

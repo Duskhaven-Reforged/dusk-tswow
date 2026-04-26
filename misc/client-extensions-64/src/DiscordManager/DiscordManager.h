@@ -170,6 +170,7 @@ private:
 	void PushParticipantsSnapshot();
 	void PushParticipantStateUpdate(uint64_t userId);
 	void PushDevicesSnapshot(bool inputDevices);
+	void PushCurrentUserUpdate();
 
 	std::string activityCharacterName_;
 	std::string activityClassName_;

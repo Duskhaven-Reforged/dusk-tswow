@@ -395,6 +395,18 @@ int PushDeviceState(lua_State* L, Opcode opcode, const std::vector<uint8_t>& pay
     return PushUpdate(L, "device", DeviceDirection(inputDevices), deviceId, deviceName, isDefault, isCurrent);
 }
 
+int PushCurrentUser(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payload)
+{
+    PayloadReader reader(payload.data(), payload.size());
+    uint64_t userId = 0;
+    if (!ReadValues(reader, userId))
+    {
+        return PushMalformedUpdate(L, opcode);
+    }
+
+    return PushUpdate(L, "current_user", UInt64String{userId});
+}
+
 void CacheDeviceUpdate(Opcode opcode, const std::vector<uint8_t>& payload)
 {
     PayloadReader reader(payload.data(), payload.size());
@@ -588,6 +600,8 @@ LUA_FUNCTION(getVoiceUpdateState, (lua_State* L))
             return PushDevicesClear(L, update->opcode, update->payload);
         case Opcode::SMSG_VOICE_DEVICE_STATE:
             return PushDeviceState(L, update->opcode, update->payload);
+        case Opcode::SMSG_VOICE_CURRENT_USER:
+            return PushCurrentUser(L, update->opcode, update->payload);
         case Opcode::SMSG_VOICE_ERROR:
             return PushVoiceError(L, update->opcode, update->payload);
         default:
