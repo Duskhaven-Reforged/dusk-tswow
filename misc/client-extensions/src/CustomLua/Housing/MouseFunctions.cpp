@@ -206,16 +206,3 @@ LUA_FUNCTION(MoveGobByMouse, (lua_State * L))
     return 3;
 }
 
-LUA_FUNCTION(GetGobPosByMouse, (lua_State * L))
-{
-    CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
-    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
-        return 0;
-
-    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
-    ClientLua::PushNumber(L, gameObject->position.x);
-    ClientLua::PushNumber(L, gameObject->position.y);
-    ClientLua::PushNumber(L, gameObject->position.z);
-
-    return 3;
-}

@@ -334,6 +334,7 @@ declare interface TSGUID {
     IsAnyTypeGameObject(): bool
     IsInstance(): bool
     IsGroup(): bool
+    asUint64(): TSNumber<uint64>;
 }
 
 /**

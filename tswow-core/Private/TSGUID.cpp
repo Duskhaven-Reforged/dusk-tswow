@@ -40,6 +40,11 @@ ObjectGuid TSGUID::asGUID() const
     return ObjectGuid(m_guid);
 }
 
+uint64 TSGUID::asUint64() const
+{
+    return m_guid;
+}
+
 bool TSGUID::IsEmpty()             const { return asGUID().IsEmpty(); }
 bool TSGUID::IsCreature()          const { return asGUID().IsCreature(); }
 bool TSGUID::IsPet()               const { return asGUID().IsPet(); }

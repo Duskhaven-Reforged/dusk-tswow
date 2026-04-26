@@ -67,7 +67,6 @@ declare function RotateGobByMouse(yaw: number, pitch: number, roll: number): Lua
 declare function GetGobRotByMouse(): LuaMultiReturn<[number, number, number]>
 declare function MoveGobByGUID(guid: string, x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function MoveGobByMouse(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
-declare function GetGobPosByMouse(): LuaMultiReturn<[number, number, number]>
 //
 declare function ConvertCoordsToScreenSpace(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function ReloadMap(): void;
