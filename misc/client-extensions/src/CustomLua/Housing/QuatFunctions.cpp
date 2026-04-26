@@ -8,10 +8,7 @@
 #include <string>
 #include <vector>
 
-struct Quat
-{
-    float w, x, y, z;
-};
+#include "CustomLua/Housing/QuatFunctions.h"
 
 static inline float clampf(float v, float lo, float hi)
 {
@@ -137,7 +134,7 @@ unsigned long long add_euler_delta_to_packed_quat(unsigned long long packed, flo
     return pack_quat(result);
 }
 
-static inline void quat_to_euler(Quat q, float& roll, float& pitch, float& yaw)
+void quat_to_euler(Quat q, float& roll, float& pitch, float& yaw)
 {
     q = normalize_quat(q);
 

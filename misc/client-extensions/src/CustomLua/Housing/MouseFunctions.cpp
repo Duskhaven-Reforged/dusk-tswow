@@ -8,7 +8,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include "CustomLua/Housing/QuatFunctions.cpp"
+
+#include "CustomLua/Housing/QuatFunctions.h"
 
 struct HitTestResult
 {
@@ -123,21 +124,55 @@ LUA_FUNCTION(RotateGobByMouse, (lua_State * L))
     return 3;
 }
 
+LUA_FUNCTION(GetGobRotByMouse, (lua_State * L))
+{
+    // TODO: use a GUID passed in
+    CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
+    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
+        return 0;
+        
+    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
+    float roll, pitch, yaw;
+    quat_to_euler(unpack_quat(gameObject->packedQuaternion), roll, pitch, yaw);
+
+    ClientLua::PushNumber(L, yaw);
+    ClientLua::PushNumber(L, pitch);
+    ClientLua::PushNumber(L, roll);
+
+    return 3;
+}
+
 LUA_FUNCTION(MoveGobByMouse, (lua_State * L))
 {
     // TODO: use a GUID passed in
     CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
-    if (obj && (obj->GetTypeID() == TYPEID_GAMEOBJECT))
-    {
-        TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
-        LOG_DEBUG << gameObject->position.x << " " << gameObject->position.y << " " << gameObject->position.z;
-        gameObject->position.x += ClientLua::GetNumber(L, 1);
-        gameObject->position.y += ClientLua::GetNumber(L, 2);
-        gameObject->position.z += ClientLua::GetNumber(L, 3);
-        obj->UpdateWorldObject(0);
-        ClientLua::PushNumber(L, gameObject->position.x);
-        ClientLua::PushNumber(L, gameObject->position.y);
-        ClientLua::PushNumber(L, gameObject->position.z);
-    }
+    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
+        return 0;
+
+    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
+    LOG_DEBUG << gameObject->position.x << " " << gameObject->position.y << " " << gameObject->position.z;
+    gameObject->position.x += ClientLua::GetNumber(L, 1);
+    gameObject->position.y += ClientLua::GetNumber(L, 2);
+    gameObject->position.z += ClientLua::GetNumber(L, 3);
+    obj->UpdateWorldObject(0);
+    ClientLua::PushNumber(L, gameObject->position.x);
+    ClientLua::PushNumber(L, gameObject->position.y);
+    ClientLua::PushNumber(L, gameObject->position.z);
+
+    return 3;
+}
+
+LUA_FUNCTION(GetGobPosByMouse, (lua_State * L))
+{
+    // TODO: use a GUID passed in
+    CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
+    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
+        return 0;
+
+    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
+    ClientLua::PushNumber(L, gameObject->position.x);
+    ClientLua::PushNumber(L, gameObject->position.y);
+    ClientLua::PushNumber(L, gameObject->position.z);
+
     return 3;
 }
