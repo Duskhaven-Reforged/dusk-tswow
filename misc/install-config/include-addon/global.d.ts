@@ -59,14 +59,16 @@ declare function base64_encode(str: string): string;
 declare function DiscordSetGamePresence(name: string, level: number, pClass: string, zone: string): void;
 declare function DiscordClearGamePresence(): void;
 declare function GetCDBCRow(dbcName: string, rowIndex: number): LuaMultiReturn<[...Unknown]>
+//Housing
 declare function GetMouseWorldPosition(): LuaMultiReturn<[number, number, number]>
-declare function GetLastMouseoverGUID(): LuaMultiReturn<[number, number, number, number]>
+declare function GetLastMouseoverGUID(): LuaMultiReturn<[string, number, number, number]>
+declare function RotateGobByGUID(guid: string, yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
 declare function RotateGobByMouse(yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
 declare function GetGobRotByMouse(): LuaMultiReturn<[number, number, number]>
+declare function MoveGobByGUID(guid: string, x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function MoveGobByMouse(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function GetGobPosByMouse(): LuaMultiReturn<[number, number, number]>
-
-
+//
 declare function ConvertCoordsToScreenSpace(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function ReloadMap(): void;
 declare function ToggleDisplayNormals(): void;
