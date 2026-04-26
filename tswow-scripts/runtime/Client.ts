@@ -231,6 +231,8 @@ export class Client {
                 .copy(this.path.ClientExtensions64_exe)
             ipaths.bin.DiscordPartnerSDK_dll
                 .copy(this.path.DiscordPartnerSDK_dll)
+            ipaths.bin.FMOD_dll
+                .copy(this.path.FMOD_dll)
         }
 
         term.debug('client', `Applying client patches`)
