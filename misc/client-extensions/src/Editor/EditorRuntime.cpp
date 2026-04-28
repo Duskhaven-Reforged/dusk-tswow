@@ -16,10 +16,12 @@
 
 #include <cstdint>
 
-using namespace ClientData;
-
-namespace ClientData::EditorRuntime
+namespace EditorRuntime
 {
+    using namespace ClientData;
+    using namespace EState;
+    using namespace GPick;
+
     namespace
     {
         constexpr float kTranslationGizmoScale = 1.0f;
@@ -288,10 +290,12 @@ namespace ClientData::EditorRuntime
 
         device->Pop();
     }
-}
+} // namespace EditorRuntime
 
 namespace
 {
+    using namespace ClientData;
+
     void __cdecl ClientInitializeGame_EditorRuntimeDetour(int32_t a1, float a2, float a3, float a4)
     {
         GameClient::InitializeGame(a1, a2, a3, a4);

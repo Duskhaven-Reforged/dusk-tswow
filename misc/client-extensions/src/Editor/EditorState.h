@@ -6,8 +6,11 @@
 
 #include <cstdint>
 
-namespace ClientData
+namespace EState
 {
+    using namespace ClientData;
+    using namespace GPick;
+
     struct DragState
     {
         bool active = false;

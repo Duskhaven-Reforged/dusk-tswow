@@ -1,14 +1,11 @@
 #pragma once
 
-namespace ClientData
-{
-    class CGWorldFrameFull;
-}
+#include <ClientData/WorldFrame.h>
 
-namespace ClientData::EditorRuntime
+namespace EditorRuntime
 {
     void Apply();
     void OnGameClientInitialize();
     void OnGameClientDestroy();
-    void OnWorldRender(CGWorldFrameFull* worldFrame);
-}
+    void OnWorldRender(ClientData::CGWorldFrameFull* worldFrame);
+} // namespace EditorRuntime
