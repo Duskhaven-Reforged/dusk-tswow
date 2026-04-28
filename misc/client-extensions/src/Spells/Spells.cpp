@@ -1,7 +1,10 @@
 #include <Spells/Spells.h>
 #include <ClientDetours.h>
 #include <ClientLua.h>
+#include <ClientNetwork.h>
 #include <SpellAttrDefines.h>
+#include <Spells/DangerZoneVisuals.h>
+#include <Spells/ScriptedMissileVisuals.h>
 
 namespace
 {
@@ -14,6 +17,8 @@ namespace
 
 void Spells::Apply() {
     g_spell_min_clip_distance_percentage_cvar = CVar_C::Register("spellMinClipDistancePercentage", "Sets the minimum distance the clipping needs to be to activate", 1, "0.0", SpellMinClipDistancePercentage_CVarCallback, 5, 0, 0, 0);
+    DangerZoneVisuals::Apply();
+    ScriptedMissileVisuals::Apply();
 }
 
 char Spells::SpellMinClipDistancePercentage_CVarCallback(CVar* cvar, const char*, const char* value, const char*)
@@ -51,6 +56,8 @@ CLIENT_DETOUR_THISCALL_NOARGS(MountedCombatAllowed, 0x00715F70, int)
 
 CLIENT_DETOUR(CastSpell, 0x00540310, __cdecl, int, (lua_State* L))
 {
+    ScriptedMissileVisuals::SendCasterFacing(true);
+
     if (!SStrCmpI(ClientLua::ToLString(L, 2, 0), "cursor", 6))
     {
         ClientLua::SetTop(L, -2);

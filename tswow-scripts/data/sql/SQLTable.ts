@@ -27,6 +27,8 @@ const EAGER_PRELOAD_TABLES = new Set<string>([
     'item_set_names',
     'gameobject',
     'item_template',
+    `spell_dbc`,
+    `map_dbc`
 ]);
 const AUTO_EAGER_PRELOAD_QUERY_THRESHOLD = 32;
 const AUTO_EAGER_PRELOAD_TIME_THRESHOLD_MS = 250;

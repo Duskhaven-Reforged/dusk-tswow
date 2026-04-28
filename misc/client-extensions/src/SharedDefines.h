@@ -865,6 +865,7 @@ namespace CGPetInfo_C {
 }
 
 namespace CGUnit_C {
+    CLIENT_FUNCTION(GetFacing, 0x6E6F60, __thiscall, double, (CGUnit*))
     CLIENT_FUNCTION(GetShapeshiftFormId, 0x71AF70, __thiscall, uint32_t, (CGUnit*))
     CLIENT_FUNCTION(HasAuraBySpellId, 0x7282A0, __thiscall, bool, (CGUnit*, uint32_t))
     CLIENT_FUNCTION(GetAuraCount, 0x004F8850, __thiscall, int, (CGUnit*))

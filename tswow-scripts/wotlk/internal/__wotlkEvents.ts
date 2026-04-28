@@ -24,8 +24,6 @@ import { CDBCFiles } from '../CDBCFiles';
 import { DBC } from '../DBCFiles';
 import { SQLTables } from '../SQLFiles';
 import { SQL } from '../SQLFiles';
-import * as fs from 'fs';
-import { CDBCGenerator } from '../cdbc/CDBCGenerator';
 
 function syncAllSpellDBCRows() {
     DBC.Spell.queryAll({}).forEach(spell => {
@@ -132,13 +130,60 @@ function syncAllSpellDBCRows() {
     });
 }
 
+function syncLoc(sqlRow: any, prefix: string, loc: any) {
+    sqlRow[`${prefix}_Lang_enUS`].set(loc.enGB.get())
+    sqlRow[`${prefix}_Lang_enGB`].set(loc.enGB.get())
+    sqlRow[`${prefix}_Lang_koKR`].set(loc.koKR.get())
+    sqlRow[`${prefix}_Lang_frFR`].set(loc.frFR.get())
+    sqlRow[`${prefix}_Lang_deDE`].set(loc.deDE.get())
+    sqlRow[`${prefix}_Lang_enCN`].set(loc.enCN.get())
+    sqlRow[`${prefix}_Lang_zhCN`].set(loc.zhCN.get())
+    sqlRow[`${prefix}_Lang_enTW`].set(loc.enTW.get())
+    sqlRow[`${prefix}_Lang_zhTW`].set(loc.zhTW.get())
+    sqlRow[`${prefix}_Lang_esES`].set(loc.esES.get())
+    sqlRow[`${prefix}_Lang_esMX`].set(loc.esMX.get())
+    sqlRow[`${prefix}_Lang_ruRU`].set(loc.ruRU.get())
+    sqlRow[`${prefix}_Lang_ptPT`].set(loc.ptPT.get())
+    sqlRow[`${prefix}_Lang_ptBR`].set(loc.ptBR.get())
+    sqlRow[`${prefix}_Lang_itIT`].set(loc.itIT.get())
+    sqlRow[`${prefix}_Lang_Unk`].set(loc.Unk.get())
+    sqlRow[`${prefix}_Lang_Mask`].set(loc.mask.get())
+}
+
+function syncAllMapDBCRows() {
+    DBC.Map.queryAll({}).forEach(map => {
+        let sqlRow = SQL.map_dbc.query({ ID: map.ID.get() });
+        if (!sqlRow) {
+            sqlRow = SQL.map_dbc.add(map.ID.get());
+        }
+
+        sqlRow.Directory.set(map.Directory.get())
+        .InstanceType.set(map.InstanceType.get())
+        .Flags.set(map.Flags.get())
+        .PVP.set(map.PVP.get())
+        .AreaTableID.set(map.AreaTableID.get())
+        .LoadingScreenID.set(map.LoadingScreenID.get())
+        .MinimapIconScale.set(map.MinimapIconScale.get())
+        .CorpseMapID.set(map.CorpseMapID.get())
+        .CorpseX.set(map.CorpseX.get())
+        .CorpseY.set(map.CorpseY.get())
+        .TimeOfDayOverride.set(map.TimeOfDayOverride.get())
+        .ExpansionID.set(map.ExpansionID.get())
+        .RaidOffset.set(map.RaidOffset.get())
+        .MaxPlayers.set(map.MaxPlayers.get())
+
+        syncLoc(sqlRow, 'MapName', map.MapName)
+        syncLoc(sqlRow, 'MapDescription0', map.MapDescription0)
+        syncLoc(sqlRow, 'MapDescription1', map.MapDescription1)
+    });
+}
+
 function saveDbc() {
     for (const file of DBCFiles) {
         saveDBCFile(file, '.dbc')
     }
     for (const file of CDBCFiles) {
-        if(!fs.existsSync(file.getPath()))
-            new CDBCGenerator(file.getDefaultRow()).generate(file.getPath());
+        file.ensureSourceFile();
         file.fileWork()
         saveDBCFile(file, '.cdbc')
     }
@@ -173,6 +218,7 @@ function saveDBCFile(file, ending)
 
 async function saveSQL() {
     syncAllSpellDBCRows();
+    syncAllMapDBCRows();
     SQLTables.map(x=>{
         SqlTable.writeSQL(x);
     })

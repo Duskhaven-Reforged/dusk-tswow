@@ -23,6 +23,8 @@ import { SpellAdditionalCostDataCDBCFile } from "./cdbc/SpellAdditionalCostData"
 import { ZoneLightCDBCFile } from "./cdbc/ZoneLight";
 import { ZoneLightPointCDBCFile } from "./cdbc/ZoneLightPoint";
 import { SpellEffectScalarsCDBCFile } from "./cdbc/SpellEffectScalars";
+import { ScriptedMissileMotionCDBCFile } from "./cdbc/ScriptedMissileMotion";
+import { DangerZoneVisualProfileCDBCFile } from "./cdbc/DangerZoneVisualProfile";
 
 export const CDBC = {
     ItemDifficultyText : new ItemDifficultyTextCDBCFile(),
@@ -32,6 +34,8 @@ export const CDBC = {
     ZoneLight : new ZoneLightCDBCFile(),
     ZoneLightPoint : new ZoneLightPointCDBCFile(),
     SpellEffectScalars : new SpellEffectScalarsCDBCFile(),
+    ScriptedMissileMotion : new ScriptedMissileMotionCDBCFile(),
+    DangerZoneVisualProfile : new DangerZoneVisualProfileCDBCFile(),
 }
 
 export const CDBCLoader = {
@@ -42,8 +46,10 @@ export const CDBCLoader = {
     ZoneLight : (path: string) => ZoneLightCDBCFile.read(path),
     ZoneLightPoint : (path: string) => ZoneLightCDBCFile.read(path),
     SpellEffectScalars: (path: string) => SpellEffectScalarsCDBCFile.read(path),
+    ScriptedMissileMotion: (path: string) => ScriptedMissileMotionCDBCFile.read(path),
+    DangerZoneVisualProfile: (path: string) => DangerZoneVisualProfileCDBCFile.read(path),
 }
 
-export type CDBCNames = "ItemDifficultyText" | "LFGRoles" | "SpellAdditionalAttributes" | "SpellAdditionalCostData" | "ZoneLight" | "ZoneLightPoint" | "SpellEffectScalars"
+export type CDBCNames = "ItemDifficultyText" | "LFGRoles" | "SpellAdditionalAttributes" | "SpellAdditionalCostData" | "ZoneLight" | "ZoneLightPoint" | "SpellEffectScalars" | "ScriptedMissileMotion" | "DangerZoneVisualProfile"
 
 export const CDBCFiles : CDBCFile<any,any,any>[] = Object.values(CDBC);

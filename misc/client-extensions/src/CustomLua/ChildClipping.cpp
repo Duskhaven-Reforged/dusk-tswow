@@ -48,7 +48,7 @@ namespace
     CLIENT_FUNCTION(LuaSetTopEx, 0x0084DBF0, __cdecl, void, (lua_State* L, int index))
     CLIENT_FUNCTION(CLayoutFrame__GetRectEx, 0x00489230, __thiscall, int, (void* layoutFrame, float* rect))
     CLIENT_FUNCTION(CSimpleFrame__SetBeingScrolledEx, 0x00490F60, __thiscall, int, (void* frame, int isScrolled, int inherited))
-    CLIENT_FUNCTION(CRenderBatch__QueueCallbackEx, 0x004858E0, __cdecl, void, (void(__cdecl* cb)(void*), void* context))
+    CLIENT_FUNCTION(CRenderBatch__QueueCallbackEx, 0x004858E0, __thiscall, void, (void* renderBatch, void(__cdecl* cb)(void*), void* context))
     CLIENT_FUNCTION(CSimpleScrollFrame__RenderScrollChildEx, 0x0096B610, __cdecl, void, (void* frameLike))
 
     int GetFrameObjectType()
@@ -194,7 +194,7 @@ CLIENT_DETOUR_THISCALL(CSimpleFrame__OnFrameRender_ClipChildren, 0x00490840, cha
 {
     char* result = CSimpleFrame__OnFrameRender_ClipChildren(self, renderBatch, layer);
     if (layer == 4 && ClippedParents().count(self) != 0)
-        CRenderBatch__QueueCallbackEx(RenderClippedChildren, self);
+        CRenderBatch__QueueCallbackEx(reinterpret_cast<void*>(renderBatch), RenderClippedChildren, self);
     return result;
 }
 
