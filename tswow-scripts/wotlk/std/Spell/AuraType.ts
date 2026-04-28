@@ -735,7 +735,7 @@ export class AuraType extends EnumCellTransform<SpellEffect> {
     /** Enum value:                                               354 */
     get MOD_MANA_OR_HEALTH_FROM_STAT_PERCENT()      { return this.value(354, x=>x) }
     /** Enum value:                                               355 */
-    get UNU355()                                    { return this.value(355, x=>x) }
+    get MonkUnarmed()                              { return this.value(355, x=>x) }
     /** Enum value:                                               356 */
-    get UNU356()                                    { return this.value(356, x=>x) }
+    get ModWeaponDpsFromSpellPower()                { return this.value(356, x=>x) }
 }
