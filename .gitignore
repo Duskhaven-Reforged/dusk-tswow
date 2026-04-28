@@ -6,4 +6,5 @@ log.txt
 build.conf
 build/
 /misc/install-config/addons/*
+/misc/HelperLib/*
 /.vs/*

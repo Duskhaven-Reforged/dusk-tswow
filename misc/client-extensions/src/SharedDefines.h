@@ -3,6 +3,8 @@
 #include <ClientMacros.h>
 #include <Util.h>
 
+#include <cmath>
+
 struct lua_State;
 
 enum ObjectTypeMask : uint32_t {
@@ -728,6 +730,20 @@ class CGObject_C // sizeof(CGObject_C) == 0xD0
         return *((T*)&m_data[index]);
     }
 
+    void SetValueBytes(uint32_t index, uint8_t offset, uint8_t value)
+    {
+        if (!m_data || offset >= 4)
+            return;
+
+        uint32_t& current = m_data[index];
+        uint8_t currentByte = static_cast<uint8_t>((current >> (offset * 8)) & 0xFF);
+        if (currentByte == value)
+            return;
+
+        current &= ~(0xFFu << (offset * 8));
+        current |= (uint32_t(value) << (offset * 8));
+    }
+
     virtual ~CGObject_C();                                     // 0
     virtual void Disable();                                    // 1
     virtual void Reenable();                                   // 2 Reenable(CClientObjCreate  const&)
@@ -807,6 +823,22 @@ class CGObject_C // sizeof(CGObject_C) == 0xD0
     TypeID GetTypeID() const
     {
         return m_typeID;
+    }
+
+    float distance(CGObject_C* other)
+    {
+        if (!other)
+            return 0.0f;
+
+        C3Vector a{};
+        C3Vector b{};
+        a = other->GetPosition(a);
+        b = GetPosition(b);
+
+        float dx = b.x - a.x;
+        float dy = b.y - a.y;
+        float dz = b.z - a.z;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
 
   private:
