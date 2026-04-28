@@ -1,19 +1,18 @@
-#include <ClientDetours.h>
 #include <ClientData/GameObject.h>
-#include <Editor/EditorRuntime.h>
-#include <Editor/GizmoPick.h>
-#include <ClientData/ObjectManager.h>
-#include <ClientLua.h>
-#include <Logger.h>
-#include <ClientData/SharedDefines.h>
-
-#include <cstdio>
-#include <cstdint>
-#include <string>
-
-#include "CustomLua/Housing/QuatFunctions.h"
 #include <ClientData/MathTypes.h>
 #include <ClientData/ObjectFields.h>
+#include <ClientData/ObjectManager.h>
+#include <ClientData/SharedDefines.h>
+#include <ClientDetours.h>
+#include <ClientLua.h>
+#include <Editor/EditorRuntime.h>
+#include <Editor/GizmoPick.h>
+#include <Logger.h>
+#include <cstdint>
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include "CustomLua/Housing/QuatFunctions.h"
 
 using namespace ClientData;
 
@@ -79,15 +78,15 @@ CLIENT_DETOUR_THISCALL(CGWorldFrame__HitTestPoint, 0x004F9DA0, int, (float a2, f
         HitTestResult* lastMouseHit = reinterpret_cast<HitTestResult*>(a5);
         lastMouseGUID =
             result >= 2 ? DecodeClientGuid(lastMouseHit->guidLow, lastMouseHit->guidHigh) : DecodeClientGuid(0, 0);
-        lastMouseHitX = lastMouseHit->x;
-        lastMouseHitY = lastMouseHit->y;
-        lastMouseHitZ = lastMouseHit->z;
+        lastMouseHitX      = lastMouseHit->x;
+        lastMouseHitY      = lastMouseHit->y;
+        lastMouseHitZ      = lastMouseHit->z;
         lastMouseRayStartX = lastMouseHit->rayStartX;
         lastMouseRayStartY = lastMouseHit->rayStartY;
         lastMouseRayStartZ = lastMouseHit->rayStartZ;
-        lastMouseRayEndX = lastMouseHit->rayEndX;
-        lastMouseRayEndY = lastMouseHit->rayEndY;
-        lastMouseRayEndZ = lastMouseHit->rayEndZ;
+        lastMouseRayEndX   = lastMouseHit->rayEndX;
+        lastMouseRayEndY   = lastMouseHit->rayEndY;
+        lastMouseRayEndZ   = lastMouseHit->rayEndZ;
     }
 
     return result;
@@ -136,12 +135,12 @@ static CGGameObject_C* SelectedGameObject()
     if (!selectedGameObjectGuid)
         return nullptr;
 
-    return AsClientGameObject(ObjectManager::GetObject(selectedGameObjectGuid, TYPEMASK_OBJECT));
+    return AsClientGameObject(ObjectManager::ObjectPtr(selectedGameObjectGuid, TYPEMASK_OBJECT));
 }
 
 static CGGameObject_C* GameObjectByGuid(uint64_t guid)
 {
-    return AsClientGameObject(ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
+    return AsClientGameObject(ObjectManager::ObjectPtr(guid, TYPEMASK_OBJECT));
 }
 
 static CGGameObject_C* GameObjectByLuaGuid(lua_State* L, int index)
@@ -168,6 +167,34 @@ static void PushGameObjectRotation(lua_State* L, CGGameObject_C* gameObject)
     ClientLua::PushNumber(L, yaw);
     ClientLua::PushNumber(L, pitch);
     ClientLua::PushNumber(L, roll);
+}
+
+LUA_FUNCTION(LogMouseoverGobValues, (lua_State*))
+{
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
+    {
+        LOG_DEBUG << "MouseoverGobValues: no game object moused over";
+        return 0;
+    }
+
+    uint32_t mapID = *reinterpret_cast<uint32_t*>(0xBD088C);
+    Quat q         = unpack_quat(gameObject->m_passenger.compressedRotation);
+
+    float roll, pitch, yaw;
+    quat_to_euler(q, roll, pitch, yaw);
+
+
+    std::ofstream file("gobpositions", std::ios::app);
+    if (file.is_open())
+    {
+        file << lastMouseGUID.entry << "," << mapID << "," << gameObject->m_passenger.position.x << ","
+             << gameObject->m_passenger.position.y << "," << gameObject->m_passenger.position.z << "," << yaw << ","
+             << q.x << "," << q.y << "," << q.z << "," << q.w << "\n";
+        file.close();
+    }
+
+    return 0;
 }
 
 LUA_FUNCTION(SelectGobByMouse, (lua_State * L))
