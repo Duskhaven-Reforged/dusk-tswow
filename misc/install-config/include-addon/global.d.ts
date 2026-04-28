@@ -20,9 +20,9 @@
  * SOFTWARE.
  */
 
- /**
-  * Modified by TSWoW
-  */
+/**
+ * Modified by TSWoW
+ */
 
 declare type LuaMultiReturn<T extends any[]> = T & LuaExtension<"__luaMultiReturnBrand">;
 type uint8 = number;
@@ -41,11 +41,11 @@ type TSString = string;
 
 declare function Message(classTarget: any): any
 declare function MsgClass(classTarget: any, name: string): any
-declare function MsgClassArray(size: number): (field: any, name: any)=>void
+declare function MsgClassArray(size: number): (field: any, name: any) => void
 declare function MsgPrimitive(classTarget: any, name: string): any
-declare function MsgPrimitiveArray(capacity: number): (field: any, name: any)=>void;
-declare function MsgString(size: number): (field: any, name: any)=>void
-declare function MsgStringArray(arrSize: number, stringSize: number): (field: any, name: any)=>void
+declare function MsgPrimitiveArray(capacity: number): (field: any, name: any) => void;
+declare function MsgString(size: number): (field: any, name: any) => void
+declare function MsgStringArray(arrSize: number, stringSize: number): (field: any, name: any) => void
 
 declare function __TS__StringLen(str: string): number
 
@@ -59,8 +59,16 @@ declare function base64_encode(str: string): string;
 declare function DiscordSetGamePresence(name: string, level: number, pClass: string, zone: string): void;
 declare function DiscordClearGamePresence(): void;
 declare function GetCDBCRow(dbcName: string, rowIndex: number): LuaMultiReturn<[...Unknown]>
+//Housing
 declare function GetMouseWorldPosition(): LuaMultiReturn<[number, number, number]>
-declare function ConvertCoordsToScreenSpace(x:number, y:number, z:number): LuaMultiReturn<[number, number, number]>
+declare function GetLastMouseoverGUID(): LuaMultiReturn<[string, number, number, number]>
+declare function RotateGobByGUID(guid: string, yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
+declare function RotateGobByMouse(yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
+declare function GetGobRotByMouse(): LuaMultiReturn<[number, number, number]>
+declare function MoveGobByGUID(guid: string, x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
+declare function MoveGobByMouse(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
+//
+declare function ConvertCoordsToScreenSpace(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function ReloadMap(): void;
 declare function ToggleDisplayNormals(): void;
 declare function ToggleGroundEffects(): void;
@@ -101,6 +109,19 @@ declare function GetCombatRatingScalar(rating: number): number;
 declare function GetModCastSpeed(): number;
 
 declare function UnitCustomCastingData(unit: string): LuaMultiReturn<[number, number, number]>
+
+// DHConfig saved config API
+declare function DHConfigRead(key: string, defaultValue?: string): string;
+declare function DHConfigReadString(key: string, defaultValue?: string): string;
+declare function DHConfigReadInt(key: string, defaultValue?: number): number;
+declare function DHConfigReadFloat(key: string, defaultValue?: number): number;
+declare function DHConfigWrite(key: string, value: string): void;
+declare function DHConfigWriteTable(key: string, value: any): void;
+declare function DHConfigReadTable(key: string, defaultValue?: any): any;
+declare function DHConfigAddDefault(key: string, value: string): void;
+declare function DHConfigWriteDefaults(): void;
+declare function DHConfigHas(key: string): boolean;
+
 //duskhaven additions
 declare const CharacterAttributesFrame: WoWAPI.Frame
 declare const CharacterModelFrame: WoWAPI.Frame
@@ -131,6 +152,10 @@ declare function VoiceSetVADThreshold(automatic: boolean, threshold: number): vo
 declare function VoiceSetAudioMode(mode: number): void;
 declare function VoiceSetInputDevice(deviceId?: string): void;
 declare function VoiceSetOutputDevice(deviceId?: string): void;
+declare function VoiceGetInputDeviceIds(): string[];
+declare function VoiceGetOutputDeviceIds(): string[];
+declare function VoiceGetCurrentInputDeviceId(): string | null;
+declare function VoiceGetCurrentOutputDeviceId(): string | null;
 declare function VoiceSetAutomaticGainControl(enabled: boolean): void;
 declare function VoiceSetEchoCancellation(enabled: boolean): void;
 declare function VoiceSetNoiseSuppression(enabled: boolean): void;
@@ -167,13 +192,13 @@ declare function ActionButton_UpdateUsable(self: WoWAPI.Button): void;
 declare function SetFrameChildClipping(frame: WoWAPI.Frame, on: number): void;
 
 declare function HideUIPanel(frame: WoWAPI.Frame): void;
-declare function format(formatString: String, input:String):String;
-declare function format(formatString: String, input:number):String;
-declare function PaperDollFormatStat(labelName: String, add:number,value:number,subtract:number,frame:WoWAPI.Frame,otherFrame:WoWAPI.Frame):void;
-declare function GetInventoryItemLink(unit:UnitId,index:number):String;
-declare function strfind(searched:String, regex:String):string[];
-declare function select(index:number,link:any):string;
-declare function GetItemGem(link:string, index:number):string[];
+declare function format(formatString: String, input: String): String;
+declare function format(formatString: String, input: number): String;
+declare function PaperDollFormatStat(labelName: String, add: number, value: number, subtract: number, frame: WoWAPI.Frame, otherFrame: WoWAPI.Frame): void;
+declare function GetInventoryItemLink(unit: UnitId, index: number): String;
+declare function strfind(searched: String, regex: String): string[];
+declare function select(index: number, link: any): string;
+declare function GetItemGem(link: string, index: number): string[];
 declare function GetNumQuestLeaderBoards(): number;
 declare function GetQuestLogSelection(): number;
 declare function GetQuestLink(index: number): string;
@@ -2538,10 +2563,10 @@ declare function IsRightShiftKeyDown(): boolean;
 declare function IsRightAltKeyDown(): boolean;
 declare function IsRightControlKeyDown(): boolean;
 
-declare function DressUpItemLink(itemLink:string):void;
-declare function DressUpMountLink(itemLink:string):void;
-declare function DressUpTransmogLink(transmogLink:string):void;
-declare function SetDressUpBackground(frame:WoWAPI.Frame,raceFilename:string,classFilename :string):void;
+declare function DressUpItemLink(itemLink: string): void;
+declare function DressUpMountLink(itemLink: string): void;
+declare function DressUpTransmogLink(transmogLink: string): void;
+declare function SetDressUpBackground(frame: WoWAPI.Frame, raceFilename: string, classFilename: string): void;
 
 declare function GetMouseFocus(): WoWAPI.Frame;
 /**
@@ -2554,7 +2579,7 @@ declare function GetCurrentMapAreaID(): LuaMultiReturn<[number, boolean]>;
  * Returns the WorldMapAreaID of the currently displayed area map, and whether quest objectives should be shown.
  * @returns posX,posY
  */
- declare function GetPlayerMapPosition(unit:WoWAPI.UnitId): LuaMultiReturn<[number, number]>;
+declare function GetPlayerMapPosition(unit: WoWAPI.UnitId): LuaMultiReturn<[number, number]>;
 
 /**
  * Exits mouse look mode; allows mouse input to move the mouse cursor
@@ -2741,7 +2766,7 @@ declare function SetView(viewIndex: 1 | 2 | 3 | 4 | 5): void;
 
 declare namespace WoWAPI {
     type ChannelChatType = "SAY" | "EMOTE" | "YELL" | "PARTY" | "GUILD" | "OFFICER" | "RAID" | "RAID_WARNING" | "INSTANCE_CHAT" | "WHISPER" | "CHANNEL" |
-                           "AFK" | "DND";
+        "AFK" | "DND";
     type ChannelLanguageId = 1 | 2 | 3 | 6 | 7 | 8 | 10 | 13 | 14 | 33 | 35 | 40 | 43 | 44;
 }
 
@@ -3769,20 +3794,20 @@ declare function PickupCompanion(type: WoWAPI.CompanionType, companionIndex: num
  */
 declare function SummonRandomCritter(): void;
 
-declare function BuyMerchantItem(index:number, quantity?: number):void;
-declare function BuybackItem(index:number):void;
-declare function CanMerchantRepair():boolean;
-declare function CloseMerchant():void;
-  
+declare function BuyMerchantItem(index: number, quantity?: number): void;
+declare function BuybackItem(index: number): void;
+declare function CanMerchantRepair(): boolean;
+declare function CloseMerchant(): void;
+
 /**
  * Returns name, texture, price and quantity
  *
  * @param index for the item
  * @see https://wowwiki-archive.fandom.com/wiki/API_GetBuybackItemInfo
  */
-declare function GetBuybackItemInfo(index:number): LuaMultiReturn<[ string, string, number, number]>;
-declare function GetBuybackItemLink(index:number): string;
-declare function GetMerchantItemCostInfo (index:number): number;
+declare function GetBuybackItemInfo(index: number): LuaMultiReturn<[string, string, number, number]>;
+declare function GetBuybackItemLink(index: number): string;
+declare function GetMerchantItemCostInfo(index: number): number;
 
 /**
  * Returns information about an "alternative currency" component of the price for a purchasable item. 
@@ -3791,8 +3816,8 @@ declare function GetMerchantItemCostInfo (index:number): number;
  * @param index for the item
  * @see https://wowwiki-archive.fandom.com/wiki/API_GetMerchantItemCostItem
  */
-declare function GetMerchantItemCostItem(index:number, itemIndex:number): LuaMultiReturn<[string, number, string]>
-  
+declare function GetMerchantItemCostItem(index: number, itemIndex: number): LuaMultiReturn<[string, number, string]>
+
 /**
  * Returns information about a merchant's item.
  * Returns texture, value and link
@@ -3800,22 +3825,22 @@ declare function GetMerchantItemCostItem(index:number, itemIndex:number): LuaMul
  * @param index for the item
  * @see https://wowwiki-archive.fandom.com/wiki/API_GetMerchantItemInfo
  */
-declare function GetMerchantItemInfo(index:number): LuaMultiReturn<[string, string, number, number, number, number, number]>
-declare function GetMerchantItemLink(index:number): string;
-declare function GetMerchantItemMaxStack(index:number):number;
-declare function GetMerchantNumItems():number;
-declare function GetRepairAllCost():number;
-declare function HideRepairCursor():void;
-declare function InRepairMode():boolean;
-declare function PickupMerchantItem(index:number):void;
-declare function RepairAllItems(guildBankRepair?:boolean):void;
-declare function ShowMerchantSellCursor(index:number):void;
-declare function ShowRepairCursor():void;
-declare function GetNumBuybackItems():number;
+declare function GetMerchantItemInfo(index: number): LuaMultiReturn<[string, string, number, number, number, number, number]>
+declare function GetMerchantItemLink(index: number): string;
+declare function GetMerchantItemMaxStack(index: number): number;
+declare function GetMerchantNumItems(): number;
+declare function GetRepairAllCost(): number;
+declare function HideRepairCursor(): void;
+declare function InRepairMode(): boolean;
+declare function PickupMerchantItem(index: number): void;
+declare function RepairAllItems(guildBankRepair?: boolean): void;
+declare function ShowMerchantSellCursor(index: number): void;
+declare function ShowRepairCursor(): void;
+declare function GetNumBuybackItems(): number;
 
-declare function SetTextureWithMask(texture:WoWAPI.Texture,path:string,mask?:string): void;
-declare function SetPortraitToTexture(texture:WoWAPI.Texture,path:string):void;
-declare function SetPortraitTexture(texture:WoWAPI.Texture,unitToken:WoWAPI.UnitId,disableMasking?:boolean):void;
+declare function SetTextureWithMask(texture: WoWAPI.Texture, path: string, mask?: string): void;
+declare function SetPortraitToTexture(texture: WoWAPI.Texture, path: string): void;
+declare function SetPortraitTexture(texture: WoWAPI.Texture, unitToken: WoWAPI.UnitId, disableMasking?: boolean): void;
 
 declare const MAX_PLAYER_LEVEL_TABLE: {
     LE_EXPANSION_CLASSIC: 60,
@@ -4342,7 +4367,7 @@ declare function ExpandCurrencyList(currencyHeaderIndex: number, expanded: WoWAP
 /**
  * Check to see if chosen unit utilizes a relic slot
  */
- declare function UnitHasRelicSlot(unitType: WoWAPI.UnitId):boolean
+declare function UnitHasRelicSlot(unitType: WoWAPI.UnitId): boolean
 
 /**
  * Marks/unmarks a currency as unused
@@ -4792,7 +4817,7 @@ declare function wipe<T extends object>(table: T): T;
  * @see https://wowpedia.fandom.com/wiki/API_GetSpellLink
  * @description Returns the hyperlink for a spell.
  */
- declare function GetSpellLink(spell:number|string, bookType?:string): LuaMultiReturn<[string,number]>;
+declare function GetSpellLink(spell: number | string, bookType?: string): LuaMultiReturn<[string, number]>;
 
 
 declare namespace WoWAPI {
@@ -10463,20 +10488,20 @@ declare namespace WoWAPI {
          * @see https://wow.gamepedia.com/UNIT_MANA
          */
         UNIT_MANA: [UnitId];
-		UNIT_RAGE: [UnitId];
-		UNIT_FOCUS: [UnitId];
-		UNIT_ENERGY: [UnitId];
-		UNIT_HAPPINESS: [UnitId];
-		UNIT_RUNIC_POWER: [UnitId];
-		UNIT_HEALTH: [UnitId];
-		
-		UNIT_MAXMANA: [UnitId];
-		UNIT_MAXRAGE: [UnitId];
-		UNIT_MAXFOCUS: [UnitId];
-		UNIT_MAXENERGY: [UnitId];
-		UNIT_MAXHAPPINESS: [UnitId];
-		UNIT_MAXRUNIC_POWER: [UnitId];
-		UNIT_MAXHEALTH: [UnitId];
+        UNIT_RAGE: [UnitId];
+        UNIT_FOCUS: [UnitId];
+        UNIT_ENERGY: [UnitId];
+        UNIT_HAPPINESS: [UnitId];
+        UNIT_RUNIC_POWER: [UnitId];
+        UNIT_HEALTH: [UnitId];
+
+        UNIT_MAXMANA: [UnitId];
+        UNIT_MAXRAGE: [UnitId];
+        UNIT_MAXFOCUS: [UnitId];
+        UNIT_MAXENERGY: [UnitId];
+        UNIT_MAXHAPPINESS: [UnitId];
+        UNIT_MAXRUNIC_POWER: [UnitId];
+        UNIT_MAXHEALTH: [UnitId];
 
         /**
          * Fired when a unit's maximum health changes
@@ -11294,11 +11319,11 @@ declare type SlotActionBarPage4 = 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 4
 declare type SlotActionBarPage5 = 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 | 58 | 59 | 60;
 declare type SlotActionBarPage6 = 61 | 62 | 63 | 64 | 65 | 66 | 67 | 68 | 69 | 70 | 71 | 72;
 declare type SlotActionBarMisc = 73 | 74 | 75 | 76 | 77 | 78 | 79 | 80 | 81 | 82 | 83 | 84 | 85 | 86 | 87 | 88 | 89 | 90 |
-                                 91 | 92 | 93 | 94 | 95 | 96 | 97 | 98 | 99 | 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 111 |
-                                 112 | 113 | 114 | 115 | 116 | 117 | 118 | 119 | 120;
+    91 | 92 | 93 | 94 | 95 | 96 | 97 | 98 | 99 | 100 | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | 109 | 110 | 111 |
+    112 | 113 | 114 | 115 | 116 | 117 | 118 | 119 | 120;
 declare type SlotActionBarPossess = 121 | 122 | 123 | 124 | 125 | 126 | 127 | 128 | 129 | 130 | 131 | 132;
 declare type ActionBarSlotId = SlotActionBarPage1 | SlotActionBarPage2 | SlotActionBarPage3 | SlotActionBarPage4 |
-                               SlotActionBarPage5 | SlotActionBarPage6 | SlotActionBarMisc | SlotActionBarPossess;
+    SlotActionBarPage5 | SlotActionBarPage6 | SlotActionBarMisc | SlotActionBarPossess;
 
 
 declare type QUEST_FREQUENCY_NORMAL = 1;
@@ -12071,7 +12096,7 @@ declare function GetSpellTexture(spellId: number, type: WoWAPI.BookType): WoWAPI
  *
  * @see https://wow.gamepedia.com/API_GetSpellInfo
  */
-declare function GetSpellInfo(spell: number | string): LuaMultiReturn<[string,string,string,number,number,number]>;
+declare function GetSpellInfo(spell: number | string): LuaMultiReturn<[string, string, string, number, number, number]>;
 
 /**
  * Execute a console command
@@ -12205,8 +12230,8 @@ declare namespace WoWAPI {
          * @see http://wowwiki.wikia.com/wiki/API_GameTooltip_AddTexture
          */
         AddTexture(texturePath: TexturePath): void;
-		
-		/**
+
+        /**
          * Sets an attachment point of an UI component.
          *
          * @param point Point of the object to adjust based on the anchor.
@@ -12221,7 +12246,7 @@ declare namespace WoWAPI {
         SetPoint(point: Point, relativeTo: Region | string, relativePoint: Point, offsetX: number, offsetY: number): void;
         SetPoint(point: Point): void;
         SetPoint(point: Point, offsetX: number, offsetY: number): void;
-        SetPoint(point: Point, relativeTo: Region | string,offsetX: number, offsetY: number): void;
+        SetPoint(point: Point, relativeTo: Region | string, offsetX: number, offsetY: number): void;
         SetPoint(point: Point, relativeTo: Region | string, relativePoint: Point): void;
 
 
@@ -12735,6 +12760,8 @@ declare namespace WoWAPI {
         | "SimpleHTML" | "Slider" | "StatusBar";
 
     interface Object {
+        [key: string]: any;
+        [key: number]: any;
         /**
          * get the type of this object
          */
@@ -12835,19 +12862,19 @@ declare namespace WoWAPI {
         SetRadians(radians: number): void;
         GetRadians(): number;
         SetOrigin(point: Point, offsetX: number, offsetY: number): void;
-        GetOrigin(): LuaMultiReturn<[Point,number,number]>
+        GetOrigin(): LuaMultiReturn<[Point, number, number]>
     }
 
     interface Scale extends UIObject, Animation {
         SetScale(x: number, y: number)
-        GetScale(): LuaMultiReturn<[number,number]>
+        GetScale(): LuaMultiReturn<[number, number]>
         SetOrigin(point: Point, offsetX: number, offsetY: number): void;
-        GetOrigin(): LuaMultiReturn<[Point,number,number]>
+        GetOrigin(): LuaMultiReturn<[Point, number, number]>
     }
 
     interface Translation extends UIObject, Animation {
         SetOffset(x: number, y: number)
-        GetOffset(): LuaMultiReturn<[number,number]>
+        GetOffset(): LuaMultiReturn<[number, number]>
     }
 
     /**
@@ -12920,7 +12947,7 @@ declare namespace WoWAPI {
      */
     interface Region extends UIObject {
 
-        SetToplevel(set:bool):void;
+        SetToplevel(set: bool): void;
 
         /**
          * Clear all attachment points for this object.
@@ -13016,7 +13043,7 @@ declare namespace WoWAPI {
         SetPoint(point: Point, relativeTo: Region | string, relativePoint: Point, offsetX: number, offsetY: number): void;
         SetPoint(point: Point): void;
         SetPoint(point: Point, offsetX: number, offsetY: number): void;
-        SetPoint(point: Point, relativeTo: Region | string,offsetX: number, offsetY: number): void;
+        SetPoint(point: Point, relativeTo: Region | string, offsetX: number, offsetY: number): void;
         SetPoint(point: Point, relativeTo: Region | string, relativePoint: Point): void;
 
         /**
@@ -13153,7 +13180,7 @@ declare namespace WoWAPI {
          * @param filterMode Texture filtering mode to use
          */
         SetTexture(file: string | number, horizWrap?: Wrap, vertWrap?: Wrap, filterMode?: FilterMode): void;
-		SetTexture(r:number,g:number,b:number,a:number): void;
+        SetTexture(r: number, g: number, b: number, a: number): void;
 
         /**
          * Changes the color of a texture.
@@ -13167,10 +13194,10 @@ declare namespace WoWAPI {
 
         SetVertTile(tiling: boolean): void;
         SetHorizTile(tiling: boolean): void;
-        GetBlendMode() : BlendMode;
-        SetBlendMode(mode: BlendMode) : void;
+        GetBlendMode(): BlendMode;
+        SetBlendMode(mode: BlendMode): void;
         SetDesaturated(desaturated: number): boolean;
-        IsDesaturated() : boolean;
+        IsDesaturated(): boolean;
     }
 
     /**
@@ -13272,7 +13299,7 @@ declare namespace WoWAPI {
 
     interface GameTooltipHookScript extends ObjectHookScript {
         HookScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
-        HookScript(event: "OnTooltipAddMoney", handler: (tooltip: GameTooltip,cost: number,maxcost: number) => void): void;
+        HookScript(event: "OnTooltipAddMoney", handler: (tooltip: GameTooltip, cost: number, maxcost: number) => void): void;
         HookScript(event: "OnTooltipCleared", handler: (tooltip: GameTooltip) => void): void;
         HookScript(event: "OnTooltipSetAchievement", handler: (tooltip: GameTooltip) => void): void;
         HookScript(event: "OnTooltipSetDefaultAnchor", handler: (tooltip: GameTooltip) => void): void;
@@ -13286,7 +13313,7 @@ declare namespace WoWAPI {
 
     interface GameTooltipSetScript extends ObjectSetScript {
         SetScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
-        SetScript(event: "OnTooltipAddMoney", handler: (tooltip: GameTooltip,cost: number,maxcost: number) => void): void;
+        SetScript(event: "OnTooltipAddMoney", handler: (tooltip: GameTooltip, cost: number, maxcost: number) => void): void;
         SetScript(event: "OnTooltipCleared", handler: (tooltip: GameTooltip) => void): void;
         SetScript(event: "OnTooltipSetAchievement", handler: (tooltip: GameTooltip) => void): void;
         SetScript(event: "OnTooltipSetDefaultAnchor", handler: (tooltip: GameTooltip) => void): void;
@@ -13297,54 +13324,54 @@ declare namespace WoWAPI {
         SetScript(event: "OnTooltipSetSpell", handler: (tooltip: GameTooltip) => void): void;
         SetScript(event: "OnTooltipSetUnit", handler: (tooltip: GameTooltip) => void): void;
     }
-	
-	interface ScriptObjectHookScript {
+
+    interface ScriptObjectHookScript {
         HookScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
         HookScript(event: "OnLoad", handler: (self: T) => void): void;
-		HookScript(event: "OnUpdate", handler: (self: T, elapsed:number) => void): void;
+        HookScript(event: "OnUpdate", handler: (self: T, elapsed: number) => void): void;
     }
-	interface ScriptObjectSetScript {
+    interface ScriptObjectSetScript {
         SetScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
         SetScript(event: "OnLoad", handler: (self: T) => void): void;
-		SetScript(event: "OnUpdate", handler: (self: T, elapsed:number) => void): void;
+        SetScript(event: "OnUpdate", handler: (self: T, elapsed: number) => void): void;
     }
-	
-	interface AnimationHookScript extends ScriptObjectHookScript {
-		HookScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
-		HookScript(event: "OnFinished", handler: (self: T, requested: boolean) => void): void;
-		HookScript(event: "OnPause", handler: (self: T) => void): void;
-		HookScript(event: "OnPlay", handler: (self: T) => void): void;
-		HookScript(event: "OnStop", handler: (self: T, requested:boolean) => void): void;
-	}
-	
-	interface AnimationSetScript extends ScriptObjectSetScript {
-	    SetScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
+
+    interface AnimationHookScript extends ScriptObjectHookScript {
+        HookScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
+        HookScript(event: "OnFinished", handler: (self: T, requested: boolean) => void): void;
+        HookScript(event: "OnPause", handler: (self: T) => void): void;
+        HookScript(event: "OnPlay", handler: (self: T) => void): void;
+        HookScript(event: "OnStop", handler: (self: T, requested: boolean) => void): void;
+    }
+
+    interface AnimationSetScript extends ScriptObjectSetScript {
+        SetScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
         SetScript(event: "OnFinished", handler: (self: T, requested: boolean) => void): void;
-		SetScript(event: "OnPause", handler: (self: T) => void): void;
-		SetScript(event: "OnPlay", handler: (self: T) => void): void;
-		SetScript(event: "OnStop", handler: (self: T, requested:boolean) => void): void;
-	}
-	
-	interface AnimationGroupHookScript extends ScriptObjectHookScript {
-		HookScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
-		HookScript(event: "OnFinished", handler: (self: T, requested: boolean) => void): void;
-		HookScript(event: "OnPause", handler: (self: T) => void): void;
-		HookScript(event: "OnPlay", handler: (self: T) => void): void;
-		HookScript(event: "OnStop", handler: (self: T, requested:boolean) => void): void;
-		HookScript(event: "OnLoop", handler: (self: T, loopState:number) => void): void;
-		
-	}
-	
-	interface AnimationGroupSetScript extends ScriptObjectSetScript {
-	    SetScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
+        SetScript(event: "OnPause", handler: (self: T) => void): void;
+        SetScript(event: "OnPlay", handler: (self: T) => void): void;
+        SetScript(event: "OnStop", handler: (self: T, requested: boolean) => void): void;
+    }
+
+    interface AnimationGroupHookScript extends ScriptObjectHookScript {
+        HookScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
+        HookScript(event: "OnFinished", handler: (self: T, requested: boolean) => void): void;
+        HookScript(event: "OnPause", handler: (self: T) => void): void;
+        HookScript(event: "OnPlay", handler: (self: T) => void): void;
+        HookScript(event: "OnStop", handler: (self: T, requested: boolean) => void): void;
+        HookScript(event: "OnLoop", handler: (self: T, loopState: number) => void): void;
+
+    }
+
+    interface AnimationGroupSetScript extends ScriptObjectSetScript {
+        SetScript(event: Event.OnAny, handler: (frame: T, ...args: any[]) => void): void;
         SetScript(event: "OnFinished", handler: (self: T, requested: boolean) => void): void;
-		SetScript(event: "OnPause", handler: (self: T) => void): void;
-		SetScript(event: "OnPlay", handler: (self: T) => void): void;
-		SetScript(event: "OnStop", handler: (self: T, requested:boolean) => void): void;
-		SetScript(event: "OnLoop", handler: (self: T, loopState:number) => void): void;
-	}
-	
-	
+        SetScript(event: "OnPause", handler: (self: T) => void): void;
+        SetScript(event: "OnPlay", handler: (self: T) => void): void;
+        SetScript(event: "OnStop", handler: (self: T, requested: boolean) => void): void;
+        SetScript(event: "OnLoop", handler: (self: T, loopState: number) => void): void;
+    }
+
+
     interface Backdrop {
         /**
          * Which texture file to use as frame background (.blp or .tga format)
@@ -13386,7 +13413,9 @@ declare namespace WoWAPI {
      * The main wow frame object
      */
     interface Frame extends Region, ObjectHookScript<Frame>, ObjectSetScript<Frame> {
-		reagentIndex: number;
+        reagentIndex: number;
+        [key: string]: any;
+        [key: number]: any;
 
         /**
          * Creates a new FontString as a child of a frame.
@@ -13398,7 +13427,7 @@ declare namespace WoWAPI {
          */
         CreateFontString(name?: string, layer?: Layer, inheritsFrom?: string): FontString;
 
-        RegisterForClicks(clickType:ClickType): void;
+        RegisterForClicks(clickType: ClickType): void;
 
         /**
          * Creates a Texture object within the specified widget.
@@ -13582,7 +13611,7 @@ declare namespace WoWAPI {
         RegisterForDrag(button: WoWAPI.MouseButton): void;
 
         SetID(id: number): void;
-        
+
         GetID(): number;
 
         SetClampedToScreen(yes: bool): void;
@@ -13966,26 +13995,26 @@ declare namespace WoWAPI {
         SetButtonState(state: string): void;
         SetDisabledAtlas(atlasName: string): void;
         SetDisabledFontObject(fontObject: FontObject): void;
-        SetDisabledTexture(texture: string|Texture): void;
+        SetDisabledTexture(texture: string | Texture): void;
         SetDisabledTexture(texture: string): void;
         SetEnabled(isEnable: bool): void;
-        SetFontString(fontString: string|FontObject): void;
-		SetFontString(fontString: string): void;
+        SetFontString(fontString: string | FontObject): void;
+        SetFontString(fontString: string): void;
         SetFormattedText(formatstring: string): void;
         SetHighlightAtlas(atlasName: string): void;
         SetHighlightFontObject(fontObject: FontObject): void;
-        SetHighlightTexture(texture: string|Texture): void;
+        SetHighlightTexture(texture: string | Texture): void;
         SetHighlightTexture(texture: string): void;
         SetMotionScriptsWhileDisabled(shouldFire: bool): void;
         SetNormalAtlas(atlasName: string): void;
         SetNormalFontObject(fontObject: FontObject): void;
-        SetNormalTexture(texture: string|Texture): void;
+        SetNormalTexture(texture: string | Texture): void;
         SetNormalTexture(texture: string): void;
         SetPushedAtlas(atlasName: string): void;
         SetPushedTextOffset(x: number, y: number): void;
-        SetPushedTexture(texture: string|Texture): void;
+        SetPushedTexture(texture: string | Texture): void;
         SetPushedTexture(texture: string): void;
-        SetText(textLabel:string): void;
+        SetText(textLabel: string): void;
         UnlockHighlight(): void;
     }
 
@@ -13998,7 +14027,7 @@ declare namespace WoWAPI {
         SetDisabledCheckedTexture(texture: string): void;
     }
 
-	interface LootButton extends Button {
+    interface LootButton extends Button {
         SetSlot(index: number): void;
     }
 
@@ -14013,18 +14042,18 @@ declare namespace WoWAPI {
         GetLight(): LuaMultiReturn<[boolean, boolean, number, number, number, number, number, number, number, number, number, number, number]>;
         GetModel(): string;
         GetModelScale(): number;
-        GetPosition(): LuaMultiReturn<[number,number,number]>;
+        GetPosition(): LuaMultiReturn<[number, number, number]>;
         ReplaceIconTexture(texture: string): void;
         SetCamera(index: number): void;
         SetFacing(facing: number): void;
-        SetFogColor(r: number, g: number, b: number,a: number): void;
+        SetFogColor(r: number, g: number, b: number, a: number): void;
         SetFogFar(value: number): void;
         SetFogNear(value: number): void;
         //SetGlow(..): void;
         SetLight(enabled: boolean, omni: boolean, dirX: number, dirY: number, dirZ: number, ambIntensity: number, ambR: number, ambG: number, ambB: number, dirIntensity: number, dirR: number, dirG: number, dirB: number): void;
         SetModel(file: string): void;
         SetModelScale(scale: number): void;
-        SetPosition(x: number, y: number, z: number) : void;
+        SetPosition(x: number, y: number, z: number): void;
         SetSequence(sequence: number): void;
         SetSequenceTime(sequence: number, time: number): void;
     }
@@ -14043,7 +14072,7 @@ declare namespace WoWAPI {
     }
 
     interface StatusBar extends Frame, UIObject, Region {
-        GetMinMaxValues(): LuaMultiReturn<[number,number]>;
+        GetMinMaxValues(): LuaMultiReturn<[number, number]>;
         GetOrientation: Align;
         GetStatusBarColor: number;
         GetStatusBarTexture(): Texture;
@@ -14062,7 +14091,7 @@ declare namespace WoWAPI {
         GetVerticalScroll(): number;
         GetVerticalScrollRange(): number;
         SetHorizontalScroll(offset: number): void;
-        SetScrollChild(Frame:frame): void;
+        SetScrollChild(Frame: frame): void;
         SetVerticalScroll(offset: number): void;
     }
 
@@ -14116,7 +14145,7 @@ declare namespace WoWAPI {
         SetReverse(bool: boolean)
     }
 
-    interface Minimap{
+    interface Minimap {
         GetPingPosition(): number;
         GetZoom(): number;
         GetZoomLevels(): number;
@@ -14130,8 +14159,8 @@ declare namespace WoWAPI {
     }
 
     interface ColorSelect {
-        GetColorHSV(): LuaMultiReturn<[number,number,number]>
-        GetColorRGB(): LuaMultiReturn<[number,number,number]>
+        GetColorHSV(): LuaMultiReturn<[number, number, number]>
+        GetColorRGB(): LuaMultiReturn<[number, number, number]>
         GetColorValueTexture(): WoWAPI.Texture
         GetColorValueThumbTexture(): WoWAPI.Texture
         GetColorWheelTexture(): WoWAPI.Texture
@@ -14148,7 +14177,7 @@ declare namespace WoWAPI {
         SetColorWheelThumbTexture(texture: WoWAPI.Texture)
     }
 
-    interface SimpleHTML extends Frame,FontInstance {
+    interface SimpleHTML extends Frame, FontInstance {
         GetContentHeight(): number;
         GetHyperlinkFormat(): string;
         GetTextData(): string;
@@ -14162,7 +14191,7 @@ declare namespace WoWAPI {
  */
 
 declare const _G: { [prop: string]: any };
-declare const SlashCmdList:{[msg:string]: (message: string) => void};
+declare const SlashCmdList: { [msg: string]: (message: string) => void };
 declare const InterfaceOptionsFramePanelContainer: WoWAPI.Region;
 declare const UIParent: WoWAPI.Frame;
 declare const PaperDollFrame: WoWAPI.Frame;
@@ -14215,10 +14244,10 @@ declare const TradeSkillFrame: WoWAPI.Frame
 
 declare const WorldMapButton: WoWAPI.Button
 
-declare function loadstring(code: string, name?: string): ()=>void;
-declare function assert(code: ()=>void):() => string;
+declare function loadstring(code: string, name?: string): () => void;
+declare function assert(code: () => void): () => string;
 declare function type(thing: any): string;
-declare function tonumber(value: string|number, radix?:number): number
+declare function tonumber(value: string | number, radix?: number): number
 
 /**
  * ##################################
@@ -14282,8 +14311,8 @@ declare function UIDropDownMenu_AddButton(info: WoWAPI.UIDropdownInfo, level?: n
  */
 declare function ToggleDropDownMenu(level: number, value: any, dropDownFrame: WoWAPI.Frame, anchorName?: string | WoWAPI.Frame, xOffset?: number, yOffset?: number, menuList?: object, button?: object, autoHideDelay?: number): void;
 
-declare function PlaySoundFile(path:string): void;
-declare function PlaySound(id:any): void;
+declare function PlaySoundFile(path: string): void;
+declare function PlaySound(id: any): void;
 
 /**
  * comma separated list of enabled flags
@@ -14337,7 +14366,7 @@ declare function CreateFrame(frameType: "ColorSelect", frameName?: string, paren
  * @param width Width of the line
  * @param relPoint Relative point on canvas to interpret coords (Default BOTTOMLEFT)
  */
-declare function DrawRouteLine(texture:WoWAPI.Texture, canvasFrame:WoWAPI.Frame, sx:number, sy:number, ex:number, ey:number, width:number, relPoint?:WoWAPI.Point);
+declare function DrawRouteLine(texture: WoWAPI.Texture, canvasFrame: WoWAPI.Frame, sx: number, sy: number, ex: number, ey: number, width: number, relPoint?: WoWAPI.Point);
 
 /**
  * Adds a configuration panel (with the fields described in #Panel fields below set) to the category list.
@@ -14356,10 +14385,10 @@ declare namespace WoWAPI {
         "raid21" | "raid22" | "raid23" | "raid24" | "raid25" | "raid26" | "raid27" | "raid28" | "raid29" | "raid30" | "raid31" |
         "raid32" | "raid33" | "raid34" | "raid35" | "raid36" | "raid37" | "raid38" | "raid39" | "raid40";
     type UnitIdRaidPlayerPet = "raidpet1" | "raidpet2" | "raidpet3" | "raidpet4" | "raidpet5" | "raidpet6" | "raidpet7" | "raidpet8" | "raidpet9" |
-                               "raidpet10" | "raidpet11" | "raidpet12" | "raidpet13" | "raidpet14" | "raidpet15" | "raidpet16" | "raidpet17" | "raidpet18" |
-                               "raidpet19" | "raidpet20" | "raidpet21" | "raidpet22" | "raidpet23" | "raidpet24" | "raidpet25" | "raidpet26" | "raidpet27" |
-                               "raidpet28" | "raidpet29" | "raidpet30" | "raidpet31" | "raidpet32" | "raidpet33" | "raidpet34" | "raidpet35" | "raidpet36" |
-                               "raidpet37" | "raidpet38" | "raidpet39" | "raidpet40";
+        "raidpet10" | "raidpet11" | "raidpet12" | "raidpet13" | "raidpet14" | "raidpet15" | "raidpet16" | "raidpet17" | "raidpet18" |
+        "raidpet19" | "raidpet20" | "raidpet21" | "raidpet22" | "raidpet23" | "raidpet24" | "raidpet25" | "raidpet26" | "raidpet27" |
+        "raidpet28" | "raidpet29" | "raidpet30" | "raidpet31" | "raidpet32" | "raidpet33" | "raidpet34" | "raidpet35" | "raidpet36" |
+        "raidpet37" | "raidpet38" | "raidpet39" | "raidpet40";
     type UnitIdParty = "party1" | "party2" | "party3" | "party4";
     type UnitIdPartyPet = "partypet1" | "partypet2" | "partypet3" | "partypet4";
     type UnitIdOther = "player" | "pet" | "focus" | "mouseover" | "vehicle" | "target" | "none" | "npc" | "targettarget";
@@ -14431,8 +14460,8 @@ declare function GetNumSkillLines(): number
  * 12. skillCostType - number
  * 13. skillDescription - string - Localized skill description text
  */
-declare function GetSkillLineInfo(index: number): LuaMultiReturn<[string,number,number,number,number,number,number,number,number,number,number,number,string]>
- 
+declare function GetSkillLineInfo(index: number): LuaMultiReturn<[string, number, number, number, number, number, number, number, number, number, number, number, string]>
+
 /**
  * Returns the unit's level
  * @param unitId The unitId to get information from. (e.g. "player", "target")
@@ -14561,7 +14590,7 @@ declare const TSJSON: {
 
 
 declare function CreateCustomPacket(opcode: uint32, size: uint32): TSPacketWrite;
-declare function OnCustomPacket(opcode: uint32, callback: (packet: TSPacketRead)=>void)
+declare function OnCustomPacket(opcode: uint32, callback: (packet: TSPacketRead) => void)
 declare class TSPacketWrite {
     WriteUInt8(value: uint8): TSPacketWrite;
     WriteInt8(value: int8): TSPacketWrite;
