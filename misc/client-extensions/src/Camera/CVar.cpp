@@ -2,7 +2,7 @@
 #include <Spells/Spells.h>
 #include <ClientDetours.h>
 #include <ClientLua.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 enum CVarFlags : uint32_t {
     CVarFlags_ReadOnly = 0x4,
@@ -12,8 +12,8 @@ enum CVarFlags : uint32_t {
 
 };
 
-inline CVar* GetCVar(const char* name) { return ((decltype(&GetCVar))0x00767460)(name); }
-inline CVar* FindCVar(const char* name) { return ((decltype(&FindCVar))0x00767440)(name); }
+inline ClientData::CVar* GetCVar(const char* name) { return ((decltype(&GetCVar))0x00767460)(name); }
+inline ClientData::CVar* FindCVar(const char* name) { return ((decltype(&FindCVar))0x00767440)(name); }
 
 // CLIENT_DETOUR(InitializeCVars, 0x00768340, __cdecl, void, (char* file))
 // {

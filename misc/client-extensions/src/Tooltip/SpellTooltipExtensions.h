@@ -1,6 +1,8 @@
 #pragma once
 #include <Tooltip/TooltipDefines.h>
 
+using namespace ClientData;
+
 namespace CFormula {
     CLIENT_FUNCTION(GetVariableValue, 0x5782D0, __thiscall, int, (void*, uint32_t, uint32_t, SpellRow*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))
 }

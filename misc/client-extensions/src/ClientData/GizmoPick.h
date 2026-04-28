@@ -1,7 +1,6 @@
 #pragma once
 
 #include <ClientData/VectorMath.h>
-#include <SharedDefines.h>
 
 #include <cfloat>
 #include <cmath>

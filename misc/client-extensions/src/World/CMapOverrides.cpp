@@ -2,7 +2,7 @@
 #include <ClientLua.h>
 #include <FSRoot.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 #include <World/WMOLogging.h>
 
 #include <Windows.h>

@@ -1,6 +1,10 @@
 #include <Misc/MiscFixes.h>
 #include <ClientDetours.h>
 #include <Logger.h>
+#include <ClientData/MathTypes.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 void MiscFixes::Apply() {
     UpdateObjectVtable();

@@ -2,6 +2,8 @@
 
 #include <Character/CharacterDefines.h>
 
+using namespace ClientData;
+
 class CharacterExtensions {
 public:
     static int SpecToIndex(uint32_t specID);

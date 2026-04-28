@@ -2,7 +2,8 @@
 #include <CDBCMgr/CDBCDefs/LFGRoles.h>
 #include <Character/CharacterExtensions.h>
 #include <Logger.h>
-#include <SpellAttrDefines.h>
+
+using namespace ClientData;
 
 void CharacterExtensions::Apply() {
     ChangeLFGRoleFunctionPointers();
@@ -102,6 +103,7 @@ void CharacterExtensions::OnSpellLearnEx(SpellRow* spellRow, uint32_t* a5, int* 
     char buffer[512];
     SpellAdditionalAttributesRow* customAttributesRow = GlobalCDBCMap.getRow<SpellAdditionalAttributesRow>("SpellAdditionalAttributes", spellRow->m_ID);
 
+    //shouldnt this be *a3? or is this a null check?
     if (a3 > 0)
         displayMsg = false;
     else

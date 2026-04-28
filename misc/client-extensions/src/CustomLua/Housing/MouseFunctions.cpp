@@ -4,13 +4,17 @@
 #include <ClientData/ObjectManager.h>
 #include <ClientLua.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <cstdio>
 #include <cstdint>
 #include <string>
 
 #include "CustomLua/Housing/QuatFunctions.h"
+#include <ClientData/MathTypes.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 struct HitTestResult
 {
@@ -131,12 +135,12 @@ static CGGameObject_C* SelectedGameObject()
     if (!selectedGameObjectGuid)
         return nullptr;
 
-    return AsClientGameObject(ClientData::ObjectManager::GetObject(selectedGameObjectGuid, TYPEMASK_OBJECT));
+    return AsClientGameObject(ObjectManager::GetObject(selectedGameObjectGuid, TYPEMASK_OBJECT));
 }
 
 static CGGameObject_C* GameObjectByGuid(uint64_t guid)
 {
-    return AsClientGameObject(ClientData::ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
+    return AsClientGameObject(ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
 }
 
 static CGGameObject_C* GameObjectByLuaGuid(lua_State* L, int index)

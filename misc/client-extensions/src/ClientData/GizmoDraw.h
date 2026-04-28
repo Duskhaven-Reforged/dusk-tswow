@@ -2,7 +2,6 @@
 
 #include <ClientData/GizmoPick.h>
 #include <ClientData/MathTypes.h>
-#include <SharedDefines.h>
 
 namespace ClientData::GizmoDraw
 {

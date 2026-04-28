@@ -1,5 +1,5 @@
 #pragma once
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <iostream>
 
@@ -36,7 +36,7 @@ namespace CharacterDefines {
     inline float ModHaste = 0;
     inline float ModHasteRegen = 0;
 
-    inline float GetTotalAttackPowerValue(uint8_t attType, CGPlayer* activePlayer) {
+    inline float GetTotalAttackPowerValue(uint8_t attType, ClientData::CGPlayer* activePlayer) {
         float value = 0.0f;
         if (attType == 2) {
             float ap = std::max<float>(activePlayer->PlayerData->weaponBonusAP[attType], activePlayer->PlayerData->weaponBonusAP[0]) + activePlayer->unitBase.unitData->RAP + activePlayer->unitBase.unitData->RAPMods[0] + activePlayer->unitBase.unitData->RAPMods[1];

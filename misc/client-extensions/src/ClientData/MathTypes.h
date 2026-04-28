@@ -1,11 +1,21 @@
 #pragma once
-
-#include <SharedDefines.h>
-
 #include <cstdint>
 
 namespace ClientData
 {
+    struct C2Vector
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+    };
+
+    struct C3Vector
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+    };
+
     struct CRange
     {
         float l;

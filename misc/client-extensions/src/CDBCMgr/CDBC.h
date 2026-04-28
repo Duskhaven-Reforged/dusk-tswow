@@ -1,7 +1,6 @@
 #pragma once
-#include <ClientLua.h>
+#include <cstdint>
 #include <Logger.h>
-#include <SharedDefines.h>
 
 #include <string>
 

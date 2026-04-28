@@ -1,7 +1,7 @@
 #include <ClientDetours.h>
 #include <ClientLua.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <array>
 #include <cctype>
@@ -10,6 +10,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <ClientData/GameEnums.h>
+
+using namespace ClientData;
 
 namespace
 {

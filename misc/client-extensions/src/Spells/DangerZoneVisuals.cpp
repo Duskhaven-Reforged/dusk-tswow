@@ -4,7 +4,7 @@
 #include <CDBCMgr/CDBCDefs/DangerZoneVisualProfile.h>
 #include <ClientDetours.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <Windows.h>
 
@@ -15,6 +15,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <ClientData/MathTypes.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 namespace DangerZoneVisualsInternal
 {

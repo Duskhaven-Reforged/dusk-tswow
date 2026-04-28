@@ -4,12 +4,38 @@
 #include <ClientData/GxDevice.h>
 #include <ClientData/MathTypes.h>
 #include <ClientMacros.h>
-#include <SharedDefines.h>
 
 #include <cstdint>
 
 namespace ClientData
 {
+    struct WorldHitTest
+    {
+        uint64_t guid;
+        C3Vector hitpoint;
+        float distance;
+        C3Vector start;
+        C3Vector end;
+    };
+
+    struct CSimpleTop
+    {
+        char pad1[0x78];
+        void* mouseFocus;
+        char pad2[0x11A8];
+        C2Vector mousePosition;
+    };
+
+    struct CGWorldFrame
+    {
+        char pad1[0xA0];
+        CSimpleTop* simpleTop;
+        char pad2[0x234];
+        uint32_t ukn16;
+        uint32_t ukn17;
+        WorldHitTest m_actionHitTest;
+    };
+
     class CGWorldFrameFull;
     CLIENT_FUNCTION(CGWorldFrame_GetLineSegment, 0x4F6450, __thiscall, bool,
                     (CGWorldFrameFull* frame, float mouseX, float mouseY, C3Vector* start, C3Vector* end))

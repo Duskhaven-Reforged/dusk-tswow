@@ -1,6 +1,8 @@
 #pragma once
 
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
+
+using namespace ClientData;
 
 static std::vector<ZoneLightData> GlobalZoneLightData;
 

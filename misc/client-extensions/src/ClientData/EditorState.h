@@ -2,7 +2,7 @@
 
 #include <ClientData/GizmoPick.h>
 #include <CustomLua/Housing/QuatFunctions.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <cstdint>
 

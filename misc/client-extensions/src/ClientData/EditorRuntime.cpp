@@ -16,6 +16,8 @@
 
 #include <cstdint>
 
+using namespace ClientData;
+
 namespace ClientData::EditorRuntime
 {
     namespace
@@ -292,34 +294,34 @@ namespace
 {
     void __cdecl ClientInitializeGame_EditorRuntimeDetour(int32_t a1, float a2, float a3, float a4)
     {
-        ClientData::GameClient::InitializeGame(a1, a2, a3, a4);
-        ClientData::EditorRuntime::OnGameClientInitialize();
+        GameClient::InitializeGame(a1, a2, a3, a4);
+        EditorRuntime::OnGameClientInitialize();
     }
 
     void __cdecl ClientDestroyGame_EditorRuntimeDetour(bool a1, bool a2, bool a3)
     {
-        if (ClientData::GameClient::IsInitialized())
-            ClientData::EditorRuntime::OnGameClientDestroy();
+        if (GameClient::IsInitialized())
+            EditorRuntime::OnGameClientDestroy();
 
-        ClientData::GameClient::DestroyGame(a1, a2, a3);
+        GameClient::DestroyGame(a1, a2, a3);
     }
 
-    bool __fastcall CGWorldFrame_OnWorldRender_EditorRuntimeDetour(ClientData::CGWorldFrameFull* worldFrame, void*)
+    bool __fastcall CGWorldFrame_OnWorldRender_EditorRuntimeDetour(CGWorldFrameFull* worldFrame, void*)
     {
-        bool result = ClientData::CGWorldFrame_OnWorldRender(worldFrame);
-        ClientData::EditorRuntime::OnWorldRender(worldFrame);
+        bool result = CGWorldFrame_OnWorldRender(worldFrame);
+        EditorRuntime::OnWorldRender(worldFrame);
         return result;
     }
 
     int ClientInitializeGame_EditorRuntimeResult =
-        ClientDetours::Add("ClientData::GameClient::InitializeGame", &ClientData::GameClient::InitializeGame,
+        ClientDetours::Add("ClientData::GameClient::InitializeGame", &GameClient::InitializeGame,
                            ClientInitializeGame_EditorRuntimeDetour, __FILE__, __LINE__);
 
     int ClientDestroyGame_EditorRuntimeResult =
-        ClientDetours::Add("ClientData::GameClient::DestroyGame", &ClientData::GameClient::DestroyGame,
+        ClientDetours::Add("ClientData::GameClient::DestroyGame", &GameClient::DestroyGame,
                            ClientDestroyGame_EditorRuntimeDetour, __FILE__, __LINE__);
 
     int CGWorldFrame_OnWorldRender_EditorRuntimeResult =
-        ClientDetours::Add("ClientData::CGWorldFrame_OnWorldRender", &ClientData::CGWorldFrame_OnWorldRender,
+        ClientDetours::Add("ClientData::CGWorldFrame_OnWorldRender", &CGWorldFrame_OnWorldRender,
                            CGWorldFrame_OnWorldRender_EditorRuntimeDetour, __FILE__, __LINE__);
 }

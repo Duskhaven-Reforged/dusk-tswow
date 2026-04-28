@@ -1,6 +1,6 @@
 #include <ClientDetours.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 #include <World/WMOLogging.h>
 
 #include <Windows.h>
@@ -12,6 +12,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <ClientData/MathTypes.h>
+
+using namespace ClientData;
 
 void __fastcall CAaBsp__TraverseSafeDetour(void* self, void*, int nodeIndex, int* queryBounds, int* clipBounds);
 void __fastcall CAaBsp__SplitTraverseSafeDetour(void* self, void*, int nodeIndex, int* queryBounds, int* clipBounds);

@@ -5,7 +5,7 @@
 #include <ClientNetwork.h>
 #include <CustomPacketRead.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 #include <Spells/DangerZoneVisuals.h>
 #include <Spells/ScriptedMissileVisuals.h>
 
@@ -16,6 +16,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <ClientData/MathTypes.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 namespace ScriptedMissileVisualsInternal
 {
