@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoPick.h>
 #include <ClientData/MathTypes.h>
 
 namespace ClientData::GizmoDraw

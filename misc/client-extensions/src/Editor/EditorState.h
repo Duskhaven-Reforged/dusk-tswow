@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoPick.h>
 #include <CustomLua/Housing/QuatFunctions.h>
 #include <ClientData/SharedDefines.h>
 

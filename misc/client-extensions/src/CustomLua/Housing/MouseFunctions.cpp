@@ -1,6 +1,6 @@
 #include <ClientDetours.h>
 #include <ClientData/GameObject.h>
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoPick.h>
 #include <ClientData/ObjectManager.h>
 #include <ClientLua.h>
 #include <Logger.h>

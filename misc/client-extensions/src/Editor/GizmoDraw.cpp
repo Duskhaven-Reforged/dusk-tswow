@@ -1,5 +1,5 @@
 #include <ClientData/Draw.h>
-#include <ClientData/GizmoDraw.h>
+#include <Editor/GizmoDraw.h>
 #include <ClientData/GxBatch.h>
 #include <ClientData/GxDevice.h>
 #include <ClientData/VectorMath.h>

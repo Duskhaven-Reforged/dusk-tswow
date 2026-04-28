@@ -1,12 +1,12 @@
-#include <ClientData/EditorRuntime.h>
+#include <Editor/EditorRuntime.h>
 
 #include <ClientData/Draw.h>
-#include <ClientData/EditorState.h>
+#include <Editor/EditorState.h>
 #include <ClientData/Event.h>
 #include <ClientData/GameClient.h>
 #include <ClientData/GameObject.h>
-#include <ClientData/GizmoDraw.h>
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoDraw.h>
+#include <Editor/GizmoPick.h>
 #include <ClientData/GxDevice.h>
 #include <ClientData/ObjectManager.h>
 #include <ClientData/VectorMath.h>
