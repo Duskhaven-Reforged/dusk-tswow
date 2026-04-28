@@ -1,5 +1,6 @@
 #include <ClientDetours.h>
 #include <ClientData/GameObject.h>
+#include <Editor/EditorRuntime.h>
 #include <Editor/GizmoPick.h>
 #include <ClientData/ObjectManager.h>
 #include <ClientLua.h>
@@ -188,6 +189,17 @@ LUA_FUNCTION(ClearSelectedGob, (lua_State * L))
 {
     selectedGameObjectGuid = 0;
     return 0;
+}
+
+LUA_FUNCTION(SelectEditorGobByMouse, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject || !EditorRuntime::SelectGameObject(lastMouseGUID.full))
+        return 0;
+
+    ClientLua::PushString(L, GuidToString(lastMouseGUID.full));
+    PushGameObjectPosition(L, gameObject);
+    return 4;
 }
 
 LUA_FUNCTION(GetSelectedGobGUID, (lua_State * L))

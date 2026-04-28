@@ -135,21 +135,9 @@ namespace EditorRuntime
             }
 
             CGWorldFrameFull* worldFrame = CGWorldFrameFull::Current();
-            if (!worldFrame || worldFrame->currentGuid == 0)
-            {
+            if (!worldFrame || worldFrame->currentGuid == 0 || !GameObjectByGuid(worldFrame->currentGuid))
                 ClearSelection();
-                return 1;
-            }
 
-            gameObject = GameObjectByGuid(worldFrame->currentGuid);
-            if (!gameObject)
-            {
-                ClearSelection();
-                return 1;
-            }
-
-            state.currentObjectGuid = worldFrame->currentGuid;
-            state.gizmoPosition = gameObject->m_passenger.position;
             return 1;
         }
 
@@ -224,10 +212,26 @@ namespace EditorRuntime
         }
     }
 
+    bool SelectGameObject(uint64_t guid)
+    {
+        CGGameObject_C* gameObject = GameObjectByGuid(guid);
+        if (!gameObject)
+        {
+            ClearSelection();
+            return false;
+        }
+
+        EditorState& state = State();
+        state.currentObjectGuid = guid;
+        state.gizmoPosition = gameObject->m_passenger.position;
+        state.gizmoTranslationAxis = Axis::None;
+        state.gizmoRotationAxis = Axis::None;
+        state.gizmoDragState = {};
+        return true;
+    }
+
     void Apply()
     {
-        //Temporarily disabled editor. This makes the gizmo show up
-        return;
         Enabled() = true;
         if (GameClient::IsInitialized())
             OnGameClientInitialize();
