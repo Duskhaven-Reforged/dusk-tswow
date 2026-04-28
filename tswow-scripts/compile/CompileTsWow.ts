@@ -134,6 +134,26 @@ async function main() {
     commands.enterLoop();
 }
 
+function normalizeBuildTarget(target: string) {
+    switch (target) {
+        case 'client-extension':
+            return 'client-extensions';
+        case 'client-extension-64':
+            return 'client-extensions-64';
+        default:
+            return target;
+    }
+}
+
+function getBuildTargetFromArgs() {
+    const rawTarget = process.argv
+        .slice(2)
+        .find(x => !x.startsWith('-'));
+
+    return rawTarget === undefined
+        ? process.argv.includes('--release') ? 'release' : 'full'
+        : normalizeBuildTarget(rawTarget);
+}
 
 (async function(){
     if(!spaths.tswow_scripts.wotlk.global_d_ts.exists()) {
@@ -148,7 +168,7 @@ async function main() {
     if(isInteractive) {
         main();
     } else {
-        await compile(process.argv.includes('--release') ? 'release':'full',[]);
+        await compile(getBuildTargetFromArgs(),[]);
         process.exit(0);
     }
 }())

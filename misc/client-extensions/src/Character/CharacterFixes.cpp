@@ -1,9 +1,11 @@
 #include <Character/CharacterFixes.h>
 
 #include <ClientDetours.h>
+#include <Util.h>
 #include <ClientData/SharedDefines.h>
 
-#include <Windows.h>
+
+#include <cstring>
 #include <vector>
 #include <ClientData/Spell.h>
 #include <ClientData/ObjectFields.h>
@@ -14,6 +16,11 @@ namespace
 {
     constexpr uint32_t SPELL_AURA_MONK_UNARMED = 355;
     constexpr uintptr_t ANIMATION_DATA_DB = 0x00AD30C8;
+    constexpr uintptr_t UNIT_MOVEMENT_FLAGS_OFFSET = 0x7CC;
+    constexpr uint32_t MOVE_FLAG_DIRECTIONAL = 0x0000000F;
+    constexpr uint32_t MOVE_FLAG_BACKWARD = 0x00000002;
+    constexpr uint32_t MOVE_FLAG_FALLING = 0x00003000;
+    constexpr uint32_t MOVE_FLAG_SWIMMING = 0x00200000;
     constexpr uint32_t SHEATH_STATE_UNARMED = 0;
     constexpr uint32_t SHEATH_STATE_MELEE = 1;
     constexpr uintptr_t UNIT_PREVIOUS_SHEATH_STATE_OFFSET = 0xB58;
@@ -26,14 +33,31 @@ namespace
     constexpr int HAND_ITEM_SEQUENCE_READY = 89;
     constexpr int HAND_ITEM_SEQUENCE_READY_SPECIAL = 90;
     constexpr uintptr_t UNIT_HAND_ITEM_FLAGS_OFFSET = 0xA38;
+    constexpr uintptr_t UNIT_MODEL_OFFSET = 0xB4;
+    constexpr uintptr_t UNIT_MOVEMENT_INFO_OFFSET = 0x788;
+    constexpr uintptr_t UNIT_WALK_SPEED_OFFSET = 0x818;
+    constexpr uintptr_t UNIT_JUMP_VELOCITY_OFFSET = 0x840;
+    constexpr uintptr_t UNIT_SPECIAL_BONE_SEQUENCE_SLOT_OFFSET = 0xB84;
     constexpr uint32_t UNIT_HAND_ITEM_MAINHAND_ACTIVE = 0x100000;
     constexpr uint32_t UNIT_HAND_ITEM_OFFHAND_ACTIVE = 0x200000;
     constexpr int ANIMATION_ATTACK_UNARMED = 16;
     constexpr int ANIMATION_ATTACK_1H = 17;
     constexpr int ANIMATION_ATTACK_2H = 18;
     constexpr int ANIMATION_ATTACK_2H_LOOSE = 19;
+    constexpr int ANIMATION_JUMP_START = 37;
+    constexpr int ANIMATION_FALL = 40;
+    constexpr int ANIMATION_SWIM_IDLE = 41;
+    constexpr int ANIMATION_SWIM = 42;
+    constexpr int ANIMATION_SWIM_BACKWARDS = 45;
+    constexpr int ANIMATION_WALK = 4;
+    constexpr int ANIMATION_RUN = 5;
+    constexpr int ANIMATION_RUN_BACKWARDS = 13;
     constexpr int ANIMATION_SPECIAL_1H = 57;
     constexpr int ANIMATION_SPECIAL_2H = 58;
+    constexpr int ANIMATION_SPRINT = 143;
+    constexpr int ANIMATION_CURRENT_OR_NONE = 506;
+    constexpr int ANIMATION_CHANNEL_CAST_DIRECTED = 124;
+    constexpr int ANIMATION_CHANNEL_CAST_OMNI = 125;
     constexpr int ANIMATION_ATTACK_1H_PIERCE = 85;
     constexpr int ANIMATION_ATTACK_2H_LOOSE_PIERCE = 86;
     constexpr int ANIMATION_ATTACK_OFFHAND = 87;
@@ -53,7 +77,27 @@ namespace
         uint32_t behaviorTier;
     };
 
+    struct AnimationSequenceState
+    {
+        int animationId;
+        float sequenceTime;
+        int frame;
+        float speed;
+    };
+
     CLIENT_FUNCTION(CGUnit_C__IsSpellKnown_MonkUnarmed, 0x7260E0, __thiscall, bool, (CGUnit*, uint32_t))
+    CLIENT_FUNCTION(CMovement__CalcCurrentSpeed_ChannelLowerBody, 0x987570, __thiscall, float, (void*, int))
+    CLIENT_FUNCTION(CGUnit_C__ResolveCurrentAnimation_ChannelLowerBody, 0x724500, __thiscall, int, (void*, int, char*, void*))
+    CLIENT_FUNCTION(CGUnit_C__SetBoneSequence_ChannelLowerBody, 0x735820, __thiscall, void, (void*, uintptr_t, int, int, float, int, float, int, int, int))
+    CLIENT_FUNCTION(CGUnit_C__UnsetBoneSequence_ChannelLowerBody, 0x735A60, __thiscall, int, (void*, void*, int, int, int, int))
+    CLIENT_FUNCTION(CM2Model__GetBoneSequenceOriginalAnimId_ChannelLowerBody, 0x8267E0, __thiscall, int, (void*, uint32_t))
+
+    uint32_t GetUnitCurrentChannelId(uintptr_t unit);
+    uint32_t GetUnitChannelSpell(uintptr_t unit);
+    bool IsUnitChanneling(uintptr_t unit);
+    int GetModelBoneSequenceOriginalAnimId(void* model, int boneSeqSlot);
+    bool IsAirborneAnimation(int animationId);
+    bool IsJumpingUpward(uintptr_t unit);
 
     bool SpellHasAuraType(SpellRow const& row, uint32_t auraType)
     {
@@ -167,6 +211,260 @@ namespace
         return row && IsMonkUnarmedAttackBehavior(row->behaviorId);
     }
 
+    bool IsChannelCastAnimation(int animationId)
+    {
+        if (animationId == ANIMATION_CHANNEL_CAST_DIRECTED || animationId == ANIMATION_CHANNEL_CAST_OMNI)
+            return true;
+
+        if (animationId < 0)
+            return false;
+
+        auto* row = reinterpret_cast<AnimationDataRow*>(ClientDB::GetRow(reinterpret_cast<void*>(ANIMATION_DATA_DB), animationId));
+        return row && (row->behaviorId == ANIMATION_CHANNEL_CAST_DIRECTED || row->behaviorId == ANIMATION_CHANNEL_CAST_OMNI);
+    }
+
+    bool IsMovingLowerBody(uintptr_t unit)
+    {
+        const uint32_t movementFlags = *reinterpret_cast<uint32_t*>(unit + UNIT_MOVEMENT_FLAGS_OFFSET);
+        return (movementFlags & (MOVE_FLAG_DIRECTIONAL | MOVE_FLAG_FALLING | MOVE_FLAG_SWIMMING)) != 0;
+    }
+
+    float AnySequenceTime()
+    {
+        float value;
+        uint32_t bits = 0xFFFFFFFF;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+
+    int ResolveChannelLowerBodyAnimation(uintptr_t unit, char animationFlags, int resolveFlags, bool allowAirborne)
+    {
+        const uint32_t movementFlags = *reinterpret_cast<uint32_t*>(unit + UNIT_MOVEMENT_FLAGS_OFFSET);
+        if ((movementFlags & MOVE_FLAG_SWIMMING) != 0)
+        {
+            if ((movementFlags & MOVE_FLAG_BACKWARD) != 0)
+                return ANIMATION_SWIM_BACKWARDS;
+
+            return (movementFlags & MOVE_FLAG_DIRECTIONAL) != 0 ? ANIMATION_SWIM : ANIMATION_SWIM_IDLE;
+        }
+
+        if (allowAirborne && (movementFlags & MOVE_FLAG_FALLING) != 0)
+        {
+            void* model = *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET);
+            const int rootAnimation = GetModelBoneSequenceOriginalAnimId(model, -1);
+            if (rootAnimation == ANIMATION_JUMP_START)
+            {
+                if (IsJumpingUpward(unit))
+                    return rootAnimation;
+            }
+            else if (IsAirborneAnimation(rootAnimation))
+            {
+                return rootAnimation;
+            }
+
+            if (IsJumpingUpward(unit))
+                return ANIMATION_JUMP_START;
+
+            char resolvedFlags = animationFlags;
+            const int resolvedAnimation = CGUnit_C__ResolveCurrentAnimation_ChannelLowerBody(
+                reinterpret_cast<void*>(unit),
+                resolveFlags | 4,
+                &resolvedFlags,
+                nullptr);
+
+            if (resolvedAnimation != ANIMATION_CURRENT_OR_NONE && !IsChannelCastAnimation(resolvedAnimation))
+                return resolvedAnimation;
+
+            return ANIMATION_FALL;
+        }
+
+        if ((movementFlags & MOVE_FLAG_DIRECTIONAL) != 0)
+        {
+            if ((movementFlags & MOVE_FLAG_BACKWARD) != 0)
+                return ANIMATION_RUN_BACKWARDS;
+
+            const float speed = CMovement__CalcCurrentSpeed_ChannelLowerBody(reinterpret_cast<void*>(unit + UNIT_MOVEMENT_INFO_OFFSET), 0);
+            if (speed >= 11.0f)
+                return ANIMATION_SPRINT;
+
+            const float walkSpeed = *reinterpret_cast<float*>(unit + UNIT_WALK_SPEED_OFFSET);
+            return speed > walkSpeed * 2.0f ? ANIMATION_RUN : ANIMATION_WALK;
+        }
+
+        return -1;
+    }
+
+    void SetUnitRootSequence(uintptr_t unit, void* model, int animationId)
+    {
+        CGUnit_C__SetBoneSequence_ChannelLowerBody(
+            reinterpret_cast<void*>(unit),
+            reinterpret_cast<uintptr_t>(model),
+            -1,
+            animationId,
+            AnySequenceTime(),
+            0,
+            1.0f,
+            0,
+            1,
+            0);
+    }
+
+    void SetUnitUpperSequence(uintptr_t unit, void* model, int animationId)
+    {
+        const int upperSlot = *reinterpret_cast<int*>(unit + UNIT_SPECIAL_BONE_SEQUENCE_SLOT_OFFSET);
+        if (upperSlot == -1)
+            return;
+
+        CGUnit_C__SetBoneSequence_ChannelLowerBody(
+            reinterpret_cast<void*>(unit),
+            reinterpret_cast<uintptr_t>(model),
+            upperSlot,
+            animationId,
+            AnySequenceTime(),
+            0,
+            1.0f,
+            0,
+            1,
+            0);
+    }
+
+    int GetModelBoneSequenceOriginalAnimId(void* model, int boneSeqSlot)
+    {
+        if (!model)
+            return 0;
+
+        return CM2Model__GetBoneSequenceOriginalAnimId_ChannelLowerBody(model, static_cast<uint32_t>(boneSeqSlot));
+    }
+
+    bool IsAirborneAnimation(int animationId)
+    {
+        if (animationId == ANIMATION_JUMP_START || animationId == ANIMATION_FALL)
+            return true;
+
+        if (animationId < 0)
+            return false;
+
+        auto* row = reinterpret_cast<AnimationDataRow*>(ClientDB::GetRow(reinterpret_cast<void*>(ANIMATION_DATA_DB), animationId));
+        return row && row->behaviorId >= 37 && (row->behaviorId <= 40 || row->behaviorId == 467);
+    }
+
+    bool IsJumpingUpward(uintptr_t unit)
+    {
+        const uint32_t movementFlags = *reinterpret_cast<uint32_t*>(unit + UNIT_MOVEMENT_FLAGS_OFFSET);
+        if ((movementFlags & MOVE_FLAG_FALLING) == 0)
+            return false;
+
+        return *reinterpret_cast<float*>(unit + UNIT_JUMP_VELOCITY_OFFSET) > 0.0f;
+    }
+
+    int GetUnitUpperChannelAnimation(uintptr_t unit, void* model)
+    {
+        const int upperSlot = *reinterpret_cast<int*>(unit + UNIT_SPECIAL_BONE_SEQUENCE_SLOT_OFFSET);
+        if (upperSlot == -1)
+            return 0;
+
+        const int upperAnimation = GetModelBoneSequenceOriginalAnimId(model, upperSlot);
+        return IsChannelCastAnimation(upperAnimation) ? upperAnimation : 0;
+    }
+
+    int GetUnitRootChannelAnimation(void* model)
+    {
+        const int rootAnimation = GetModelBoneSequenceOriginalAnimId(model, -1);
+        return IsChannelCastAnimation(rootAnimation) ? rootAnimation : 0;
+    }
+
+    void MoveRootChannelToUpperBody(uintptr_t unit, void* model)
+    {
+        if (GetUnitUpperChannelAnimation(unit, model) != 0)
+            return;
+
+        const int rootChannelAnimation = GetUnitRootChannelAnimation(model);
+        if (rootChannelAnimation != 0)
+            SetUnitUpperSequence(unit, model, rootChannelAnimation);
+    }
+
+    void RestoreRootChannelFromUpperBody(uintptr_t unit, void* model)
+    {
+        const int upperSlot = *reinterpret_cast<int*>(unit + UNIT_SPECIAL_BONE_SEQUENCE_SLOT_OFFSET);
+        if (upperSlot == -1)
+            return;
+
+        const int upperChannelAnimation = GetUnitUpperChannelAnimation(unit, model);
+        if (upperChannelAnimation == 0)
+            return;
+
+        if (GetUnitRootChannelAnimation(model) == 0)
+            SetUnitRootSequence(unit, model, upperChannelAnimation);
+
+        CGUnit_C__UnsetBoneSequence_ChannelLowerBody(reinterpret_cast<void*>(unit), model, upperSlot, 1, 0, 1);
+    }
+
+    void StabilizeChannelLowerBodyAnimation(uintptr_t unit)
+    {
+        if (!IsUnitChanneling(unit) || !IsMovingLowerBody(unit))
+            return;
+
+        const uint32_t movementFlags = *reinterpret_cast<uint32_t*>(unit + UNIT_MOVEMENT_FLAGS_OFFSET);
+        void* model = *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET);
+        if (!model)
+            return;
+
+        const int rootAnimation = GetModelBoneSequenceOriginalAnimId(model, -1);
+        if ((movementFlags & MOVE_FLAG_FALLING) != 0)
+        {
+            if (!IsAirborneAnimation(rootAnimation))
+            {
+                MoveRootChannelToUpperBody(unit, model);
+                SetUnitRootSequence(unit, model, ANIMATION_JUMP_START);
+            }
+            return;
+        }
+
+        if (!IsAirborneAnimation(rootAnimation))
+            return;
+
+        MoveRootChannelToUpperBody(unit, model);
+
+        const int rootMovementAnimation = ResolveChannelLowerBodyAnimation(unit, 0, 4, false);
+        if (rootMovementAnimation != -1)
+            SetUnitRootSequence(unit, model, rootMovementAnimation);
+    }
+
+    bool ShouldRouteMovingChannelToUpperSlot(uintptr_t unit, int animationId)
+    {
+        return unit
+            && IsMovingLowerBody(unit)
+            && IsUnitChanneling(unit)
+            && IsChannelCastAnimation(animationId)
+            && *reinterpret_cast<int*>(unit + UNIT_SPECIAL_BONE_SEQUENCE_SLOT_OFFSET) != -1;
+    }
+
+    uint32_t GetUnitCurrentChannelId(uintptr_t unit)
+    {
+        if (!unit)
+            return 0;
+
+        CGUnit* cgUnit = reinterpret_cast<CGUnit*>(unit);
+        return cgUnit->currentChannelId;
+    }
+
+    uint32_t GetUnitChannelSpell(uintptr_t unit)
+    {
+        if (!unit)
+            return 0;
+
+        CGUnit* cgUnit = reinterpret_cast<CGUnit*>(unit);
+        if (!cgUnit->unitData)
+            return 0;
+
+        return cgUnit->unitData->channelSpell;
+    }
+
+    bool IsUnitChanneling(uintptr_t unit)
+    {
+        return GetUnitCurrentChannelId(unit) != 0 || GetUnitChannelSpell(unit) != 0;
+    }
+
     uint32_t& UnitSheatheState(uintptr_t unit, uintptr_t offset)
     {
         return *reinterpret_cast<uint32_t*>(unit + offset);
@@ -209,6 +507,15 @@ namespace
             animationId = ANIMATION_ATTACK_UNARMED;
 
         CGUnit_C__AnimationData_MonkUnarmed(self, animationId, flags);
+    }
+
+    CLIENT_DETOUR_THISCALL(CGUnit_C__ApplyAnimationSequence_ChannelLowerBody, 0x737EF0, void, (AnimationSequenceState* sequence, int previousAnimationId, int useSpecialBoneSlot, int currentAnimationId, int allowTransition, int primary))
+    {
+        const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        if (sequence && !useSpecialBoneSlot && ShouldRouteMovingChannelToUpperSlot(unit, sequence->animationId))
+            useSpecialBoneSlot = 1;
+
+        CGUnit_C__ApplyAnimationSequence_ChannelLowerBody(self, sequence, previousAnimationId, useSpecialBoneSlot, currentAnimationId, allowTransition, primary);
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__HandleModelSequenceCallback_MonkUnarmed, 0x73BBD0, void, (void* model, int boneSeqSlot, int animationId, int a5, int a6))
@@ -326,11 +633,21 @@ namespace
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__SetHandItemBoneSequence_MonkUnarmed, 0x735820, void, (uintptr_t model, int boneSeqSlot, int sequence, float sequenceTime, int a6, float speed, int a8, int a9, int a10))
     {
+        const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        if (boneSeqSlot == -1 && ShouldRouteMovingChannelToUpperSlot(unit, sequence))
+        {
+            const int rootMovementAnimation = ResolveChannelLowerBodyAnimation(unit, 0, 4, true);
+            if (rootMovementAnimation != -1)
+                CGUnit_C__SetHandItemBoneSequence_MonkUnarmed(self, model, -1, rootMovementAnimation, AnySequenceTime(), a6, 1.0f, a8, a9, a10);
+
+            boneSeqSlot = *reinterpret_cast<int*>(unit + UNIT_SPECIAL_BONE_SEQUENCE_SLOT_OFFSET);
+        }
+
         if (ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
         {
             if (IsHandItemAttachSequence(boneSeqSlot, sequence))
             {
-                ClearHandItemActiveFlag(reinterpret_cast<uintptr_t>(self), boneSeqSlot);
+                ClearHandItemActiveFlag(unit, boneSeqSlot);
                 return;
             }
 
@@ -340,10 +657,67 @@ namespace
 
         CGUnit_C__SetHandItemBoneSequence_MonkUnarmed(self, model, boneSeqSlot, sequence, sequenceTime, a6, speed, a8, a9, a10);
     }
+
+    CLIENT_DETOUR_THISCALL(CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody, 0x73AC30, void, (char flags, int animationId))
+    {
+        const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        const bool wasChanneling = IsUnitChanneling(unit);
+        void* model = wasChanneling ? *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET) : nullptr;
+        const int rootChannelBeforeUpdate = model ? GetUnitRootChannelAnimation(model) : 0;
+
+        CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody(self, flags, animationId);
+
+        if (!IsUnitChanneling(unit))
+            return;
+
+        model = *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET);
+        if (!model)
+            return;
+
+        if (!IsMovingLowerBody(unit))
+        {
+            RestoreRootChannelFromUpperBody(unit, model);
+            return;
+        }
+
+        MoveRootChannelToUpperBody(unit, model);
+        if (rootChannelBeforeUpdate != 0 && GetUnitUpperChannelAnimation(unit, model) == 0)
+            SetUnitUpperSequence(unit, model, rootChannelBeforeUpdate);
+
+        const int rootMovementAnimation = ResolveChannelLowerBodyAnimation(unit, flags, animationId, true);
+        if (rootMovementAnimation != -1)
+            SetUnitRootSequence(unit, model, rootMovementAnimation);
+    }
+
+    CLIENT_DETOUR_THISCALL(CGUnit_C__PlayFallLandAnimation_ChannelLowerBody, 0x73D2B0, void, (int movementFlags, int forceLandAnimation))
+    {
+        CGUnit_C__PlayFallLandAnimation_ChannelLowerBody(self, movementFlags, forceLandAnimation);
+
+        const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        if (!IsUnitChanneling(unit))
+            return;
+
+        void* model = *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET);
+        if (!model)
+            return;
+
+        MoveRootChannelToUpperBody(unit, model);
+
+        const int rootMovementAnimation = ResolveChannelLowerBodyAnimation(unit, 0, 4, false);
+        if (rootMovementAnimation != -1)
+            SetUnitRootSequence(unit, model, rootMovementAnimation);
+    }
+
+    CLIENT_DETOUR_THISCALL(CGUnit_C__PreAnimate_ChannelLowerBody, 0x73DAB0, int, (int elapsed))
+    {
+        const int result = CGUnit_C__PreAnimate_ChannelLowerBody(self, elapsed);
+        StabilizeChannelLowerBodyAnimation(reinterpret_cast<uintptr_t>(self));
+        return result;
+    }
+
 }
 
 void CharacterFixes::CharacterCreationFixes() {
-    DWORD flOldProtect = 0;
     // addresses pointing to, uh, some sort of shared memory storage
     // needs to be bigger to not cause crashes with our dbcs so I assigned to it 512 bytes (original table is 176 bytes iirc? cba to look in IDA), should be enough
     std::vector<uint32_t> patchedAddresses = { 0x4E157D, 0x4E16A3, 0x4E15B5, 0x4E20EE, 0x4E222A, 0x4E2127, 0x4E1E94, 0x4E1C3A };
@@ -355,7 +729,15 @@ void CharacterFixes::CharacterCreationFixes() {
     // 0x4CDA43 - address of table where pointers to race name strings are stored
     SetNewRaceNamePointerTable();
     Util::OverwriteUInt32AtAddress(0x4CDA43, reinterpret_cast<uint32_t>(&raceNameTable));
+    AnimationLayeringFixes();
     MonkUnarmedSheathFix();
+}
+
+void CharacterFixes::AnimationLayeringFixes() {
+    (void)CGUnit_C__ApplyAnimationSequence_ChannelLowerBody__Result;
+    (void)CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody__Result;
+    (void)CGUnit_C__PlayFallLandAnimation_ChannelLowerBody__Result;
+    (void)CGUnit_C__PreAnimate_ChannelLowerBody__Result;
 }
 
 void CharacterFixes::MonkUnarmedSheathFix() {
