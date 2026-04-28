@@ -270,12 +270,6 @@ namespace
         {
             AttachShoulderModel(reinterpret_cast<int>(parentModel), 5, attachmentFiveModel, attachmentFiveTexture, visualArg, attachmentFiveVisual);
         }
-
-        LOG_INFO << "Applied shoulder override render: baseDisplay=" << baseDisplayId
-                 << " guid=" << s_visibleItemBuildContext.guid
-                 << " slot=" << uint32_t(s_visibleItemBuildContext.slot)
-                 << " attach6=" << attachmentSixDisplay
-                 << " attach5=" << attachmentFiveDisplay;
     }
 
     uint64_t GetCharacterDisplayGuid(void* characterDisplay)
@@ -315,40 +309,6 @@ namespace
             ApplyCharacterSelectShoulderOverride(characterDisplay, existingCharacterComponent);
     }
 
-    void DebugVisibleItemOverride(
-        uint64_t guid,
-        uint8_t slot,
-        bool hasItem,
-        uint32_t entryId,
-        uint32_t transmogEntry,
-        int32_t leftShoulderDisplay,
-        int32_t rightShoulderDisplay)
-    {
-        if (!DEBUG_VISIBLE_ITEM_OVERRIDES)
-            return;
-
-        std::ostringstream message;
-        message << "[VisibleItemOverride] guid=" << guid
-                << " slot=" << uint32_t(slot)
-                << " hasItem=" << uint32_t(hasItem ? 1 : 0)
-                << " entry=" << entryId
-                << " transmog=" << transmogEntry
-                << " left=" << leftShoulderDisplay
-                << " right=" << rightShoulderDisplay;
-
-        const std::string text = message.str();
-        LOG_INFO << text;
-
-        lua_State* state = ClientLua::State();
-        if (state)
-        {
-            const std::string escaped = EscapeLuaString(text);
-            const std::string lua =
-                "if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(\"" + escaped + "\") end";
-            ClientLua::DoString(lua.c_str(), state);
-        }
-    }
-
     uint64_t GetPlayerGuid(void* self)
     {
         if (!self)
@@ -384,7 +344,6 @@ namespace
             overrideData = {};
             overrideData.leftShoulderDisplay = -1;
             overrideData.rightShoulderDisplay = -1;
-            DebugVisibleItemOverride(guid, slot, false, 0, 0, -1, -1);
             return;
         }
 
@@ -402,15 +361,6 @@ namespace
         overrideData.flags = packet->Read<uint32_t>(0);
         overrideData.enchantPacked = uint32_t(permanentEnchant) | (uint32_t(temporaryEnchant) << 16);
         overrideData.active = true;
-
-        DebugVisibleItemOverride(
-            guid,
-            slot,
-            true,
-            entryId,
-            transmogEntry,
-            leftShoulderDisplay,
-            rightShoulderDisplay);
 
         if (slot == SERVER_SHOULDER_SLOT)
         {

@@ -159,6 +159,64 @@ export class WeaponPercentDamage extends DamageBasePct {
 export class TriggerMissile extends TargetBase {
     get MissileSpell() { return this.wrap(this.owner.TriggerSpell); }
 }
+
+export enum ScriptedMissileMotion {
+    ORBITING_ORBS = 1,
+    SPIRAL_PAIR = 2,
+    SINE_WAVE = 3,
+    HOMING = 4,
+    RADIAL_ORBS = 5,
+    CARDINAL_SPIRAL_ORBS = 6,
+    RADIAL_SWIRL_100 = 7,
+}
+
+export enum ScriptedMissileCollision {
+    HOSTILE_CREATURES = 0,
+    HOSTILE_UNITS = 1,
+    ANY_CREATURE = 2,
+    ANY_UNIT = 3,
+    TERRAIN_ONLY = 4,
+}
+
+export class ScriptedMissileMotionValue<T> {
+    constructor(private owner: T, private cell: { get(): number; set(value: number): any }, private value: ScriptedMissileMotion) {}
+
+    is() {
+        return this.cell.get() === this.value;
+    }
+
+    set() {
+        this.cell.set(this.value);
+        return this.owner;
+    }
+}
+
+export class ScriptedMissileMotionCell<T> {
+    constructor(private owner: T, private cell: { get(): number; set(value: number): any }) {}
+
+    get ORBITING_ORBS() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.ORBITING_ORBS); }
+    get SPIRAL_PAIR() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.SPIRAL_PAIR); }
+    get SINE_WAVE() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.SINE_WAVE); }
+    get HOMING() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.HOMING); }
+    get RADIAL_ORBS() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.RADIAL_ORBS); }
+    get CARDINAL_SPIRAL_ORBS() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.CARDINAL_SPIRAL_ORBS); }
+    get RADIAL_SWIRL_100() { return new ScriptedMissileMotionValue(this.owner, this.cell, ScriptedMissileMotion.RADIAL_SWIRL_100); }
+
+    get() {
+        return this.cell.get() as ScriptedMissileMotion;
+    }
+}
+
+export class CreateScriptedMissile extends TargetBase {
+    /** ScriptedMissileMotion.cdbc profile id. */
+    get Motion() { return new ScriptedMissileMotionCell(this, this.owner.MiscValueA); }
+    /** Optional server-side visual creature fallback. Client-side visuals come from the motion CDBC row. */
+    get VisualCreature() { return this.wrap(this.owner.MiscValueB); }
+    get Visual() { return this.VisualCreature; }
+    get ImpactSpell() { return this.wrap(this.owner.TriggerSpell); }
+    get Collision() { return makeEnumCell(ScriptedMissileCollision, this, this.owner.PointsBase.AsCell()); }
+    get CollisionDieSides() { return this.wrap(this.owner.PointsDieSides); }
+}
 // 33
 export class OpenLock extends EffectTemplate {
     get LockType() { return LockTypeRegistry.ref(this, this.owner.MiscValueA); }

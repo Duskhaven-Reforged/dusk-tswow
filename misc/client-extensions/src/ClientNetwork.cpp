@@ -164,6 +164,13 @@ int ClientNetwork::OnCustomPacket(
     }
 }
 
+void ClientNetwork::SendCustomPacket(opcode_t opcode, totalSize_t size, std::function<void(CustomPacketWrite&)> writer)
+{
+    ClientMessageWrite packet(opcode, size);
+    writer(packet);
+    packet.Send();
+}
+
 
 namespace
 {

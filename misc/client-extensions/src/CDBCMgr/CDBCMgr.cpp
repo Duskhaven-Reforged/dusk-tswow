@@ -4,6 +4,8 @@
 #include <CDBCMgr/CDBCDefs/SpellAdditionalAttributes.h>
 #include <CDBCMgr/CDBCDefs/SpellAdditionalCostData.h>
 #include <CDBCMgr/CDBCDefs/SpellEffectScalars.h>
+#include <CDBCMgr/CDBCDefs/ScriptedMissileMotion.h>
+#include <CDBCMgr/CDBCDefs/DangerZoneVisualProfile.h>
 #include <CDBCMgr/CDBCDefs/ZoneLight.h>
 #include <CDBCMgr/CDBCDefs/ZoneLightPoint.h>
 
@@ -18,6 +20,8 @@ void CDBCMgr::Load() {
     ZoneLight().LoadDB();
     ZoneLightPoint().LoadDB();
     SpellEffectScalars().LoadDB();
+    ScriptedMissileMotion().LoadDB();
+    DangerZoneVisualProfile().LoadDB();
 }
 
 void CDBCMgr::addCDBC(std::string cdbcName) {

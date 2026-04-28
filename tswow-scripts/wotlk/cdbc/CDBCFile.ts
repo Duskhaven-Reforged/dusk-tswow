@@ -30,11 +30,35 @@ export class CDBCFile<C, Q, R extends DBCRow<C, Q>> extends DBCFile<C, Q, R> {
 
     protected override load(filePath: string = this.defaultPath()) {
         if (!this.loaded) {
-            if(!fs.existsSync(filePath))
-                new CDBCGenerator(this.defaultRow).generate(filePath);
+            this.ensureSourceFile(filePath);
             this.buffer.read(filePath);            
             this.loaded = true;
         }
+    }
+
+    ensureSourceFile(filePath: string = this.defaultPath()) {
+        if(!fs.existsSync(filePath) || this.needsSchemaRefresh(filePath))
+            new CDBCGenerator(this.defaultRow).generate(filePath);
+    }
+
+    private needsSchemaRefresh(filePath: string) {
+        if (!this.defaultRow) {
+            return false;
+        }
+
+        const header = Buffer.alloc(20);
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            if (fs.readSync(fd, header, 0, header.length, 0) !== header.length) {
+                return true;
+            }
+        } finally {
+            fs.closeSync(fd);
+        }
+
+        const fieldCount = header.readUInt32LE(8);
+        const recordSize = header.readUInt32LE(12);
+        return fieldCount !== this.defaultRow.length || recordSize !== this.defaultRow.length * 4;
     }
 
     fileWork(){}//override for any work required just before saving dbc
