@@ -3,6 +3,8 @@
 #include <World/WorldData.h>
 #include <Logger.h>
 
+using namespace ClientData;
+
 void WorldDataExtensions::Apply() {
     // calls nullsub_3 instead of original function
     Util::OverwriteUInt32AtAddress(0x781426, 0xFFE6D746);

@@ -1,11 +1,14 @@
 #include <CDBCMgr/CDBCMgr.h>
 #include <ClientLua.h>
 #include <Logger.h>
-#include <SharedDefines.h>
-#include <SpellAttrDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <string>
 #include <unordered_map>
+#include <ClientData/Spell.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 namespace {
 std::unordered_map<uint32_t, std::string> s_cachedSpellDescriptions;

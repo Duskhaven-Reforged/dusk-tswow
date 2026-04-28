@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 namespace WMOLogging
 {

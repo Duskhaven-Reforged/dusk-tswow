@@ -2,7 +2,7 @@
 #include <ClientDetours.h>
 #include <ClientLua.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 LUA_FUNCTION(GetHairStyleSelection, (lua_State * L))
 {

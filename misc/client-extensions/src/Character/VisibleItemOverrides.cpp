@@ -4,7 +4,7 @@
 #include <ClientLua.h>
 #include <ClientNetwork.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <CustomPacketRead.h>
 
@@ -14,6 +14,9 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 namespace
 {

@@ -15,6 +15,9 @@
 #include <unordered_map>
 #include <vector>
 #include <windows.h>
+#include <any>
+
+using namespace ClientData;
 
 namespace {
     constexpr uint32_t kColorWhite = 0xAD2D30;

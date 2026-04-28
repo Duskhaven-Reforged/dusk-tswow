@@ -2,6 +2,8 @@
 #include <ClientLua.h>
 #include <Logger.h>
 
+using namespace ClientData;
+
 LUA_FUNCTION(GetShapeshiftFormID, (lua_State* L)) {
     uint64_t activePlayer = ClntObjMgr::GetActivePlayer();
 

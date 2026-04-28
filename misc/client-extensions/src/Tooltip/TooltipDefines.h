@@ -1,6 +1,6 @@
 #pragma once
 
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <iostream>
 
@@ -39,4 +39,14 @@ enum SpellVariable : uint32_t {
     SPELLVARIABLE_bon1      = 191,
     SPELLVARIABLE_bon2      = 192,
     SPELLVARIABLE_bon3      = 193,
+};
+
+// String helpers used by tooltip formatters
+static char* sPluralS = const_cast<char*>("s");
+static char* sConnectorPlus = const_cast<char*>(" + ");
+
+// Lightweight view over the item-cache info block returned by
+// DBItemCache_GetInfoBlockByID.  Only the name pointer is needed.
+struct ItemCacheNameView {
+    const char* namePtr;
 };

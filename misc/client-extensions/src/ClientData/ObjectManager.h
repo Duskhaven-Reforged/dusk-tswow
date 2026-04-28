@@ -1,7 +1,8 @@
 #pragma once
 
 #include <ClientMacros.h>
-#include <SharedDefines.h>
+#include <ClientData/Object.h>
+#include <ClientData/ObjectFields.h>
 
 #include <cstdint>
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <ClientData/MathTypes.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 namespace ClientData
 {

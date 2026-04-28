@@ -4,10 +4,12 @@
 #include <Character/CharacterExtensions.h>
 #include <Tooltip/SpellTooltipExtensions.h>
 #include <Logger.h>
-#include <SpellAttrDefines.h>
 
 #include <Windows.h>
 #include <algorithm>
+#include <any>
+
+using namespace ClientData;
 
 void TooltipExtensions::Apply() {
     SpellTooltipVariableExtension();

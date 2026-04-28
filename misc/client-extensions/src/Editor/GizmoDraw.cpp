@@ -1,13 +1,16 @@
 #include <ClientData/Draw.h>
-#include <ClientData/GizmoDraw.h>
+#include <Editor/GizmoDraw.h>
 #include <ClientData/GxBatch.h>
 #include <ClientData/GxDevice.h>
 #include <ClientData/VectorMath.h>
 
 #include <cmath>
 
-namespace ClientData::GizmoDraw
+namespace GizmoDraw
 {
+    using namespace ClientData;
+    using namespace GPick;
+
     namespace
     {
         constexpr float kPi = 3.14159265358979323846f;

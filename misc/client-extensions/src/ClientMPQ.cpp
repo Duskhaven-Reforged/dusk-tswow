@@ -1,7 +1,7 @@
 #include <CustompacketChunk.h>
 #include <ClientMacros.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 namespace ClientMPQ {
     // todo: it looks like normal GetLastError isn't working here,

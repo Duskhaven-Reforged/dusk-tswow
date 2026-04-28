@@ -1,11 +1,16 @@
 #include <Character/CharacterFixes.h>
 
 #include <ClientDetours.h>
-#include <SharedDefines.h>
 #include <Util.h>
+#include <ClientData/SharedDefines.h>
+
 
 #include <cstring>
 #include <vector>
+#include <ClientData/Spell.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 namespace
 {

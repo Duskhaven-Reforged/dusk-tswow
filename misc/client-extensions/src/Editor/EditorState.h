@@ -1,13 +1,16 @@
 #pragma once
 
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoPick.h>
 #include <CustomLua/Housing/QuatFunctions.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <cstdint>
 
-namespace ClientData
+namespace EState
 {
+    using namespace ClientData;
+    using namespace GPick;
+
     struct DragState
     {
         bool active = false;

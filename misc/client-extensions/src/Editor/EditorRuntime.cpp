@@ -1,12 +1,12 @@
-#include <ClientData/EditorRuntime.h>
+#include <Editor/EditorRuntime.h>
 
 #include <ClientData/Draw.h>
-#include <ClientData/EditorState.h>
+#include <Editor/EditorState.h>
 #include <ClientData/Event.h>
 #include <ClientData/GameClient.h>
 #include <ClientData/GameObject.h>
-#include <ClientData/GizmoDraw.h>
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoDraw.h>
+#include <Editor/GizmoPick.h>
 #include <ClientData/GxDevice.h>
 #include <ClientData/ObjectManager.h>
 #include <ClientData/VectorMath.h>
@@ -16,8 +16,12 @@
 
 #include <cstdint>
 
-namespace ClientData::EditorRuntime
+namespace EditorRuntime
 {
+    using namespace ClientData;
+    using namespace EState;
+    using namespace GPick;
+
     namespace
     {
         constexpr float kTranslationGizmoScale = 1.0f;
@@ -131,21 +135,9 @@ namespace ClientData::EditorRuntime
             }
 
             CGWorldFrameFull* worldFrame = CGWorldFrameFull::Current();
-            if (!worldFrame || worldFrame->currentGuid == 0)
-            {
+            if (!worldFrame || worldFrame->currentGuid == 0 || !GameObjectByGuid(worldFrame->currentGuid))
                 ClearSelection();
-                return 1;
-            }
 
-            gameObject = GameObjectByGuid(worldFrame->currentGuid);
-            if (!gameObject)
-            {
-                ClearSelection();
-                return 1;
-            }
-
-            state.currentObjectGuid = worldFrame->currentGuid;
-            state.gizmoPosition = gameObject->m_passenger.position;
             return 1;
         }
 
@@ -220,10 +212,26 @@ namespace ClientData::EditorRuntime
         }
     }
 
+    bool SelectGameObject(uint64_t guid)
+    {
+        CGGameObject_C* gameObject = GameObjectByGuid(guid);
+        if (!gameObject)
+        {
+            ClearSelection();
+            return false;
+        }
+
+        EditorState& state = State();
+        state.currentObjectGuid = guid;
+        state.gizmoPosition = gameObject->m_passenger.position;
+        state.gizmoTranslationAxis = Axis::None;
+        state.gizmoRotationAxis = Axis::None;
+        state.gizmoDragState = {};
+        return true;
+    }
+
     void Apply()
     {
-        //Temporarily disabled editor. This makes the gizmo show up
-        return;
         Enabled() = true;
         if (GameClient::IsInitialized())
             OnGameClientInitialize();
@@ -286,40 +294,42 @@ namespace ClientData::EditorRuntime
 
         device->Pop();
     }
-}
+} // namespace EditorRuntime
 
 namespace
 {
+    using namespace ClientData;
+
     void __cdecl ClientInitializeGame_EditorRuntimeDetour(int32_t a1, float a2, float a3, float a4)
     {
-        ClientData::GameClient::InitializeGame(a1, a2, a3, a4);
-        ClientData::EditorRuntime::OnGameClientInitialize();
+        GameClient::InitializeGame(a1, a2, a3, a4);
+        EditorRuntime::OnGameClientInitialize();
     }
 
     void __cdecl ClientDestroyGame_EditorRuntimeDetour(bool a1, bool a2, bool a3)
     {
-        if (ClientData::GameClient::IsInitialized())
-            ClientData::EditorRuntime::OnGameClientDestroy();
+        if (GameClient::IsInitialized())
+            EditorRuntime::OnGameClientDestroy();
 
-        ClientData::GameClient::DestroyGame(a1, a2, a3);
+        GameClient::DestroyGame(a1, a2, a3);
     }
 
-    bool __fastcall CGWorldFrame_OnWorldRender_EditorRuntimeDetour(ClientData::CGWorldFrameFull* worldFrame, void*)
+    bool __fastcall CGWorldFrame_OnWorldRender_EditorRuntimeDetour(CGWorldFrameFull* worldFrame, void*)
     {
-        bool result = ClientData::CGWorldFrame_OnWorldRender(worldFrame);
-        ClientData::EditorRuntime::OnWorldRender(worldFrame);
+        bool result = CGWorldFrame_OnWorldRender(worldFrame);
+        EditorRuntime::OnWorldRender(worldFrame);
         return result;
     }
 
     int ClientInitializeGame_EditorRuntimeResult =
-        ClientDetours::Add("ClientData::GameClient::InitializeGame", &ClientData::GameClient::InitializeGame,
+        ClientDetours::Add("ClientData::GameClient::InitializeGame", &GameClient::InitializeGame,
                            ClientInitializeGame_EditorRuntimeDetour, __FILE__, __LINE__);
 
     int ClientDestroyGame_EditorRuntimeResult =
-        ClientDetours::Add("ClientData::GameClient::DestroyGame", &ClientData::GameClient::DestroyGame,
+        ClientDetours::Add("ClientData::GameClient::DestroyGame", &GameClient::DestroyGame,
                            ClientDestroyGame_EditorRuntimeDetour, __FILE__, __LINE__);
 
     int CGWorldFrame_OnWorldRender_EditorRuntimeResult =
-        ClientDetours::Add("ClientData::CGWorldFrame_OnWorldRender", &ClientData::CGWorldFrame_OnWorldRender,
+        ClientDetours::Add("ClientData::CGWorldFrame_OnWorldRender", &CGWorldFrame_OnWorldRender,
                            CGWorldFrame_OnWorldRender_EditorRuntimeDetour, __FILE__, __LINE__);
 }

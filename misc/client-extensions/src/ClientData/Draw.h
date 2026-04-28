@@ -4,7 +4,7 @@
 #include <ClientData/GxDevice.h>
 #include <ClientData/GxTypes.h>
 #include <ClientData/MathTypes.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <cstdint>
 

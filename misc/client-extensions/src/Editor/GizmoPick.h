@@ -1,13 +1,15 @@
 #pragma once
 
 #include <ClientData/VectorMath.h>
-#include <SharedDefines.h>
 
 #include <cfloat>
+#include <cstdint>
 #include <cmath>
 
-namespace ClientData
+namespace GPick
 {
+    using namespace ClientData;
+
     enum class Axis : int32_t
     {
         None = -1,
@@ -250,4 +252,4 @@ namespace ClientData
 
         return best;
     }
-}
+} // namespace GPick

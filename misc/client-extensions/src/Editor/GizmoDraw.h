@@ -1,11 +1,13 @@
 #pragma once
 
-#include <ClientData/GizmoPick.h>
+#include <Editor/GizmoPick.h>
 #include <ClientData/MathTypes.h>
-#include <SharedDefines.h>
 
-namespace ClientData::GizmoDraw
+namespace GizmoDraw
 {
+    using namespace ClientData;
+    using namespace GPick;
+
     void DrawArrowSolid(C3Vector const& origin, C3Vector const& dir, C3Vector const& side, float length,
                         float headLength, float headRadius, float shaftRadius, CImVector color);
     void DrawTranslationGizmo(C3Vector const& origin, float scale, Axis selected);

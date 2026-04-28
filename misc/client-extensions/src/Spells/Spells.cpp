@@ -1,10 +1,12 @@
 #include <Spells/Spells.h>
+#include <ClientData/WorldFrame.h>
 #include <ClientDetours.h>
 #include <ClientLua.h>
 #include <ClientNetwork.h>
-#include <SpellAttrDefines.h>
 #include <Spells/DangerZoneVisuals.h>
 #include <Spells/ScriptedMissileVisuals.h>
+
+using namespace ClientData;
 
 namespace
 {

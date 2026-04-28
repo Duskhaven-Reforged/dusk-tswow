@@ -1,8 +1,12 @@
 #include <ClientLua.h>
 #include <Logger.h>
-#include <SharedDefines.h>
+#include <ClientData/SharedDefines.h>
 
 #include <string>
+#include <ClientData/MathTypes.h>
+#include <ClientData/ObjectFields.h>
+
+using namespace ClientData;
 
 #include "CVar.cpp"
 
