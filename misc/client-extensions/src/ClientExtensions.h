@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ClientData/EditorRuntime.h>
 #include <Character/CharacterExtensions.h>
 #include <Character/CharacterFixes.h>
 #include <Character/VisibleItemOverrides.h>

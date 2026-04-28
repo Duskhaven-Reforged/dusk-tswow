@@ -25,4 +25,7 @@ void ClientExtensions::initialize() {
     LOG_INFO << "Misc fixes applied";
     Spells::Apply();
     LOG_INFO << "Spell extensions applied";
+    //Temporarily disabled editor. This makes the gizmo show up
+    ClientData::EditorRuntime::Apply();
+    LOG_INFO << "Client data editor runtime applied";
 }

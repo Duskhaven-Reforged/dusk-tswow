@@ -1,13 +1,15 @@
 #include <ClientDetours.h>
+#include <ClientData/GameObject.h>
+#include <ClientData/GizmoPick.h>
+#include <ClientData/ObjectManager.h>
 #include <ClientLua.h>
-#include <FSRoot.h>
 #include <Logger.h>
 #include <SharedDefines.h>
-#include <Windows.h>
-#include <World/WMOLogging.h>
+
+#include <cstdio>
 #include <cstdint>
 #include <string>
-#include <vector>
+
 #include "CustomLua/Housing/QuatFunctions.h"
 
 struct HitTestResult
@@ -44,17 +46,24 @@ static DecodedGuid DecodeClientGuid(uint32_t rawLow, uint32_t rawHigh)
     return g;
 }
 
-const char* GuidToString(uint64_t guid)
+static const char* GuidToString(uint64_t guid)
 {
     static char buffer[32];
     snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)guid);
     return buffer;
 }
 
-DecodedGuid lastMouseGUID;
-float lastMouseHitX;
-float lastMouseHitY;
-float lastMouseHitZ;
+static DecodedGuid lastMouseGUID;
+static float lastMouseHitX;
+static float lastMouseHitY;
+static float lastMouseHitZ;
+static float lastMouseRayStartX;
+static float lastMouseRayStartY;
+static float lastMouseRayStartZ;
+static float lastMouseRayEndX;
+static float lastMouseRayEndY;
+static float lastMouseRayEndZ;
+static uint64_t selectedGameObjectGuid;
 
 CLIENT_DETOUR_THISCALL(CGWorldFrame__HitTestPoint, 0x004F9DA0, int, (float a2, float a3, int a4, int a5))
 {
@@ -68,6 +77,12 @@ CLIENT_DETOUR_THISCALL(CGWorldFrame__HitTestPoint, 0x004F9DA0, int, (float a2, f
         lastMouseHitX = lastMouseHit->x;
         lastMouseHitY = lastMouseHit->y;
         lastMouseHitZ = lastMouseHit->z;
+        lastMouseRayStartX = lastMouseHit->rayStartX;
+        lastMouseRayStartY = lastMouseHit->rayStartY;
+        lastMouseRayStartZ = lastMouseHit->rayStartZ;
+        lastMouseRayEndX = lastMouseHit->rayEndX;
+        lastMouseRayEndY = lastMouseHit->rayEndY;
+        lastMouseRayEndZ = lastMouseHit->rayEndZ;
     }
 
     return result;
@@ -81,6 +96,17 @@ LUA_FUNCTION(GetMouseWorldPosition, (lua_State * L))
     return 3;
 }
 
+LUA_FUNCTION(GetMouseWorldRay, (lua_State * L))
+{
+    ClientLua::PushNumber(L, lastMouseRayStartX);
+    ClientLua::PushNumber(L, lastMouseRayStartY);
+    ClientLua::PushNumber(L, lastMouseRayStartZ);
+    ClientLua::PushNumber(L, lastMouseRayEndX);
+    ClientLua::PushNumber(L, lastMouseRayEndY);
+    ClientLua::PushNumber(L, lastMouseRayEndZ);
+    return 6;
+}
+
 LUA_FUNCTION(GetLastMouseoverGUID, (lua_State * L))
 {
     ClientLua::PushString(L, GuidToString(lastMouseGUID.full));
@@ -90,61 +116,198 @@ LUA_FUNCTION(GetLastMouseoverGUID, (lua_State * L))
     return 4;
 }
 
-struct TestGameObject
+static C3Vector LastMouseRayStart()
 {
-    char pad1[0xE8];
-    C3Vector position;
-    uint32_t unk;
-    uint64_t packedQuaternion;
-};
+    return {lastMouseRayStartX, lastMouseRayStartY, lastMouseRayStartZ};
+}
 
-
-LUA_FUNCTION(RotateGobByGUID, (lua_State * L))
+static C3Vector LastMouseRayEnd()
 {
-    CGObject_C* obj =
-        static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(std::stoull(ClientLua::GetString(L, 1)), TYPEMASK_OBJECT));
-    if (!obj || obj->GetTypeID() != TYPEID_GAMEOBJECT)
-        return 0;
+    return {lastMouseRayEndX, lastMouseRayEndY, lastMouseRayEndZ};
+}
 
-    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
+static CGGameObject_C* SelectedGameObject()
+{
+    if (!selectedGameObjectGuid)
+        return nullptr;
 
-    gameObject->packedQuaternion =
-        add_euler_delta_to_packed_quat(gameObject->packedQuaternion, ClientLua::GetNumber(L, 2),
-                                       ClientLua::GetNumber(L, 3), ClientLua::GetNumber(L, 4));
+    return AsClientGameObject(ClientData::ObjectManager::GetObject(selectedGameObjectGuid, TYPEMASK_OBJECT));
+}
 
-    obj->UpdateWorldObject(0);
+static CGGameObject_C* GameObjectByGuid(uint64_t guid)
+{
+    return AsClientGameObject(ClientData::ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
+}
 
+static CGGameObject_C* GameObjectByLuaGuid(lua_State* L, int index)
+{
+    return GameObjectByGuid(std::stoull(ClientLua::GetString(L, index)));
+}
+
+static CGGameObject_C* GameObjectByMouse()
+{
+    return GameObjectByGuid(lastMouseGUID.full);
+}
+
+static void PushGameObjectPosition(lua_State* L, CGGameObject_C* gameObject)
+{
+    ClientLua::PushNumber(L, gameObject->m_passenger.position.x);
+    ClientLua::PushNumber(L, gameObject->m_passenger.position.y);
+    ClientLua::PushNumber(L, gameObject->m_passenger.position.z);
+}
+
+static void PushGameObjectRotation(lua_State* L, CGGameObject_C* gameObject)
+{
     float roll, pitch, yaw;
-    quat_to_euler(unpack_quat(gameObject->packedQuaternion), roll, pitch, yaw);
-
+    quat_to_euler(unpack_quat(gameObject->m_passenger.compressedRotation), roll, pitch, yaw);
     ClientLua::PushNumber(L, yaw);
     ClientLua::PushNumber(L, pitch);
     ClientLua::PushNumber(L, roll);
+}
+
+static void SetGameObjectPosition(CGGameObject_C* gameObject, float x, float y, float z)
+{
+    gameObject->m_passenger.position.x = x;
+    gameObject->m_passenger.position.y = y;
+    gameObject->m_passenger.position.z = z;
+    gameObject->UpdateWorldObject(0);
+}
+
+static void MoveGameObject(CGGameObject_C* gameObject, float x, float y, float z)
+{
+    SetGameObjectPosition(gameObject, gameObject->m_passenger.position.x + x, gameObject->m_passenger.position.y + y,
+                          gameObject->m_passenger.position.z + z);
+}
+
+static void SetGameObjectRotation(CGGameObject_C* gameObject, uint64_t compressedRotation)
+{
+    gameObject->m_passenger.compressedRotation = compressedRotation;
+    gameObject->UpdateWorldObject(0);
+}
+
+LUA_FUNCTION(SelectGobByMouse, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
+    {
+        selectedGameObjectGuid = 0;
+        return 0;
+    }
+
+    selectedGameObjectGuid = lastMouseGUID.full;
+    ClientLua::PushString(L, GuidToString(selectedGameObjectGuid));
+    PushGameObjectPosition(L, gameObject);
+    return 4;
+}
+
+LUA_FUNCTION(ClearSelectedGob, (lua_State * L))
+{
+    selectedGameObjectGuid = 0;
+    return 0;
+}
+
+LUA_FUNCTION(GetSelectedGobGUID, (lua_State * L))
+{
+    ClientLua::PushString(L, GuidToString(selectedGameObjectGuid));
+    return 1;
+}
+
+LUA_FUNCTION(GetSelectedGobPosition, (lua_State * L))
+{
+    CGGameObject_C* gameObject = SelectedGameObject();
+    if (!gameObject)
+        return 0;
+
+    PushGameObjectPosition(L, gameObject);
+    return 3;
+}
+
+LUA_FUNCTION(PickSelectedGobTranslationAxis, (lua_State * L))
+{
+    CGGameObject_C* gameObject = SelectedGameObject();
+    if (!gameObject)
+        return 0;
+
+    ClientData::Axis axis = ClientData::PickTranslationGizmo(
+        LastMouseRayStart(), LastMouseRayEnd(), gameObject->m_passenger.position,
+        static_cast<float>(ClientLua::GetNumber(L, 1, 1.0)));
+    ClientLua::PushNumber(L, static_cast<int32_t>(axis));
+    return 1;
+}
+
+LUA_FUNCTION(MoveSelectedGobAxis, (lua_State * L))
+{
+    CGGameObject_C* gameObject = SelectedGameObject();
+    if (!gameObject)
+        return 0;
+
+    ClientData::Axis axis = static_cast<ClientData::Axis>(static_cast<int32_t>(ClientLua::GetNumber(L, 1, -1.0)));
+    C3Vector direction = ClientData::AxisDirection(axis);
+    float amount = static_cast<float>(ClientLua::GetNumber(L, 2, 0.0));
+
+    MoveGameObject(gameObject, direction.x * amount, direction.y * amount, direction.z * amount);
+
+    PushGameObjectPosition(L, gameObject);
+    return 3;
+}
+
+LUA_FUNCTION(RotateSelectedGobAxis, (lua_State * L))
+{
+    CGGameObject_C* gameObject = SelectedGameObject();
+    if (!gameObject)
+        return 0;
+
+    ClientData::Axis axis = static_cast<ClientData::Axis>(static_cast<int32_t>(ClientLua::GetNumber(L, 1, -1.0)));
+    C3Vector direction = ClientData::AxisDirection(axis);
+    float angle = static_cast<float>(ClientLua::GetNumber(L, 2, 0.0));
+
+    SetGameObjectRotation(gameObject,
+                          add_axis_delta_to_packed_quat(gameObject->m_passenger.compressedRotation, direction.x,
+                                                        direction.y, direction.z, angle));
+
+    PushGameObjectRotation(L, gameObject);
+    return 3;
+}
+
+LUA_FUNCTION(PickSelectedGobRotationAxis, (lua_State * L))
+{
+    CGGameObject_C* gameObject = SelectedGameObject();
+    if (!gameObject)
+        return 0;
+
+    ClientData::Axis axis = ClientData::PickRotationGizmo(
+        LastMouseRayStart(), LastMouseRayEnd(), gameObject->m_passenger.position,
+        static_cast<float>(ClientLua::GetNumber(L, 1, 1.0)));
+    ClientLua::PushNumber(L, static_cast<int32_t>(axis));
+    return 1;
+}
+
+LUA_FUNCTION(RotateGobByGUID, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
+        return 0;
+
+    SetGameObjectRotation(gameObject,
+                          add_euler_delta_to_packed_quat(gameObject->m_passenger.compressedRotation,
+                                                         ClientLua::GetNumber(L, 2), ClientLua::GetNumber(L, 3),
+                                                         ClientLua::GetNumber(L, 4)));
+    PushGameObjectRotation(L, gameObject);
 
     return 3;
 }
 
 LUA_FUNCTION(RotateGobByMouse, (lua_State * L))
 {
-    CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
-
-    if (!obj || obj->GetTypeID() != TYPEID_GAMEOBJECT)
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
         return 0;
 
-    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
-
-    gameObject->packedQuaternion =
-        add_euler_delta_to_packed_quat(gameObject->packedQuaternion, ClientLua::GetNumber(L, 1),
-                                       ClientLua::GetNumber(L, 2), ClientLua::GetNumber(L, 3));
-
-    obj->UpdateWorldObject(0);
-
-    float roll, pitch, yaw;
-    quat_to_euler(unpack_quat(gameObject->packedQuaternion), roll, pitch, yaw);
-
-    ClientLua::PushNumber(L, yaw);
-    ClientLua::PushNumber(L, pitch);
-    ClientLua::PushNumber(L, roll);
+    SetGameObjectRotation(gameObject,
+                          add_euler_delta_to_packed_quat(gameObject->m_passenger.compressedRotation,
+                                                         ClientLua::GetNumber(L, 1), ClientLua::GetNumber(L, 2),
+                                                         ClientLua::GetNumber(L, 3)));
+    PushGameObjectRotation(L, gameObject);
 
     return 3;
 }
@@ -152,57 +315,106 @@ LUA_FUNCTION(RotateGobByMouse, (lua_State * L))
 LUA_FUNCTION(GetGobRotByMouse, (lua_State * L))
 {
     // TODO: use a GUID passed in
-    CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
-    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
         return 0;
 
-    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
-    float roll, pitch, yaw;
-    quat_to_euler(unpack_quat(gameObject->packedQuaternion), roll, pitch, yaw);
+    PushGameObjectRotation(L, gameObject);
 
-    ClientLua::PushNumber(L, yaw);
-    ClientLua::PushNumber(L, pitch);
-    ClientLua::PushNumber(L, roll);
+    return 3;
+}
 
+LUA_FUNCTION(RotateGobByGUIDWorld, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
+        return 0;
+
+    SetGameObjectRotation(gameObject,
+                          add_world_euler_delta_to_packed_quat(gameObject->m_passenger.compressedRotation,
+                                                               ClientLua::GetNumber(L, 2),
+                                                               ClientLua::GetNumber(L, 3),
+                                                               ClientLua::GetNumber(L, 4)));
+    PushGameObjectRotation(L, gameObject);
+
+    return 3;
+}
+
+LUA_FUNCTION(RotateGobByMouseAxis, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
+        return 0;
+
+    SetGameObjectRotation(gameObject,
+                          add_axis_delta_to_packed_quat(gameObject->m_passenger.compressedRotation,
+                                                        ClientLua::GetNumber(L, 1), ClientLua::GetNumber(L, 2),
+                                                        ClientLua::GetNumber(L, 3), ClientLua::GetNumber(L, 4)));
+    PushGameObjectRotation(L, gameObject);
+
+    return 3;
+}
+
+LUA_FUNCTION(GetGobPositionByMouse, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
+        return 0;
+
+    PushGameObjectPosition(L, gameObject);
+    return 3;
+}
+
+LUA_FUNCTION(SetGobPositionByGUID, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
+        return 0;
+
+    SetGameObjectPosition(gameObject, ClientLua::GetNumber(L, 2), ClientLua::GetNumber(L, 3),
+                          ClientLua::GetNumber(L, 4));
+
+    PushGameObjectPosition(L, gameObject);
+    return 3;
+}
+
+LUA_FUNCTION(SetGobPositionByMouse, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
+        return 0;
+
+    SetGameObjectPosition(gameObject, ClientLua::GetNumber(L, 1), ClientLua::GetNumber(L, 2),
+                          ClientLua::GetNumber(L, 3));
+
+    PushGameObjectPosition(L, gameObject);
     return 3;
 }
 
 LUA_FUNCTION(MoveGobByGUID, (lua_State * L))
 {
-    CGObject_C* obj =
-        static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(std::stoull(ClientLua::GetString(L, 1)), TYPEMASK_OBJECT));
-    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
         return 0;
 
-    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
-    LOG_DEBUG << gameObject->position.x << " " << gameObject->position.y << " " << gameObject->position.z;
-    gameObject->position.x += ClientLua::GetNumber(L, 2);
-    gameObject->position.y += ClientLua::GetNumber(L, 3);
-    gameObject->position.z += ClientLua::GetNumber(L, 4);
-    obj->UpdateWorldObject(0);
-    ClientLua::PushNumber(L, gameObject->position.x);
-    ClientLua::PushNumber(L, gameObject->position.y);
-    ClientLua::PushNumber(L, gameObject->position.z);
+    LOG_DEBUG << gameObject->m_passenger.position.x << " " << gameObject->m_passenger.position.y << " "
+              << gameObject->m_passenger.position.z;
+    MoveGameObject(gameObject, ClientLua::GetNumber(L, 2), ClientLua::GetNumber(L, 3), ClientLua::GetNumber(L, 4));
+    PushGameObjectPosition(L, gameObject);
 
     return 3;
 }
 
 LUA_FUNCTION(MoveGobByMouse, (lua_State * L))
 {
-    CGObject_C* obj = static_cast<CGObject_C*>(ClntObjMgr::ObjectPtr(lastMouseGUID.full, TYPEMASK_OBJECT));
-    if (!obj || (obj->GetTypeID() != TYPEID_GAMEOBJECT))
+    CGGameObject_C* gameObject = GameObjectByMouse();
+    if (!gameObject)
         return 0;
 
-    TestGameObject* gameObject = reinterpret_cast<TestGameObject*>(obj);
-    LOG_DEBUG << gameObject->position.x << " " << gameObject->position.y << " " << gameObject->position.z;
-    gameObject->position.x += ClientLua::GetNumber(L, 1);
-    gameObject->position.y += ClientLua::GetNumber(L, 2);
-    gameObject->position.z += ClientLua::GetNumber(L, 3);
-    obj->UpdateWorldObject(0);
-    ClientLua::PushNumber(L, gameObject->position.x);
-    ClientLua::PushNumber(L, gameObject->position.y);
-    ClientLua::PushNumber(L, gameObject->position.z);
+    LOG_DEBUG << gameObject->m_passenger.position.x << " " << gameObject->m_passenger.position.y << " "
+              << gameObject->m_passenger.position.z;
+    MoveGameObject(gameObject, ClientLua::GetNumber(L, 1), ClientLua::GetNumber(L, 2), ClientLua::GetNumber(L, 3));
+    PushGameObjectPosition(L, gameObject);
 
     return 3;
 }
-

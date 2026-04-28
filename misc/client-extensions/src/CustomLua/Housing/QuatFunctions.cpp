@@ -15,7 +15,7 @@ static inline float clampf(float v, float lo, float hi)
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-static inline Quat normalize_quat(Quat q)
+Quat normalize_quat(Quat q)
 {
     float lenSq = q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z;
 
@@ -27,10 +27,41 @@ static inline Quat normalize_quat(Quat q)
     return {q.w * invLen, q.x * invLen, q.y * invLen, q.z * invLen};
 }
 
-static inline Quat multiply_quat(Quat a, Quat b)
+Quat nlerp_quat(float ratio, Quat q1, Quat q2)
+{
+    float w = (q2.w - q1.w) * ratio + q1.w;
+    float x = (q2.x - q1.x) * ratio + q1.x;
+    float y = (q2.y - q1.y) * ratio + q1.y;
+    float z = (q2.z - q1.z) * ratio + q1.z;
+
+    float magSq = x * x + y * y + z * z + w * w;
+    float scale = ((magSq - 0.95906597f) * -0.532516f) + 1.021435f;
+    if (magSq <= 0.91521198f)
+    {
+        scale *= (((scale * scale * magSq) - 0.95906597f) * -0.532516f) + 1.021435f;
+        if (magSq <= 0.6521197f)
+            scale *= (((scale * scale * magSq) - 0.95906597f) * -0.532516f) + 1.021435f;
+    }
+
+    return {w * scale, x * scale, y * scale, z * scale};
+}
+
+Quat multiply_quat(Quat a, Quat b)
 {
     return {a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z, a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
             a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x, a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w};
+}
+
+Quat axis_angle_to_quat(float x, float y, float z, float angle)
+{
+    float lenSq = x * x + y * y + z * z;
+    if (lenSq <= 0.0f)
+        return {1.0f, 0.0f, 0.0f, 0.0f};
+
+    float invLen = 1.0f / sqrtf(lenSq);
+    float half   = angle * 0.5f;
+    float s      = sinf(half);
+    return normalize_quat({cosf(half), x * invLen * s, y * invLen * s, z * invLen * s});
 }
 
 unsigned long long pack_quat(Quat q)
@@ -126,12 +157,27 @@ unsigned long long add_euler_delta_to_packed_quat(unsigned long long packed, flo
     Quat current = unpack_quat(packed);
     Quat delta   = euler_to_quat(deltaRoll, deltaPitch, deltaYaw);
 
-    // Local-space delta:
     Quat result = multiply_quat(current, delta);
-    // For world-space delta, use this instead:
-    // Quat result = multiply_quat(delta, current);
 
     return pack_quat(result);
+}
+
+unsigned long long add_world_euler_delta_to_packed_quat(unsigned long long packed, float deltaRoll, float deltaPitch,
+                                                        float deltaYaw)
+{
+    Quat current = unpack_quat(packed);
+    Quat delta   = euler_to_quat(deltaRoll, deltaPitch, deltaYaw);
+
+    return pack_quat(multiply_quat(delta, current));
+}
+
+unsigned long long add_axis_delta_to_packed_quat(unsigned long long packed, float axisX, float axisY, float axisZ,
+                                                 float deltaAngle)
+{
+    Quat current = unpack_quat(packed);
+    Quat delta   = axis_angle_to_quat(axisX, axisY, axisZ, deltaAngle);
+
+    return pack_quat(multiply_quat(delta, current));
 }
 
 void quat_to_euler(Quat q, float& roll, float& pitch, float& yaw)
