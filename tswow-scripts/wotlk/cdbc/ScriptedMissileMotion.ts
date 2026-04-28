@@ -105,12 +105,32 @@ export class ScriptedMissileMotionCDBCFile extends CDBCFile<
         return new ScriptedMissileMotionCDBCFile().read(path)
     }
 
-    add(ID: int, c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow {
-        return this.makeRow(0).clone(ID, c)
+    private nextAvailableID(): int {
+        const used = new Set<number>();
+        this.queryAll({} as ScriptedMissileMotionQuery).forEach(row => used.add(row.ID.get()));
+
+        let id = 1;
+        while (used.has(id)) {
+            ++id;
+        }
+        return id;
     }
 
-    create(ID: int, c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow {
-        return this.add(ID, c)
+    add(c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow
+    add(ID: int, c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow
+    add(IDOrCreator?: int | ScriptedMissileMotionCreator, c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow {
+        const hasExplicitID = typeof IDOrCreator === 'number';
+        const ID = hasExplicitID ? (IDOrCreator as int) : this.nextAvailableID();
+        const creator = hasExplicitID ? c : (IDOrCreator as ScriptedMissileMotionCreator | undefined);
+        return this.makeRow(0).clone(ID, creator)
+    }
+
+    create(c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow
+    create(ID: int, c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow
+    create(IDOrCreator?: int | ScriptedMissileMotionCreator, c?: ScriptedMissileMotionCreator): ScriptedMissileMotionRow {
+        return typeof IDOrCreator === 'number'
+            ? this.add(IDOrCreator, c)
+            : this.add(IDOrCreator)
     }
 
     findByID(id: number) {
