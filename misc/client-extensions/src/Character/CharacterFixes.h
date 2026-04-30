@@ -8,6 +8,7 @@ private:
     static inline uint32_t dummy = 0;
     static void CharacterCreationFixes();
     static void AnimationLayeringFixes();
+    static void ExtendedAnimationIdFixes();
     static void MonkUnarmedSheathFix();
     static void SetNewRaceNamePointerTable();
     friend class ClientExtensions;

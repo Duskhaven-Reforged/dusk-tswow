@@ -41,6 +41,26 @@ setContext('build');
 
 let buildingScripts = false;
 
+const installedPrograms =
+    [
+          'trinitycore'
+        , 'trinitycore-release'
+        , 'trinitycore-relwithdebinfo'
+        , 'trinitycore-debug'
+        , 'mpqbuilder'
+        , 'blpconverter'
+        , 'config'
+        , 'database'
+        , 'full'
+        , 'scripts'
+        , 'clean-install'
+        , 'clean-build'
+        , 'release'
+        , 'adtcreator'
+        , 'client-extensions'
+        , 'client-extensions-64'
+    ];
+
 async function compile(type: string, compileArgs: string[]) {
     // Load necessary libraries
     const types = type.split(' ');
@@ -101,26 +121,6 @@ async function main() {
     const build = commands.addCommand('build');
     await compile('scripts', []);
 
-    const installedPrograms =
-        [
-              'trinitycore'
-            , 'trinitycore-release'
-            , 'trinitycore-relwithdebinfo'
-            , 'trinitycore-debug'
-            , 'mpqbuilder'
-            , 'blpconverter'
-            , 'config'
-            , 'database'
-            , 'full'
-            , 'scripts'
-            , 'clean-install'
-            , 'clean-build'
-            , 'release'
-            , 'adtcreator'
-            , 'client-extensions'
-            , 'client-extensions-64'
-        ];
-
     for (const val of installedPrograms) {
         build.addCommand(val, '', `Builds ${val}`, async(args) => await compile(val, args));
     }
@@ -148,7 +148,14 @@ function normalizeBuildTarget(target: string) {
 function getBuildTargetFromArgs() {
     const rawTarget = process.argv
         .slice(2)
-        .find(x => !x.startsWith('-'));
+        .find(x => {
+            if (x.startsWith('-')) {
+                return false;
+            }
+
+            const target = normalizeBuildTarget(x);
+            return target === 'base' || installedPrograms.includes(target);
+        });
 
     return rawTarget === undefined
         ? process.argv.includes('--release') ? 'release' : 'full'

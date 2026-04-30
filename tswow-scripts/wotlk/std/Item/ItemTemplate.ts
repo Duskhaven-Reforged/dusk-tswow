@@ -93,7 +93,6 @@ type ExtractedLoothavenRegistration = {
     parentedId: number | null;
 };
 
-console.log("Creating loothaven_registry table.");
 SQL.Databases.world_dest.writeEarly(`
 DROP TABLE IF EXISTS \`loothaven_registry\`;
 CREATE TABLE \`loothaven_registry\` (
@@ -154,9 +153,6 @@ function registerLoothavenItemAuto(item: ItemTemplate, metadata?: any): void
 
     const moduleName = extracted.moduleNameArg || extractModuleName(callSite.filePath);
     const relativeFilePath = getRelativeFilePath(callSite.filePath);
-    
-    console.log(`Loothaven: registering item with script "${extracted.scriptKind}"${extracted.tag ? `, tag "${extracted.tag}"` : ""}, filePath: "${relativeFilePath}"`);
-
     loothavenItemsToRegister.push({
         item,
         options: {
@@ -418,7 +414,6 @@ function extractItemRegistration(filePath: string, line: number): ExtractedLooth
             const loadMatch = normalizedCall.match(/\(\s*(\d+)\s*\)/);
             if (loadMatch)
             {
-                console.log(`Loothaven: extracted load call${extractedConstName ? `, const "${extractedConstName}"` : ""} at line ${createCallStart + 1} in ${actualPath}`);
                 return {
                     scriptKind: "load",
                     moduleNameArg: null,
@@ -437,7 +432,6 @@ function extractItemRegistration(filePath: string, line: number): ExtractedLooth
             moduleNameArg = moduleNameArg.replace(/\\(.)/g, '$1');
             tag = tag.replace(/\\(.)/g, '$1');
             const parentedId = tagMatch[5] ? parseInt(tagMatch[5], 10) : null;
-            console.log(`Loothaven: extracted create call with tag "${tag}"${extractedConstName ? `, const "${extractedConstName}"` : ""}${parentedId !== null ? `, parentedId ${parentedId}` : ""} from std.Items.create() call at line ${createCallStart + 1} in ${actualPath}`);
             return {
                 scriptKind: "create",
                 moduleNameArg,
@@ -481,17 +475,13 @@ function getRelativeFilePath(filePath: string): string
         if (pLower.startsWith("release/"))
         {
             releaseIdx = 0;
-            const relativePath = p.substring("release/".length);
-            console.log(`Loothaven: file path "${filePath}" -> relative path "${relativePath}" (found release/ at start)`);
-            return relativePath;
+            return p.substring("release/".length);
         }
     }
     
     if (releaseIdx !== -1)
     {
-        const relativePath = p.substring(releaseIdx + "/release/".length);
-        console.log(`Loothaven: file path "${filePath}" -> relative path "${relativePath}"`);
-        return relativePath;
+        return p.substring(releaseIdx + "/release/".length);
     }
     
     let datascriptsIdx = pLower.indexOf("datascripts/");
@@ -505,12 +495,9 @@ function getRelativeFilePath(filePath: string): string
     
     if (datascriptsIdx !== -1)
     {
-        const relativePath = p.substring(datascriptsIdx);
-        console.log(`Loothaven: file path "${filePath}" -> relative path (datascripts fallback) "${relativePath}"`);
-        return relativePath;
+        return p.substring(datascriptsIdx);
     }
 
-    console.warn(`Loothaven: could not find /release/ or datascripts/ in path "${filePath}", using full path`);
     return p;
 }
 
@@ -524,7 +511,6 @@ function createLoothavenRegistrar(item: ItemTemplate)
 
             if (loothavenRegistered.has(item as any))
             {
-                console.warn("Loothaven: item already registered");
                 return item;
             }
 
@@ -551,7 +537,6 @@ finish("loothaven-register-items", () =>
             const itemId = item.ID;
             if (!itemId || itemId === 0)
             {
-                console.warn("Loothaven: skipping registration for item - ID not assigned");
                 continue;
             }
 

@@ -1,6 +1,7 @@
 #include <Character/CharacterFixes.h>
 
 #include <ClientDetours.h>
+#include <Logger.h>
 #include <Util.h>
 #include <ClientData/SharedDefines.h>
 
@@ -85,12 +86,20 @@ namespace
         float speed;
     };
 
+    struct BoneSequenceDebugState
+    {
+        int values[8];
+    };
+
     CLIENT_FUNCTION(CGUnit_C__IsSpellKnown_MonkUnarmed, 0x7260E0, __thiscall, bool, (CGUnit*, uint32_t))
     CLIENT_FUNCTION(CMovement__CalcCurrentSpeed_ChannelLowerBody, 0x987570, __thiscall, float, (void*, int))
     CLIENT_FUNCTION(CGUnit_C__ResolveCurrentAnimation_ChannelLowerBody, 0x724500, __thiscall, int, (void*, int, char*, void*))
     CLIENT_FUNCTION(CGUnit_C__SetBoneSequence_ChannelLowerBody, 0x735820, __thiscall, void, (void*, uintptr_t, int, int, float, int, float, int, int, int))
     CLIENT_FUNCTION(CGUnit_C__UnsetBoneSequence_ChannelLowerBody, 0x735A60, __thiscall, int, (void*, void*, int, int, int, int))
     CLIENT_FUNCTION(CM2Model__GetBoneSequenceOriginalAnimId_ChannelLowerBody, 0x8267E0, __thiscall, int, (void*, uint32_t))
+    CLIENT_FUNCTION(CM2Model__GetBoneSequenceState_ExtendedAnimDebug, 0x8266B0, __thiscall, int, (void*, uint32_t, BoneSequenceDebugState*))
+    CLIENT_FUNCTION(CM2Model__HasBoneSequenceSlot_ExtendedAnimDebug, 0x826A60, __thiscall, bool, (void*, uint32_t))
+    CLIENT_FUNCTION(M2Data__HasSequenceById_ExtendedAnimationIds, 0x825E00, __stdcall, bool, (void*, unsigned int))
 
     uint32_t GetUnitCurrentChannelId(uintptr_t unit);
     uint32_t GetUnitChannelSpell(uintptr_t unit);
@@ -98,6 +107,10 @@ namespace
     int GetModelBoneSequenceOriginalAnimId(void* model, int boneSeqSlot);
     bool IsAirborneAnimation(int animationId);
     bool IsJumpingUpward(uintptr_t unit);
+    bool CM2ModelHasDirectSequence(void* model, unsigned int animationId);
+    int ResolveExtendedModelAnimationId(uintptr_t unit, int animationId, void* model);
+    bool ShouldLogExtendedAnimationDebug();
+    const char* GetModelPathForDebug(void* model);
 
     bool SpellHasAuraType(SpellRow const& row, uint32_t auraType)
     {
@@ -178,7 +191,20 @@ namespace
             && (sequence == HAND_ITEM_SEQUENCE_READY || sequence == HAND_ITEM_SEQUENCE_READY_SPECIAL);
     }
 
-    bool IsMonkUnarmedAttackBehavior(uint32_t behaviorId)
+    bool IsMonkUnarmedOffhandAttackBehavior(uint32_t behaviorId)
+    {
+        switch (behaviorId)
+        {
+            case ANIMATION_ATTACK_OFFHAND:
+            case ANIMATION_ATTACK_OFFHAND_PIERCE:
+            case ANIMATION_ATTACK_UNARMED_OFFHAND:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool IsMonkUnarmedMainhandAttackBehavior(uint32_t behaviorId)
     {
         switch (behaviorId)
         {
@@ -189,9 +215,6 @@ namespace
             case ANIMATION_SPECIAL_2H:
             case ANIMATION_ATTACK_1H_PIERCE:
             case ANIMATION_ATTACK_2H_LOOSE_PIERCE:
-            case ANIMATION_ATTACK_OFFHAND:
-            case ANIMATION_ATTACK_OFFHAND_PIERCE:
-            case ANIMATION_ATTACK_UNARMED_OFFHAND:
             case ANIMATION_SPECIAL_UNARMED:
                 return true;
             default:
@@ -199,16 +222,28 @@ namespace
         }
     }
 
-    bool IsMonkUnarmedMeleeAttackAnimation(int animationId)
+    int GetMonkUnarmedAttackAnimation(int animationId)
     {
-        if (animationId < 0 || animationId == ANIMATION_ATTACK_UNARMED)
-            return false;
+        if (animationId < 0)
+            return -1;
 
-        if (IsMonkUnarmedAttackBehavior(static_cast<uint32_t>(animationId)))
-            return true;
+        if (IsMonkUnarmedOffhandAttackBehavior(static_cast<uint32_t>(animationId)))
+            return ANIMATION_ATTACK_UNARMED_OFFHAND;
+
+        if (IsMonkUnarmedMainhandAttackBehavior(static_cast<uint32_t>(animationId)))
+            return ANIMATION_ATTACK_UNARMED;
 
         auto* row = reinterpret_cast<AnimationDataRow*>(ClientDB::GetRow(reinterpret_cast<void*>(ANIMATION_DATA_DB), animationId));
-        return row && IsMonkUnarmedAttackBehavior(row->behaviorId);
+        if (!row)
+            return -1;
+
+        if (IsMonkUnarmedOffhandAttackBehavior(row->behaviorId))
+            return ANIMATION_ATTACK_UNARMED_OFFHAND;
+
+        if (IsMonkUnarmedMainhandAttackBehavior(row->behaviorId))
+            return ANIMATION_ATTACK_UNARMED;
+
+        return -1;
     }
 
     bool IsChannelCastAnimation(int animationId)
@@ -465,6 +500,99 @@ namespace
         return GetUnitCurrentChannelId(unit) != 0 || GetUnitChannelSpell(unit) != 0;
     }
 
+    bool CM2ModelHasDirectSequence(void* model, unsigned int animationId)
+    {
+        if (!model)
+            return false;
+
+        const uintptr_t modelAddress = reinterpret_cast<uintptr_t>(model);
+        const uintptr_t modelHeader = *reinterpret_cast<uintptr_t*>(modelAddress + 44);
+        if (!modelHeader)
+            return false;
+
+        void* modelData = *reinterpret_cast<void**>(modelHeader + 336);
+        if (!modelData)
+            return false;
+
+        return M2Data__HasSequenceById_ExtendedAnimationIds(modelData, animationId);
+    }
+
+    const char* GetModelPathForDebug(void* model)
+    {
+        if (!model)
+            return "<null>";
+
+        const uintptr_t modelAddress = reinterpret_cast<uintptr_t>(model);
+        const uintptr_t modelHeader = *reinterpret_cast<uintptr_t*>(modelAddress + 44);
+        if (!modelHeader)
+            return "<no-shared>";
+
+        return reinterpret_cast<const char*>(modelHeader + 60);
+    }
+
+    int ResolveExtendedModelAnimationId(uintptr_t unit, int animationId, void* model)
+    {
+        if (animationId <= ANIMATION_CURRENT_OR_NONE)
+            return -1;
+
+        if (!model && unit)
+            model = *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET);
+
+        if (CM2ModelHasDirectSequence(model, static_cast<unsigned int>(animationId)))
+        {
+            if (ShouldLogExtendedAnimationDebug())
+                LOG_INFO << "ExtendedAnim: resolve direct animationId=" << animationId
+                    << " model=" << model
+                    << " modelPath=" << GetModelPathForDebug(model);
+
+            return animationId;
+        }
+
+        if (ShouldLogExtendedAnimationDebug())
+            LOG_WARN << "ExtendedAnim: direct sequence missing animationId=" << animationId
+                << " model=" << model
+                << " modelPath=" << GetModelPathForDebug(model);
+
+        int currentAnimationId = animationId;
+        for (int fallbackDepth = 0; fallbackDepth < 16; ++fallbackDepth)
+        {
+            auto* row = reinterpret_cast<AnimationDataRow*>(
+                ClientDB::GetRow(reinterpret_cast<void*>(ANIMATION_DATA_DB), currentAnimationId));
+            if (!row || static_cast<int>(row->fallback) == currentAnimationId)
+                break;
+
+            currentAnimationId = static_cast<int>(row->fallback);
+            if (currentAnimationId >= ANIMATION_CURRENT_OR_NONE
+                && CM2ModelHasDirectSequence(model, static_cast<unsigned int>(currentAnimationId)))
+            {
+                if (ShouldLogExtendedAnimationDebug())
+                    LOG_INFO << "ExtendedAnim: resolve fallback direct original=" << animationId << " fallback=" << currentAnimationId;
+
+                return currentAnimationId;
+            }
+
+            if (currentAnimationId < ANIMATION_CURRENT_OR_NONE)
+            {
+                if (ShouldLogExtendedAnimationDebug())
+                    LOG_INFO << "ExtendedAnim: resolve fallback vanilla original=" << animationId << " fallback=" << currentAnimationId;
+
+                return currentAnimationId;
+            }
+        }
+
+        return -1;
+    }
+
+    bool ShouldLogExtendedAnimationDebug()
+    {
+        static int logCount = 0;
+        if (logCount >= 200)
+            return false;
+
+        ++logCount;
+        return true;
+    }
+
     uint32_t& UnitSheatheState(uintptr_t unit, uintptr_t offset)
     {
         return *reinterpret_cast<uint32_t*>(unit + offset);
@@ -503,8 +631,9 @@ namespace
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__AnimationData_MonkUnarmed, 0x7385C0, void, (int animationId, char flags))
     {
-        if (IsMonkUnarmedMeleeAttackAnimation(animationId) && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
-            animationId = ANIMATION_ATTACK_UNARMED;
+        const int monkUnarmedAnimationId = GetMonkUnarmedAttackAnimation(animationId);
+        if (monkUnarmedAnimationId != -1 && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
+            animationId = monkUnarmedAnimationId;
 
         CGUnit_C__AnimationData_MonkUnarmed(self, animationId, flags);
     }
@@ -518,18 +647,62 @@ namespace
         CGUnit_C__ApplyAnimationSequence_ChannelLowerBody(self, sequence, previousAnimationId, useSpecialBoneSlot, currentAnimationId, allowTransition, primary);
     }
 
+    CLIENT_DETOUR_THISCALL(CM2Model__HasPlayableSequenceFallback_ExtendedAnimationIds, 0x826050, bool, (unsigned int animationId))
+    {
+        if (animationId < ANIMATION_CURRENT_OR_NONE)
+            return CM2Model__HasPlayableSequenceFallback_ExtendedAnimationIds(self, animationId);
+
+        return CM2ModelHasDirectSequence(self, animationId);
+    }
+
+    CLIENT_DETOUR_THISCALL(CM2Model__FindPlayableSequenceFallbackId_ExtendedAnimationIds, 0x825F40, int, (unsigned int animationId))
+    {
+        if (animationId < ANIMATION_CURRENT_OR_NONE)
+            return CM2Model__FindPlayableSequenceFallbackId_ExtendedAnimationIds(self, animationId);
+
+        return CM2ModelHasDirectSequence(self, animationId)
+            ? static_cast<int>(animationId)
+            : -1;
+    }
+
+    CLIENT_DETOUR(CM2Shared__BuildExternalAnimPath_ExtendedAnimDebug, 0x835A20, __cdecl, int, (const char* modelPath, int animationId, int subAnimationId, char* outPath))
+    {
+        const int result = CM2Shared__BuildExternalAnimPath_ExtendedAnimDebug(modelPath, animationId, subAnimationId, outPath);
+        if (animationId > ANIMATION_CURRENT_OR_NONE && ShouldLogExtendedAnimationDebug())
+        {
+            LOG_INFO << "ExtendedAnim: external-path modelPath=" << (modelPath ? modelPath : "<null>")
+                << " animationId=" << animationId
+                << " subAnimationId=" << subAnimationId
+                << " outPath=" << (outPath ? outPath : "<null>");
+        }
+
+        return result;
+    }
+
     CLIENT_DETOUR_THISCALL(CGUnit_C__HandleModelSequenceCallback_MonkUnarmed, 0x73BBD0, void, (void* model, int boneSeqSlot, int animationId, int a5, int a6))
     {
-        if (IsMonkUnarmedMeleeAttackAnimation(animationId) && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
-            animationId = ANIMATION_ATTACK_UNARMED;
+        const int monkUnarmedAnimationId = GetMonkUnarmedAttackAnimation(animationId);
+        if (monkUnarmedAnimationId != -1 && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
+            animationId = monkUnarmedAnimationId;
 
         CGUnit_C__HandleModelSequenceCallback_MonkUnarmed(self, model, boneSeqSlot, animationId, a5, a6);
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__ResolveModelAnimationId_MonkUnarmed, 0x7176F0, int, (int animationId, void* model))
     {
-        if (IsMonkUnarmedMeleeAttackAnimation(animationId) && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
-            animationId = ANIMATION_ATTACK_UNARMED;
+        const int monkUnarmedAnimationId = GetMonkUnarmedAttackAnimation(animationId);
+        if (monkUnarmedAnimationId != -1 && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
+            animationId = monkUnarmedAnimationId;
+
+        if (animationId > ANIMATION_CURRENT_OR_NONE)
+        {
+            const int extendedAnimationId = ResolveExtendedModelAnimationId(
+                reinterpret_cast<uintptr_t>(self),
+                animationId,
+                model);
+            if (extendedAnimationId != -1)
+                return extendedAnimationId;
+        }
 
         return CGUnit_C__ResolveModelAnimationId_MonkUnarmed(self, animationId, model);
     }
@@ -544,8 +717,9 @@ namespace
                 return;
             }
 
-            if (IsMonkUnarmedMeleeAttackAnimation(sequence))
-                sequence = ANIMATION_ATTACK_UNARMED;
+            const int monkUnarmedAnimationId = GetMonkUnarmedAttackAnimation(sequence);
+            if (monkUnarmedAnimationId != -1)
+                sequence = monkUnarmedAnimationId;
         }
 
         CGUnit_C__ApplyModelAnimationSequence_MonkUnarmed(self, model, boneSeqSlot, sequence);
@@ -634,6 +808,23 @@ namespace
     CLIENT_DETOUR_THISCALL(CGUnit_C__SetHandItemBoneSequence_MonkUnarmed, 0x735820, void, (uintptr_t model, int boneSeqSlot, int sequence, float sequenceTime, int a6, float speed, int a8, int a9, int a10))
     {
         const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        const bool logExtendedSequence = sequence > ANIMATION_CURRENT_OR_NONE && ShouldLogExtendedAnimationDebug();
+        if (logExtendedSequence)
+        {
+            LOG_INFO << "ExtendedAnim: set-bone begin unit=" << unit
+                << " model=" << reinterpret_cast<void*>(model)
+                << " modelPath=" << GetModelPathForDebug(reinterpret_cast<void*>(model))
+                << " slot=" << boneSeqSlot
+                << " sequence=" << sequence
+                << " sequenceTime=" << sequenceTime
+                << " a6=" << a6
+                << " speed=" << speed
+                << " a8=" << a8
+                << " a9=" << a9
+                << " a10=" << a10
+                << " direct=" << CM2ModelHasDirectSequence(reinterpret_cast<void*>(model), static_cast<unsigned int>(sequence));
+        }
+
         if (boneSeqSlot == -1 && ShouldRouteMovingChannelToUpperSlot(unit, sequence))
         {
             const int rootMovementAnimation = ResolveChannelLowerBodyAnimation(unit, 0, 4, true);
@@ -651,11 +842,29 @@ namespace
                 return;
             }
 
-            if (IsMonkUnarmedMeleeAttackAnimation(sequence))
-                sequence = ANIMATION_ATTACK_UNARMED;
+            const int monkUnarmedAnimationId = GetMonkUnarmedAttackAnimation(sequence);
+            if (monkUnarmedAnimationId != -1)
+                sequence = monkUnarmedAnimationId;
         }
 
         CGUnit_C__SetHandItemBoneSequence_MonkUnarmed(self, model, boneSeqSlot, sequence, sequenceTime, a6, speed, a8, a9, a10);
+
+        if (logExtendedSequence && model
+            && (boneSeqSlot == -1 || CM2Model__HasBoneSequenceSlot_ExtendedAnimDebug(reinterpret_cast<void*>(model), static_cast<uint32_t>(boneSeqSlot))))
+        {
+            BoneSequenceDebugState state{};
+            CM2Model__GetBoneSequenceState_ExtendedAnimDebug(reinterpret_cast<void*>(model), static_cast<uint32_t>(boneSeqSlot), &state);
+            LOG_INFO << "ExtendedAnim: set-bone after slot=" << boneSeqSlot
+                << " requested=" << sequence
+                << " state0_anim=" << state.values[0]
+                << " state1=" << state.values[1]
+                << " state2=" << state.values[2]
+                << " state3=" << state.values[3]
+                << " state4=" << state.values[4]
+                << " state5=" << state.values[5]
+                << " state6=" << state.values[6]
+                << " state7=" << state.values[7];
+        }
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody, 0x73AC30, void, (char flags, int animationId))
@@ -717,6 +926,8 @@ namespace
 
 }
 
+int CM2Shared__BuildExternalAnimPath_ExtendedAnimDebug__Result = 0;
+
 void CharacterFixes::CharacterCreationFixes() {
     // addresses pointing to, uh, some sort of shared memory storage
     // needs to be bigger to not cause crashes with our dbcs so I assigned to it 512 bytes (original table is 176 bytes iirc? cba to look in IDA), should be enough
@@ -730,6 +941,7 @@ void CharacterFixes::CharacterCreationFixes() {
     SetNewRaceNamePointerTable();
     Util::OverwriteUInt32AtAddress(0x4CDA43, reinterpret_cast<uint32_t>(&raceNameTable));
     AnimationLayeringFixes();
+    ExtendedAnimationIdFixes();
     MonkUnarmedSheathFix();
 }
 
@@ -738,6 +950,11 @@ void CharacterFixes::AnimationLayeringFixes() {
     (void)CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody__Result;
     (void)CGUnit_C__PlayFallLandAnimation_ChannelLowerBody__Result;
     (void)CGUnit_C__PreAnimate_ChannelLowerBody__Result;
+}
+
+void CharacterFixes::ExtendedAnimationIdFixes() {
+    (void)CM2Model__HasPlayableSequenceFallback_ExtendedAnimationIds__Result;
+    (void)CM2Model__FindPlayableSequenceFallbackId_ExtendedAnimationIds__Result;
 }
 
 void CharacterFixes::MonkUnarmedSheathFix() {

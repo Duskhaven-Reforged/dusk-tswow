@@ -14,7 +14,7 @@
   */
 
 /* tslint:disable */
-import { float, smallint, text, tinyint } from '../../data/primitives'
+import { float, int, smallint, text, tinyint } from '../../data/primitives'
 import { Relation } from '../../data/query/Relations'
 import { PrimaryKey } from '../../data/table/PrimaryKey'
 import { SQLCell, SQLCellReadOnly } from '../../data/sql/SQLCell'
@@ -57,6 +57,11 @@ export class creature_classlevelstatsRow extends SqlRow<creature_classlevelstats
      * No comment (yet!)
      */
     get basehp2() {return new SQLCell<smallint, this>(this, 'basehp2')}
+
+    /**
+     * No comment (yet!)
+     */
+    get basehp3() {return new SQLCell<int, this>(this, 'basehp3')}
 
     /**
      * No comment (yet!)
@@ -117,6 +122,7 @@ export type creature_classlevelstatsCreator = {
     basehp0? : smallint,
     basehp1? : smallint,
     basehp2? : smallint,
+    basehp3? : int,
     basemana? : smallint,
     basearmor? : smallint,
     attackpower? : smallint,
@@ -136,6 +142,7 @@ export type creature_classlevelstatsQuery = {
     basehp0? : Relation<smallint>,
     basehp1? : Relation<smallint>,
     basehp2? : Relation<smallint>,
+    basehp3? : Relation<int>,
     basemana? : Relation<smallint>,
     basearmor? : Relation<smallint>,
     attackpower? : Relation<smallint>,

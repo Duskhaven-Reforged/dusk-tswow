@@ -27,6 +27,7 @@ namespace
     constexpr uint8_t CLIENT_SHOULDER_SLOT = 1;
     constexpr bool DEBUG_VISIBLE_ITEM_OVERRIDES = true;
     constexpr uintptr_t CURRENT_CHAR_SELECT_INDEX_ADDR = 0x00AC436C;
+    constexpr uintptr_t EXISTING_CHAR_CREATE_INDEX_ADDR = 0x00AC4224;
     constexpr uintptr_t CHARACTER_DISPLAY_COMPONENT_ADDR = 0x00B6B1A0;
 
     struct VisibleItemOverride
@@ -218,12 +219,33 @@ namespace
         return modelPath[0] != '\0';
     }
 
+    void ClearShoulderAttachments(void* component)
+    {
+        if (!component)
+            return;
+
+        void* parentModel = reinterpret_cast<void**>(component)[14];
+        if (!parentModel || !CM2Model__IsLoaded(parentModel, 0, 0))
+            return;
+
+        if (CM2Model__HasAttachment(parentModel, 6))
+            CM2Model__DetachAllChildrenById(parentModel, 6);
+        if (CM2Model__HasAttachment(parentModel, 5))
+            CM2Model__DetachAllChildrenById(parentModel, 5);
+    }
+
     void ApplyContextualShoulderOverride(void* component, int visualArg)
     {
         if (!component || s_visibleItemBuildContext.guid == 0)
             return;
 
         const ShoulderVisualOverride shoulderOverride = GetShoulderVisualOverride(s_visibleItemBuildContext.guid);
+        void* parentModel = reinterpret_cast<void**>(component)[14];
+        if (!parentModel || !CM2Model__IsLoaded(parentModel, 0, 0))
+            return;
+
+        ClearShoulderAttachments(component);
+
         if (!shoulderOverride.active)
             return;
 
@@ -235,15 +257,6 @@ namespace
 
         if (attachmentSixDisplay == baseDisplayId && attachmentFiveDisplay == baseDisplayId)
             return;
-
-        void* parentModel = reinterpret_cast<void**>(component)[14];
-        if (!parentModel || !CM2Model__IsLoaded(parentModel, 0, 0))
-            return;
-
-        if (CM2Model__HasAttachment(parentModel, 6))
-            CM2Model__DetachAllChildrenById(parentModel, 6);
-        if (CM2Model__HasAttachment(parentModel, 5))
-            CM2Model__DetachAllChildrenById(parentModel, 5);
 
         char attachmentSixModel[260] = {};
         char attachmentSixTexture[260] = {};
@@ -297,19 +310,32 @@ namespace
     void ApplyCurrentCharacterSelectShoulderOverride()
     {
         const int selectedIndex = *reinterpret_cast<int*>(CURRENT_CHAR_SELECT_INDEX_ADDR);
-        if (selectedIndex < 0)
-            return;
-
-        void* characterDisplay = reinterpret_cast<void*>(CCharacterSelection__GetCharacterDisplay(unsigned(selectedIndex)));
-        if (!characterDisplay)
-            return;
-
-        void* selectedComponent = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(characterDisplay) + 392);
-        ApplyCharacterSelectShoulderOverride(characterDisplay, selectedComponent);
+        if (selectedIndex >= 0)
+        {
+            void* characterDisplay = reinterpret_cast<void*>(CCharacterSelection__GetCharacterDisplay(unsigned(selectedIndex)));
+            if (characterDisplay)
+            {
+                void* selectedComponent = *reinterpret_cast<void**>(reinterpret_cast<uint8_t*>(characterDisplay) + 392);
+                ApplyCharacterSelectShoulderOverride(characterDisplay, selectedComponent);
+            }
+        }
 
         void* existingCharacterComponent = *reinterpret_cast<void**>(CHARACTER_DISPLAY_COMPONENT_ADDR);
-        if (existingCharacterComponent)
-            ApplyCharacterSelectShoulderOverride(characterDisplay, existingCharacterComponent);
+        if (!existingCharacterComponent)
+            return;
+
+        const int existingCharacterIndex = *reinterpret_cast<int*>(EXISTING_CHAR_CREATE_INDEX_ADDR);
+        if (existingCharacterIndex < 0)
+        {
+            ClearShoulderAttachments(existingCharacterComponent);
+            return;
+        }
+
+        void* existingCharacterDisplay = reinterpret_cast<void*>(CCharacterSelection__GetCharacterDisplay(unsigned(existingCharacterIndex)));
+        if (existingCharacterDisplay)
+            ApplyCharacterSelectShoulderOverride(existingCharacterDisplay, existingCharacterComponent);
+        else
+            ClearShoulderAttachments(existingCharacterComponent);
     }
 
     uint64_t GetPlayerGuid(void* self)

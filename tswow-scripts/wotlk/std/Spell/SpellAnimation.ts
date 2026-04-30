@@ -506,4 +506,7 @@ export enum SpellAnimation {
     CARRIED2_H                        = 503,
     FLY_CARRY2_H                      = 504,
     FLY_CARRIED2_H                    = 505,
+    unknown520                        = 520,
+    unknown732                        = 732,
+    unknown1536                       = 1536,
 }
