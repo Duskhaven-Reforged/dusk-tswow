@@ -4672,7 +4672,7 @@ int ItemTooltipExtensions::SetItemTooltipImpl(
             }
         }
 
-        if (itemCache->mapId) {
+        if (static_cast<int16_t>(itemCache->mapId) > -1) {
             auto* mapRow = reinterpret_cast<MapRow*>(
                 ClientDB::GetRow(reinterpret_cast<void*>(kMapDB), itemCache->mapId));
             if (mapRow && mapRow->m_MapName_lang && mapRow->m_MapName_lang[0]) {
