@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ranges>
+#include <immintrin.h>
 
 namespace {
     uint32_t g_runtimeVBSize = 0;
@@ -71,73 +72,80 @@ namespace {
 
     void __fastcall ProcessGeometry(CGxString* pThis) {
         if (!(pThis->m_flags & 0x40000000)) return;
-
+ 
         MSDFFont* fontHandle = MSDFFont::Get(pThis->GetFontFace());
         if (!fontHandle) return;
-
+ 
         CGxFontGeomBatch* batch = pThis->m_geomBuffers[0];
         if (!batch || batch->m_verts.m_count < 4) return;
-
+ 
         TSGrowableArray<CGxFontVertex>& verts = batch->m_verts;
         if (verts.m_count < 4) return;
-		
+ 		
     	CGxFont* fontObj = pThis->m_fontObj;
         const uint32_t flags = fontObj->m_atlasPages[0].m_flags;
-        const bool is3d = pThis->m_flags & 0x80; // native 3d obj - nameplate text, etc.
-        const double fontSizeMult = pThis->m_fontSizeMult;
-        const double fontOffs = !is3d ? ((flags & 8) ? 4.5 : ((flags & 1) ? 2.5 : 0.0)) : 0.0;
-        const double baselineOffs = (fontOffs > 0.0) ? 1.0 : 0.0;
-        const double scale = (is3d ? fontSizeMult : CGxuFont::GetFontEffectiveHeight(is3d, fontSizeMult) * 0.98) / MSDF::SDF_RENDER_SIZE; // 0.98 compensation
-        const double pad = MSDF::SDF_SPREAD * scale;
-
+        const bool is3d = pThis->m_flags & 0x80;
+        const float fontSizeMult = static_cast<float>(pThis->m_fontSizeMult);
+        const float fontOffs = !is3d ? ((flags & 8) ? 4.5f : ((flags & 1) ? 2.5f : 0.0f)) : 0.0f;
+        const float baselineOffs = (fontOffs > 0.0f) ? 1.0f : 0.0f;
+        const float scale = static_cast<float>((is3d ? fontSizeMult : CGxuFont::GetFontEffectiveHeight(is3d, fontSizeMult) * 0.98) / MSDF::SDF_RENDER_SIZE);
+        const float pad = static_cast<float>(MSDF::SDF_SPREAD * scale);
+ 
+        const __m128 vScale = _mm_set1_ps(scale);
+        const __m128 vPad = _mm_set1_ps(pad);
+        const __m128 vFontOffsHalf = _mm_set1_ps(fontOffs * 0.5f);
+        const __m128 vBaselineOffs = _mm_set1_ps(baselineOffs);
+ 
         for (uint32_t q = 0; q < verts.m_count; q += 4) {
             CGxFontVertex* vBase = &verts.m_data[q];
             if (vBase[0].u > 1.0f) {
-                const uint32_t codepoint = vBase[0].u - 1.0f;
-
+                const uint32_t codepoint = static_cast<uint32_t>(vBase[0].u - 1.0f);
+ 
                 const GlyphMetrics* gm = fontHandle->GetGlyph(codepoint);
                 if (!gm) continue;
-
+ 
                 CGxGlyphCacheEntry* entry = fontObj->GetOrCreateGlyphEntry(codepoint);
                 if (!entry) continue;
-
-                CGxFontVertex* vert0 = &vBase[0];
-                CGxFontVertex* vert1 = &vBase[1];
-                CGxFontVertex* vert2 = &vBase[2];
-                CGxFontVertex* vert3 = &vBase[3];
-
-                const double leftOffs = fontObj->GetBearingX(entry, is3d, fontSizeMult);
-                const double bitmapLeft = is3d ? leftOffs : gm->bitmapLeft * scale - leftOffs;
-
-                // no clue where this  + 1.0  comes from, but it works, I guess?..
-                const double newLeft = static_cast<double>(vert0->pos.X) + (bitmapLeft != leftOffs ? bitmapLeft + 1.0 : 0.0) - pad + fontOffs * 0.5;
-                const double newRight = newLeft + (gm->width * scale);
-
-                const double newTop = static_cast<double>(vert1->pos.Y) + (gm->bitmapTop * scale) + pad - baselineOffs;
-                const double newBottom = newTop - (gm->height * scale);
-
-                vert0->pos.X = static_cast<float>(newLeft);  vert0->pos.Y = static_cast<float>(newBottom);
-                vert1->pos.X = static_cast<float>(newLeft);  vert1->pos.Y = static_cast<float>(newTop);
-                vert2->pos.X = static_cast<float>(newRight); vert2->pos.Y = static_cast<float>(newBottom);
-                vert3->pos.X = static_cast<float>(newRight); vert3->pos.Y = static_cast<float>(newTop);
-
-                const float u0 = gm->u0;
-                const float u1 = gm->u1;
-                const float v0 = gm->v0;
-                const float v1 = gm->v1;
-
-                // encode target msdf atlas page ifx into the sign bits preserving the mantissa part bit-perfect
+ 
+                const float leftOffs = static_cast<float>(fontObj->GetBearingX(entry, is3d, fontSizeMult));
+                const float bitmapLeft = is3d ? leftOffs : gm->bitmapLeft * scale - leftOffs;
+                const float leftCorrection = (bitmapLeft != leftOffs ? bitmapLeft + 1.0f : 0.0f);
+ 
+                const float nLeft = vBase[0].pos.X + leftCorrection - pad + (fontOffs * 0.5f);
+                const float nRight = nLeft + (gm->width * scale);
+                const float nTop = vBase[1].pos.Y + (gm->bitmapTop * scale) + pad - baselineOffs;
+                const float nBottom = nTop - (gm->height * scale);
+ 
+                // Position update
+                vBase[0].pos.X = nLeft;  vBase[0].pos.Y = nBottom;
+                vBase[1].pos.X = nLeft;  vBase[1].pos.Y = nTop;
+                vBase[2].pos.X = nRight; vBase[2].pos.Y = nBottom;
+                vBase[3].pos.X = nRight; vBase[3].pos.Y = nTop;
+ 
+                // UV update with page encoding
                 const float uSign = (gm->atlasPageIndex & 1) ? -1.0f : 1.0f;
                 const float vSign = (gm->atlasPageIndex & 2) ? -1.0f : 1.0f;
-
-                vert0->u = u0 * uSign; vert0->v = v0 * vSign;
-                vert1->u = u0 * uSign; vert1->v = v1 * vSign;
-                vert2->u = u1 * uSign; vert2->v = v0 * vSign;
-                vert3->u = u1 * uSign; vert3->v = v1 * vSign;
+                const __m128 vUV_Signs = _mm_setr_ps(uSign, vSign, uSign, vSign);
+ 
+                __m128 uv01 = _mm_setr_ps(gm->u0, gm->v0, gm->u0, gm->v1);
+                __m128 uv23 = _mm_setr_ps(gm->u1, gm->v0, gm->u1, gm->v1);
+                
+                uv01 = _mm_mul_ps(uv01, vUV_Signs);
+                uv23 = _mm_mul_ps(uv23, vUV_Signs);
+ 
+                vBase[0].u = _mm_cvtss_f32(uv01);
+                vBase[0].v = _mm_cvtss_f32(_mm_shuffle_ps(uv01, uv01, _MM_SHUFFLE(0, 0, 0, 1)));
+                vBase[1].u = _mm_cvtss_f32(_mm_shuffle_ps(uv01, uv01, _MM_SHUFFLE(0, 0, 0, 2)));
+                vBase[1].v = _mm_cvtss_f32(_mm_shuffle_ps(uv01, uv01, _MM_SHUFFLE(0, 0, 0, 3)));
+ 
+                vBase[2].u = _mm_cvtss_f32(uv23);
+                vBase[2].v = _mm_cvtss_f32(_mm_shuffle_ps(uv23, uv23, _MM_SHUFFLE(0, 0, 0, 1)));
+                vBase[3].u = _mm_cvtss_f32(_mm_shuffle_ps(uv23, uv23, _MM_SHUFFLE(0, 0, 0, 2)));
+                vBase[3].v = _mm_cvtss_f32(_mm_shuffle_ps(uv23, uv23, _MM_SHUFFLE(0, 0, 0, 3)));
             }
         }
         pThis->m_flags &= ~0x40000000;
-
+ 
         // store eviction count to later force engine to re-calc geometry when msdf page gets evicted
         uint32_t versionToken = (fontHandle->GetAtlasEvictionCount() & 0x7F) | 0x80;
         pThis->m_flags = (pThis->m_flags & 0x00FFFFFF) | (versionToken << 24);
