@@ -60,16 +60,34 @@ inline auto* pixelShaderHLSL = R"(
 		if (control.x < 1.0f) return tex2D(gameTexture, IN.uv0) * IN.col;
 
 		float2 uv = IN.uv0;
+		float spread = control.z;
+		float atlasSize = control.a;
+
+		float2 dx = ddx(uv);
+		float2 dy = ddy(uv);
+		float d = sqrt(max(dot(dx, dx), dot(dy, dy)));
+		
+		// screenPxRange is how many screen pixels the spread covers
+		float pxRange = spread / max(d * atlasSize, 1e-6);
+		float screenPxRange = max(pxRange, 1.1f); // Ensure at least a sharp-ish edge to prevent ghosting
+
+		// Calculate screen-space font size for adaptive features (outlines, smoothing)
+		// We normalize to a 64px design size
+		float screenFontSize = 1.0f / max(d * (atlasSize / 64.0f), 1e-6);
 
 		float outlineHint = control.y;
-		float fontSize = control.x;
 		float outlinePx = 0.0f;
 
+		// Scale outline based on actual screen size, not design size
 		if (outlineHint >= 1.5f) {
-			outlinePx = max(2.75f, pow(fontSize, 0.150f) * 1.6f);
+			outlinePx = max(2.5f, pow(screenFontSize, 0.150f) * 1.5f);
 		} else if (outlineHint >= 0.5f) {
-			outlinePx = max(1.50f, pow(fontSize, 0.075f) * 1.5f);
+			outlinePx = max(1.25f, pow(screenFontSize, 0.075f) * 1.35f);
 		}
+
+		// Adaptive smoothing: smoother for large text, sharper for small
+		float smoothing = 1.0f - min(0.3f, screenFontSize * 0.0035f);
+		screenPxRange *= smoothing;
 
 		int atlasPage = int(IN.pageIdx.x + 0.5f);
 
@@ -80,8 +98,10 @@ inline auto* pixelShaderHLSL = R"(
 		else sample = tex2D(sdfAtlas3, uv);
 
 		float sd = median(sample.r, sample.g, sample.b);
-		float screenPxRange = (control.z / max(max(fwidth(uv.x), fwidth(uv.y)) * control.a, 1e-6)) * (1.0f - min(0.3f, fontSize * 0.0035f)); // smoother edges for larger text
-		float opacity = saturate((sd - 0.5f) * screenPxRange + 0.5f);
+		
+		// At very small scales, add a tiny bias to keep thin strokes visible
+		float bias = (screenFontSize < 12.0f) ? (12.0f - screenFontSize) * 0.003f : 0.0f;
+		float opacity = saturate((sd - 0.5f + bias) * screenPxRange + 0.5f);
 
 		if (outlinePx > 0.0f) {
 			// *5 of the outline msdf, mult has to match alpha-channel range
