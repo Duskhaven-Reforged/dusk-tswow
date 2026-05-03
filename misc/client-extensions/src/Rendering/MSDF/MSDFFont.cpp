@@ -3,6 +3,7 @@
 #include "MSDFValidator.h"
 #include "MSDFUtils.h"
 #include <ranges>
+#include <immintrin.h>
 
 MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
     : m_ftFace(face), m_msdfFont(nullptr), m_isValid(false), m_oldestPage(0), m_evictionCount(0)
@@ -286,7 +287,55 @@ bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, i
     const float* srcMSDF = msdfBuf.data();
     const float* srcSDF = sdfBuf.data();
 
-    for (int i = 0; i < sdfW * sdfH; ++i) {
+    int totalPixels = sdfW * sdfH;
+    int i = 0;
+
+    // SIMD path: process 4 pixels at a time
+    const __m128 v255 = _mm_set1_ps(255.0f);
+    const __m128 v0 = _mm_set1_ps(0.0f);
+    const __m128i shuffleMask = _mm_setr_epi8(
+        0, 1, 2, 12, // Pixel 0: R0, G0, B0, A0
+        3, 4, 5, 13, // Pixel 1: R1, G1, B1, A1
+        6, 7, 8, 14, // Pixel 2: R2, G2, B2, A2
+        9, 10, 11, 15 // Pixel 3: R3, G3, B3, A3
+    );
+
+    for (; i <= totalPixels - 4; i += 4) {
+        // Load MSDF (12 floats)
+        __m128 m0 = _mm_loadu_ps(srcMSDF + i * 3);     // R0, G0, B0, R1
+        __m128 m1 = _mm_loadu_ps(srcMSDF + i * 3 + 4); // G1, B1, R2, G2
+        __m128 m2 = _mm_loadu_ps(srcMSDF + i * 3 + 8); // B2, R3, G3, B3
+        
+        // Load SDF (4 floats)
+        __m128 s0 = _mm_loadu_ps(srcSDF + i);          // A0, A1, A2, A3
+
+        // Scale and Clamp
+        m0 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m0, v255), v0), v255);
+        m1 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m1, v255), v0), v255);
+        m2 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m2, v255), v0), v255);
+        s0 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(s0, v255), v0), v255);
+
+        // Convert to 32-bit integers
+        __m128i i0 = _mm_cvtps_epi32(m0);
+        __m128i i1 = _mm_cvtps_epi32(m1);
+        __m128i i2 = _mm_cvtps_epi32(m2);
+        __m128i is = _mm_cvtps_epi32(s0);
+
+        // Pack into 16-bit, then 8-bit
+        __m128i p01 = _mm_packus_epi32(i0, i1);
+        __m128i p2s = _mm_packus_epi32(i2, is);
+        __m128i pFull = _mm_packus_epi16(p01, p2s);
+
+        // Now pFull has [R0, G0, B0, R1, G1, B1, R2, G2, B2, R3, G3, B3, A0, A1, A2, A3]
+        // Interleave using shuffle
+        __m128i finalRGBA = _mm_shuffle_epi8(pFull, shuffleMask);
+
+        // Store to destination
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(dest + i * 4), finalRGBA);
+    }
+
+    // Scalar fallback for remaining pixels
+    for (; i < totalPixels; ++i) {
         dest[i * 4 + 0] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 0] * 255.f, 0.f, 255.f));
         dest[i * 4 + 1] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 1] * 255.f, 0.f, 255.f));
         dest[i * 4 + 2] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 2] * 255.f, 0.f, 255.f));
