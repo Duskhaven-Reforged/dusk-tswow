@@ -48,26 +48,29 @@ namespace {
 	CVar* s_cvar_MSDFMode;
     int s_msdfMode = 1;
     bool s_freeTypeInitHooked = false;
-	std::vector<uint8_t> s_prefetchPayload;
+	std::vector<uint32_t> s_prefetchPayload;
  
     float s_lastControlFlag[4] = { -1.0f, -1.0f, -1.0f, -1.0f };
     IDirect3DTexture9* s_lastAtlasTextures[MSDF::MAX_ATLAS_PAGES] = { nullptr };
     MSDFFont* s_lastFontHandle = nullptr;
-
-
+ 
+ 
     void __cdecl PrefetchCodepoints(CGxString* pThis) {
         if (s_prefetchPayload.empty()) return;
         if (!pThis || reinterpret_cast<uintptr_t>(pThis) & 1) return;
-
-        // sort everything in a batch (no idea if 1 batch == 1 face, though)
+ 
+        // sort everything in a batch to avoid redundant texture locks/unlocks in UploadGlyphToAtlas
         if (MSDFFont* fontHandle = MSDFFont::Get(pThis->GetFontFace())) {
             std::ranges::sort(s_prefetchPayload);
-            s_prefetchPayload.erase(std::ranges::unique(s_prefetchPayload).begin(), s_prefetchPayload.end());
+            auto [first, last] = std::ranges::unique(s_prefetchPayload);
+            s_prefetchPayload.erase(first, last);
+            
             for (uint32_t codepoint : s_prefetchPayload) {
                 fontHandle->GetGlyph(codepoint);
             }
         }
         s_prefetchPayload.clear();
+        s_prefetchPayload.reserve(256); // ensure we don't realloc frequently
     }
 
     void __fastcall ProcessGeometry(CGxString* pThis) {

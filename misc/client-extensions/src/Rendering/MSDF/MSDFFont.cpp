@@ -19,7 +19,13 @@ MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
         MSDF::SDF_RENDER_SIZE, MSDF::SDF_SPREAD);
 
     m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
-    if (m_isValid) m_glyphPool.reserve(4096);
+    if (m_isValid) {
+        m_glyphPool.reserve(4096);
+        // Warmup: generate common ASCII characters immediately to prevent frame-time spikes during first use
+        for (uint32_t cp = 32; cp <= 126; ++cp) {
+            GetGlyph(cp);
+        }
+    }
 }
 
 MSDFFont::~MSDFFont() {
