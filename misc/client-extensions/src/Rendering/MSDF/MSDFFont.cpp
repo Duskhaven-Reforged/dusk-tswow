@@ -75,24 +75,26 @@ void MSDFFont::Shutdown() {
     s_fontHandles.clear();
 }
 
-const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
+const GlyphMetrics* MSDFFont::FindInCache(uint32_t codepoint) {
     const uint32_t hotIdx = codepoint & 63;
-    if (m_hotCache[hotIdx].codepoint == codepoint) return m_hotCache[hotIdx].metrics;
- 
+    if (m_hotCache[hotIdx].cp == codepoint) return m_hotCache[hotIdx].m;
+
     auto pit = m_glyphPool.find(codepoint);
     if (pit != m_glyphPool.end()) {
-        m_hotCache[hotIdx].codepoint = codepoint;
-        m_hotCache[hotIdx].metrics = &pit->second;
+        UpdateHotCache(codepoint, &pit->second);
         return &pit->second;
     }
 
+    return nullptr;
+}
+
+const GlyphMetrics* MSDFFont::LoadAndCache(uint32_t codepoint) {
     auto [it, inserted] = m_glyphPool.try_emplace(codepoint);
     GlyphMetrics& metrics = it->second;
 
     if (m_cache->TryLoadGlyph(codepoint, metrics)) {
         UploadGlyphToAtlas(metrics, codepoint);
-        m_hotCache[hotIdx].codepoint = codepoint;
-        m_hotCache[hotIdx].metrics = &metrics;
+        UpdateHotCache(codepoint, &metrics);
         return &metrics;
     }
 
@@ -115,6 +117,7 @@ const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
 
     const bool hasOutline = m_ftFace->glyph->format == FT_GLYPH_FORMAT_OUTLINE &&
         m_ftFace->glyph->outline.n_contours > 0;
+
     if (hasOutline) {
         FT_BBox bbox;
         FT_Outline_Get_BBox(&m_ftFace->glyph->outline, &bbox);
@@ -126,7 +129,7 @@ const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
             uint16_t sdfW = w + 2 * MSDF::SDF_SPREAD;
             uint16_t sdfH = h + 2 * MSDF::SDF_SPREAD;
             storage.ownedPixelData.reserve(static_cast<size_t>(sdfW) * sdfH * 4);
-            if (GenerateMSDF(storage.ownedPixelData, codepoint, sdfW, sdfH)) {
+            if (GenerateMSDF(storage.ownedPixelData, m_msdfFont, codepoint, sdfW, sdfH)) {
                 storage.width = sdfW;
                 storage.height = sdfH;
                 storage.dataSize = static_cast<uint32_t>(storage.ownedPixelData.size());
@@ -136,14 +139,24 @@ const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
                 metrics.bitmapTop = storage.bitmapTop;
                 metrics.pixelData = storage.ownedPixelData.data();
                 UploadGlyphToAtlas(metrics, codepoint);
-                m_hotCache[hotIdx].codepoint = codepoint;
-                m_hotCache[hotIdx].metrics = &metrics;
+                UpdateHotCache(codepoint, &metrics);
             }
         }
     }
     m_cache->StoreGlyph(std::move(storage));
 
     return &metrics;
+}
+
+void MSDFFont::UpdateHotCache(uint32_t codepoint, const GlyphMetrics* metrics) {
+    const uint32_t hotIdx = codepoint & 63;
+    m_hotCache[hotIdx].cp = codepoint;
+    m_hotCache[hotIdx].m = metrics;
+}
+
+const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
+    if (const GlyphMetrics* cached = FindInCache(codepoint)) return cached;
+    return LoadAndCache(codepoint);
 }
 
 MSDFFont::AtlasPage* MSDFFont::GetAtlasPage(size_t index) const {
@@ -198,9 +211,9 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
 
             for (uint32_t cp : targetPage->codepoints) {
                 uint32_t hotIdx = cp & 63;
-                if (m_hotCache[hotIdx].codepoint == cp) {
-                    m_hotCache[hotIdx].codepoint = 0xFFFFFFFF;
-                    m_hotCache[hotIdx].metrics = nullptr;
+                if (m_hotCache[hotIdx].cp == cp) {
+                    m_hotCache[hotIdx].cp = 0xFFFFFFFF;
+                    m_hotCache[hotIdx].m = nullptr;
                 }
  
                 auto it = m_glyphPool.find(cp);
@@ -259,11 +272,11 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
     return true;
 }
 
-bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, int sdfW, int sdfH) const {
+bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, msdfgen::FontHandle* font, uint32_t codepoint, int sdfW, int sdfH) {
     if (sdfW <= 0 || sdfH <= 0 || sdfW > 512 || sdfH > 512) return false;
 
     msdfgen::Shape shape;
-    if (!msdfgen::loadGlyph(shape, m_msdfFont, codepoint)) return false;
+    if (!msdfgen::loadGlyph(shape, font, codepoint)) return false;
 
     if (shape.contours.empty()) {
         outData.assign(sdfW * sdfH * 4, 0);
@@ -288,8 +301,8 @@ bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, i
         msdfgen::Vector2(MSDF::SDF_SPREAD / scale - bounds.l, MSDF::SDF_SPREAD / scale - bounds.b)
     );
 
-    auto msdfBuf = m_msdfPool.AcquireSized(sdfW * sdfH * 3);
-    auto sdfBuf = m_msdfPool.AcquireSized(sdfW * sdfH);
+    auto msdfBuf = MSDFPools::Float.AcquireSized(sdfW * sdfH * 3);
+    auto sdfBuf = MSDFPools::Float.AcquireSized(sdfW * sdfH);
 
     msdfgen::BitmapRef<float, 3> msdfBitmap(msdfBuf.data(), sdfW, sdfH);
     msdfgen::BitmapRef<float, 1> sdfBitmap(sdfBuf.data(), sdfW, sdfH);
@@ -326,52 +339,41 @@ bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, i
     );
 
     for (; i <= totalPixels - 4; i += 4) {
-        // Load MSDF (12 floats)
-        __m128 m0 = _mm_loadu_ps(srcMSDF + i * 3);     // R0, G0, B0, R1
-        __m128 m1 = _mm_loadu_ps(srcMSDF + i * 3 + 4); // G1, B1, R2, G2
-        __m128 m2 = _mm_loadu_ps(srcMSDF + i * 3 + 8); // B2, R3, G3, B3
-        
-        // Load SDF (4 floats)
-        __m128 s0 = _mm_loadu_ps(srcSDF + i);          // A0, A1, A2, A3
+        __m128 m0 = _mm_loadu_ps(srcMSDF + i * 3);
+        __m128 m1 = _mm_loadu_ps(srcMSDF + i * 3 + 4);
+        __m128 m2 = _mm_loadu_ps(srcMSDF + i * 3 + 8);
+        __m128 s0 = _mm_loadu_ps(srcSDF + i);
 
-        // Scale and Clamp
         m0 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m0, v255), v0), v255);
         m1 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m1, v255), v0), v255);
         m2 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m2, v255), v0), v255);
         s0 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(s0, v255), v0), v255);
 
-        // Convert to 32-bit integers
         __m128i i0 = _mm_cvtps_epi32(m0);
         __m128i i1 = _mm_cvtps_epi32(m1);
         __m128i i2 = _mm_cvtps_epi32(m2);
         __m128i is = _mm_cvtps_epi32(s0);
 
-        // Pack into 16-bit, then 8-bit
         __m128i p01 = _mm_packus_epi32(i0, i1);
         __m128i p2s = _mm_packus_epi32(i2, is);
         __m128i pFull = _mm_packus_epi16(p01, p2s);
 
-        // Now pFull has [R0, G0, B0, R1, G1, B1, R2, G2, B2, R3, G3, B3, A0, A1, A2, A3]
-        // Interleave using shuffle
         __m128i finalRGBA = _mm_shuffle_epi8(pFull, shuffleMask);
-
-        // Store to destination
         _mm_storeu_si128(reinterpret_cast<__m128i*>(dest + i * 4), finalRGBA);
     }
 
-    // Scalar fallback for remaining pixels
     for (; i < totalPixels; ++i) {
         dest[i * 4 + 0] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 0] * 255.f, 0.f, 255.f));
         dest[i * 4 + 1] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 1] * 255.f, 0.f, 255.f));
         dest[i * 4 + 2] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 2] * 255.f, 0.f, 255.f));
         dest[i * 4 + 3] = static_cast<uint8_t>(std::clamp(srcSDF[i] * 255.f, 0.f, 255.f));
     }
-    m_msdfPool.Release(std::move(msdfBuf));
-    m_msdfPool.Release(std::move(sdfBuf));
+    MSDFPools::Float.Release(std::move(msdfBuf));
+    MSDFPools::Float.Release(std::move(sdfBuf));
 
     return true;
 }
 
 msdfgen::FontHandle* MSDFFont::CreateMSDFHandle(const FT_Byte* data, FT_Long size) {
     return !MSDF::g_msdfFreetype ? nullptr : msdfgen::loadFontData(MSDF::g_msdfFreetype, data, size);
-}
+}

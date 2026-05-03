@@ -5,6 +5,11 @@
 #include <cstdlib>
 #include <vector>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include FT_OUTLINE_H
+#include FT_BBOX_H
+
 class MSDFValidator {
 public:
     static bool IsFontMSDFCompatible(msdfgen::FontHandle* font) {

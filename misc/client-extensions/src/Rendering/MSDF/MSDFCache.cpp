@@ -24,8 +24,6 @@ MSDFCache::~MSDFCache() {
     FlushPendingWrites();
     CleanupOrphans();
     MSDFManager::FlushAll();
-    m_vecPool.TrimAll();
-    m_mEntryPool.TrimAll();
 }
 
 std::string MSDFCache::SanitizeName(std::string_view name) {
@@ -66,7 +64,7 @@ void MSDFCache::BuildBlockPath(uint32_t blockId, std::filesystem::path& outPath)
 }
 
 uint32_t MSDFCache::GetBlockId(uint32_t codepoint) {
-    return codepoint >> static_cast<uint32_t>(std::countr_zero(BLOCK_SIZE));
+    return codepoint >> static_cast<uint32_t>(std::countr_zero(MSDF::BLOCK_SIZE));
 }
 
 bool MSDFCache::TryLoadGlyph(uint32_t codepoint, GlyphMetrics& outMetrics) {
@@ -147,7 +145,7 @@ bool MSDFCache::LoadManifestFromFile(const std::filesystem::path& path, Manifest
     if (!view) return false;
 
     const auto* hdr = static_cast<const ManifestHeader*>(view.ptr);
-    if (hdr->magic == MANIFEST_MAGIC && hdr->version == CACHE_VERSION && hdr->key == m_key) {
+    if (hdr->magic == MSDF::MANIFEST_MAGIC && hdr->version == MSDF::CACHE_VERSION && hdr->key == m_key) {
         uint64_t expectedSize = sizeof(ManifestHeader) + static_cast<uint64_t>(hdr->entryCount) * sizeof(ManifestEntry);
         if (fsize >= expectedSize) {
             auto* entries = reinterpret_cast<const ManifestEntry*>(
@@ -197,17 +195,17 @@ bool MSDFCache::AppendManifestJournal(const std::vector<ManifestEntry>& entries)
     if (entries.size() > UINT32_MAX / sizeof(ManifestEntry)) return false;
 
     DWORD totalBytes = static_cast<DWORD>(entries.size() * sizeof(ManifestEntry));
-    auto buffer = m_vecPool.AcquireSized(totalBytes);
+    auto buffer = MSDFPools::Byte.AcquireSized(totalBytes);
     std::memcpy(buffer.data(), entries.data(), totalBytes);
 
     DWORD written = 0;
-    bool ok = WriteFile(file, buffer.data(), totalBytes, &written, nullptr) && (written == totalBytes);
+    bool ok = ::WriteFile(file, buffer.data(), totalBytes, &written, nullptr) && (written == totalBytes);
     if (ok) {
         FlushFileBuffers(file);
         file.successful = true;
     }
 
-    m_vecPool.Release(std::move(buffer));
+    MSDFPools::Byte.Release(std::move(buffer));
     return ok;
 }
 
@@ -222,16 +220,16 @@ bool MSDFCache::SaveManifest(bool isLocked) {
         FILE_ATTRIBUTE_NORMAL, nullptr));
     if (file.handle == INVALID_HANDLE_VALUE) return false;
 
-    ManifestHeader hdr{ .magic = MANIFEST_MAGIC, .version = CACHE_VERSION, .key = m_key, .entryCount = m_manifest.size(), .pad = 0 };
+    ManifestHeader hdr{ .magic = MSDF::MANIFEST_MAGIC, .version = MSDF::CACHE_VERSION, .key = m_key, .entryCount = m_manifest.size(), .pad = 0 };
     DWORD written = 0;
 
-    if (!WriteFile(file.handle, &hdr, sizeof(hdr), &written, nullptr)) return false;
+    if (!::WriteFile(file.handle, &hdr, sizeof(hdr), &written, nullptr)) return false;
 
-    auto entries = m_mEntryPool.Acquire(m_manifest.size());
+    auto entries = MSDFPools::Manifest.Acquire(m_manifest.size());
     entries.reserve(m_manifest.size());
 
     FinalAction cleanup([&]() {
-        if (!entries.empty()) m_mEntryPool.Release(std::move(entries));
+        if (!entries.empty()) MSDFPools::Manifest.Release(std::move(entries));
         });
 
     for (const auto& kv : m_manifest) {
@@ -239,7 +237,7 @@ bool MSDFCache::SaveManifest(bool isLocked) {
     }
 
     if (!entries.empty()) {
-        if (!WriteFile(file.handle, entries.data(), static_cast<DWORD>(entries.size() * sizeof(ManifestEntry)), &written, nullptr)) {
+        if (!::WriteFile(file.handle, entries.data(), static_cast<DWORD>(entries.size() * sizeof(ManifestEntry)), &written, nullptr)) {
             return false;
         }
     }
@@ -272,12 +270,12 @@ bool MSDFCache::FlushPendingWrites() {
     for (auto& pw : m_pendingWrites) {
         byBlock[GetBlockId(pw.codepoint)].push_back(&pw);
     }
-    auto newEntries = m_mEntryPool.Acquire(m_pendingWrites.size());
+    auto newEntries = MSDFPools::Manifest.Acquire(m_pendingWrites.size());
 
     size_t maxBlockSize = byBlock.empty() ? 0 : std::ranges::max(
         byBlock | std::views::values | std::views::transform([](auto& v) { return v.size(); })
     );
-    auto blockEntries = m_mEntryPool.Acquire(maxBlockSize);
+    auto blockEntries = MSDFPools::Manifest.Acquire(maxBlockSize);
 
     for (auto& kv : byBlock) {
         uint32_t blockId = kv.first;
@@ -305,8 +303,8 @@ bool MSDFCache::FlushPendingWrites() {
             }
         }
     }
-    m_mEntryPool.Release(std::move(blockEntries));
-    m_mEntryPool.Release(std::move(newEntries));
+    MSDFPools::Manifest.Release(std::move(blockEntries));
+    MSDFPools::Manifest.Release(std::move(newEntries));
     return true;
 }
 
@@ -329,14 +327,14 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
     MSDFManager::MappedBlock* cachedBlock = MSDFManager::GetOrLoadMappedBlock(wrap);
 
     uint32_t oldEntriesCount = cachedBlock ? cachedBlock->entryCount : 0;
-    auto mergedEntries = m_gEntryPool.Acquire(oldEntriesCount + pending.size());
-    auto hashTable = m_hashPool.AcquireSized(BLOCK_SIZE, 0xFFFFFFFF);
+    auto mergedEntries = MSDFPools::Glyph.Acquire(oldEntriesCount + pending.size());
+    auto pooledHashTable = MSDFPools::UInt32.AcquireSized(MSDF::BLOCK_SIZE, 0xFFFFFFFF);
 
     std::vector<uint8_t>* payloadRef = nullptr;
     FinalAction cleanup([&]() {
-        if (!hashTable.empty()) m_hashPool.Release(std::move(hashTable));
-        if (!mergedEntries.empty()) m_gEntryPool.Release(std::move(mergedEntries));
-        if (payloadRef && !payloadRef->empty()) m_vecPool.Release(std::move(*payloadRef));
+        if (!pooledHashTable.empty()) MSDFPools::UInt32.Release(std::move(pooledHashTable));
+        if (!mergedEntries.empty()) MSDFPools::Glyph.Release(std::move(mergedEntries));
+        if (payloadRef && !payloadRef->empty()) MSDFPools::Byte.Release(std::move(*payloadRef));
         });
 
     uint32_t oldIdx = 0;
@@ -369,7 +367,7 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
             oldIdx++;
         }
     }
-    if (mergedEntries.size() > BLOCK_SIZE) return false;
+    if (mergedEntries.size() > MSDF::BLOCK_SIZE) return false;
 
     uint32_t totalPayloadSize = 0;
     for (auto& ge : mergedEntries) {
@@ -378,10 +376,10 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
     }
 
     for (size_t i = 0; i < mergedEntries.size(); ++i) {
-        hashTable[mergedEntries[i].codepoint & (BLOCK_SIZE - 1)] = static_cast<uint32_t>(i);
+        pooledHashTable[mergedEntries[i].codepoint & (MSDF::BLOCK_SIZE - 1)] = static_cast<uint32_t>(i);
     }
 
-    auto payloadBuffer = m_vecPool.AcquireSized(totalPayloadSize);
+    auto payloadBuffer = MSDFPools::Byte.AcquireSized(totalPayloadSize);
     payloadRef = &payloadBuffer;
 
     auto pendingCopyIt = pending.begin();
@@ -394,7 +392,7 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
             src = (*pendingCopyIt)->ownedPixelData.data();
         }
         else if (cachedBlock) {
-            uint32_t oldEntryIndex = cachedBlock->hashTable[ge.codepoint & (BLOCK_SIZE - 1)];
+            uint32_t oldEntryIndex = cachedBlock->hashTable[ge.codepoint & (MSDF::BLOCK_SIZE - 1)];
             if (oldEntryIndex != 0xFFFFFFFF && oldEntryIndex < cachedBlock->entryCount) {
                 if (cachedBlock->entries[oldEntryIndex].codepoint == ge.codepoint) {
                     src = cachedBlock->payload + cachedBlock->entries[oldEntryIndex].dataOffset;
@@ -415,9 +413,9 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
             FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr));
         if (tmpFile.handle == INVALID_HANDLE_VALUE) return false;
 
-        BlockFileHeader bHdr{ .magic = BLOCK_MAGIC, .version = CACHE_VERSION, .blockId = blockId, .entryCount = mergedEntries.size() };
+        BlockFileHeader bHdr{ .magic = MSDF::BLOCK_MAGIC, .version = MSDF::CACHE_VERSION, .blockId = blockId, .entryCount = mergedEntries.size() };
         size_t dataSize = sizeof(bHdr) + (mergedEntries.size() * sizeof(GlyphEntry)) +
-            (BLOCK_SIZE * sizeof(uint32_t)) + payloadBuffer.size();
+            (MSDF::BLOCK_SIZE * sizeof(uint32_t)) + payloadBuffer.size();
 
         const size_t align = MSDFManager::s_si.dwAllocationGranularity;
         size_t paddedSize = ((dataSize + align - 1) / align) * align;
@@ -428,18 +426,18 @@ bool MSDFCache::WriteBlockFile(uint32_t blockId, std::vector<GlyphMetricsToStore
         }
 
         DWORD written;
-        if (!WriteFile(tmpFile.handle, &bHdr, sizeof(bHdr), &written, nullptr) || written != sizeof(bHdr)) {
+        if (!::WriteFile(tmpFile.handle, &bHdr, sizeof(bHdr), &written, nullptr) || written != sizeof(bHdr)) {
             return false;
         }
-        if (!WriteFile(tmpFile.handle, mergedEntries.data(),
+        if (!::WriteFile(tmpFile.handle, mergedEntries.data(),
             static_cast<DWORD>(mergedEntries.size() * sizeof(GlyphEntry)), &written, nullptr)) {
             return false;
         }
-        if (!WriteFile(tmpFile.handle, hashTable.data(),
-            static_cast<DWORD>(BLOCK_SIZE * sizeof(uint32_t)), &written, nullptr)) {
+        if (!::WriteFile(tmpFile.handle, pooledHashTable.data(),
+            static_cast<DWORD>(MSDF::BLOCK_SIZE * sizeof(uint32_t)), &written, nullptr)) {
             return false;
         }
-        if (!WriteFile(tmpFile.handle, payloadBuffer.data(),
+        if (!::WriteFile(tmpFile.handle, payloadBuffer.data(),
             static_cast<DWORD>(payloadBuffer.size()), &written, nullptr)) {
             return false;
         }

@@ -44,10 +44,14 @@ public:
     static void Shutdown();
 
 private:
+    const GlyphMetrics* FindInCache(uint32_t codepoint);
+    const GlyphMetrics* LoadAndCache(uint32_t codepoint);
+    void UpdateHotCache(uint32_t codepoint, const GlyphMetrics* metrics);
+
     bool CreateAtlasPage();
     bool UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint);
-    bool GenerateMSDF(std::vector<uint8_t>& outData, uint32_t codepoint, int sdfW, int sdfH) const;
 
+    static bool GenerateMSDF(std::vector<uint8_t>& outData, msdfgen::FontHandle* font, uint32_t codepoint, int sdfW, int sdfH);
     static msdfgen::FontHandle* CreateMSDFHandle(const FT_Byte* data, FT_Long size);
 
     FT_Face m_ftFace;
@@ -60,8 +64,8 @@ private:
     std::vector<std::unique_ptr<AtlasPage>> m_atlasPages;
 
     struct HotGlyph {
-        uint32_t codepoint = 0xFFFFFFFF;
-        const GlyphMetrics* metrics = nullptr;
+        uint32_t cp;
+        const GlyphMetrics* m;
     };
     HotGlyph m_hotCache[64];
  
@@ -69,5 +73,4 @@ private:
 
     inline static ankerl::unordered_dense::map<FT_Face, std::unique_ptr<MSDFFont>> s_fontHandles;
 
-    inline static thread_local VectorPool<float> m_msdfPool;
 };

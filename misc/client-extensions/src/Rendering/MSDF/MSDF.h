@@ -14,26 +14,7 @@
 #include <msdfgen.h>
 #include <msdfgen-ext.h>
 
-struct GlyphMetrics {
-    uint16_t width = 0;
-    uint16_t height = 0;
-	FT_Int bitmapTop = 0;
-	FT_Int bitmapLeft = 0;
-    float u0 = 0.0f, v0 = 0.0f, u1 = 0.0f, v1 = 0.0f;
-    uint16_t atlasPageIndex = 0;
-    const uint8_t* pixelData = nullptr;
-};
-
-struct GlyphMetricsToStore {
-    uint32_t codepoint = 0;
-    uint16_t width = 0;
-    uint16_t height = 0;
-    FT_Int bitmapTop = 0;
-	FT_Int bitmapLeft = 0;
-    std::vector<uint8_t> ownedPixelData;
-    uint32_t dataSize = 0;
-};
-
+// Forward declarations moved to MSDFCacheTypes.h or kept here if needed
 class MSDFCache;
 class MSDFFont;
 

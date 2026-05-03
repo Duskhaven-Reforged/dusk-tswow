@@ -284,8 +284,8 @@ bool MSDFPregen::GenerateFont(const PreGenRequest& req) {
         }
 
         Throttle throttle(cpuLimit);
-        VectorPool<uint8_t> pool;
-        auto msdfData = pool.Acquire(512 * 512 * 4);
+        
+        auto msdfData = MSDFPools::Byte.Acquire(512 * 512 * 4);
 
         while (true) {
             if (workerError.load(std::memory_order_acquire)) break;
@@ -327,7 +327,7 @@ bool MSDFPregen::GenerateFont(const PreGenRequest& req) {
 
                     if (sdfW > 0 && sdfH > 0 && sdfW <= 512 && sdfH <= 512) {
                         msdfData.clear();
-                        if (font->GenerateMSDF(msdfData, cp, sdfW, sdfH)) {
+                        if (MSDFFont::GenerateMSDF(msdfData, font->m_msdfFont, cp, sdfW, sdfH)) {
                             size_t expectedSize = static_cast<size_t>(sdfW) * sdfH * 4;
                             if (msdfData.size() == expectedSize) {
                                 width = static_cast<uint16_t>(sdfW);
@@ -358,7 +358,7 @@ bool MSDFPregen::GenerateFont(const PreGenRequest& req) {
             }
             doneCount.fetch_add(1, std::memory_order_relaxed);
         }
-        pool.Release(std::move(msdfData));
+        MSDFPools::Byte.Release(std::move(msdfData));
         };
 
     std::vector<std::thread> threads;

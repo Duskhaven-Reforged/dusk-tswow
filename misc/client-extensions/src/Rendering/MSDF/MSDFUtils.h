@@ -1,4 +1,7 @@
 #pragma once
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
 #include <windows.h>
 #undef min
 #undef max
@@ -9,12 +12,19 @@
 #include <cstring>
 #include <filesystem>
 #include <string_view>
+#include <cstdlib>
 #include <vector>
+
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include FT_OUTLINE_H
+#include FT_BBOX_H
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_BBOX_H
 #include FT_OUTLINE_H
+#include "MSDFCacheTypes.h"
 
 class ScopedFileLock {
     HANDLE hFile = INVALID_HANDLE_VALUE;
@@ -211,3 +221,11 @@ inline FontHash HashFont(const FT_Byte* data, FT_Long size) {
     }
     return h;
 }
+struct MSDFPools {
+    inline static thread_local VectorPool<uint8_t> Byte;
+    inline static thread_local VectorPool<float> Float;
+    inline static thread_local VectorPool<uint32_t> UInt32;
+    inline static thread_local VectorPool<int> Int;
+    inline static thread_local VectorPool<GlyphEntry> Glyph;
+    inline static thread_local VectorPool<ManifestEntry> Manifest;
+};
