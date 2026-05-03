@@ -1188,6 +1188,7 @@ export class ItemTemplate extends MainEntityID<item_templateRow> {
                 case 3: // ITEM_SUBCLASS_WEAPON_GUN
                 case 6: // ITEM_SUBCLASS_WEAPON_POLEARM
                 case 13: // ITEM_SUBCLASS_WEAPON_FIST
+                case 9:
                     this.MainStat = Stat.AGILITY
                     break
                 case 19: // ITEM_SUBCLASS_WEAPON_WAND
@@ -1243,6 +1244,7 @@ export class ItemTemplate extends MainEntityID<item_templateRow> {
                 case 3: // ITEM_SUBCLASS_WEAPON_GUN
                 case 6: // ITEM_SUBCLASS_WEAPON_POLEARM
                 case 13: // ITEM_SUBCLASS_WEAPON_FIST
+                case 9:
                     return Suggestion == Stat.AGILITY
                 case 19: // ITEM_SUBCLASS_WEAPON_WAND
                     return Suggestion == Stat.INTELLECT
@@ -1310,7 +1312,7 @@ extends RegistryStatic<ItemTemplate,item_templateRow,item_templateQuery> {
          .ItemLevel.set(0)
          .ItemSet.set(0)
          .Lock.set(0)
-         .Map.set(0)
+         .Map.set(-1)
          .Material.set(0)
          .MaxCount.set(0)
          .MaxStack.set(1)
