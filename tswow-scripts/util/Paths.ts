@@ -255,6 +255,8 @@ export function ClientPath(pathIn: string, devPatch: string) {
             }
         }),
         ClientExtensions_dll: file('ClientExtensions.dll'),
+        Skia_dll: file('skia.dll'),
+
         ClientExtensions64_exe: file('ClientExtensions64.exe'),
         DiscordPartnerSDK_dll: file('discord_partner_sdk.dll'),
         Cache: file('Cache'),
@@ -376,6 +378,8 @@ export function InstallPath(pathIn: string, tdb: string) {
                 share: dir({})
             }),
             ClientExtensions_dll: file('ClientExtensions.dll'),
+            Skia_dll: file('skia.dll'),
+
             ClientExtensions64_exe: file('ClientExtensions64.exe'),
             DiscordPartnerSDK_dll: file('discord_partner_sdk.dll'),
             include: dir({
@@ -514,8 +518,10 @@ export function BuildPaths(pathIn: string, tdb: string) {
         terminal_history: file('terminal-history.txt'),
         ClientExtensionsDll: file('ClientExtensions.dll'),
         client_extensions: dirn('client-extensions',{
-            dll_path: file('RelWithDebInfo/ClientExtensions.dll')
+            dll_path: file('RelWithDebInfo/ClientExtensions.dll'),
+            skia_dll_path: file('RelWithDebInfo/skia.dll')
         }),
+
         ClientExtensions64Exe: file('ClientExtensions64.exe'),
         client_extensions_64: dirn('client-extensions-64',{
             exe_path: file('Release/ClientExtensions64.exe'),

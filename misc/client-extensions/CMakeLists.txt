@@ -194,7 +194,14 @@ if(LUA_LOGGING)
 endif()
 
 set(CLIENT_PATH "" CACHE PATH "Path to your wow client")
-if(NOT CLIENT_PATH STREQUAL "")
+    add_custom_command(
+        TARGET ClientExtensions POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SKIA_SOURCE_DIR}/skia.dll"
+        $<TARGET_FILE_DIR:ClientExtensions>
+    )
+    if(NOT CLIENT_PATH STREQUAL "")
+
     add_custom_command(
         TARGET ClientExtensions POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
