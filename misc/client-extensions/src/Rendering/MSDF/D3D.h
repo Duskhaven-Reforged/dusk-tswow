@@ -8,8 +8,6 @@
 #include <string_view>
 
 namespace D3D {
-    void initialize();
-
     IDirect3DDevice9* GetDevice();
 
     using ResourceCallback = std::function<void()>;

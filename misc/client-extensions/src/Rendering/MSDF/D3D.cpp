@@ -511,6 +511,3 @@ namespace D3D {
         return false;
     }
 }
-
-void D3D::initialize() {
-}
