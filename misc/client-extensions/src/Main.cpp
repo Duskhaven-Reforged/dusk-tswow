@@ -1,3 +1,4 @@
+#include <Rendering/MSDF/MSDFBootstrap.h>
 #include <ClientArguments.h>
 #include <ClientDetours.h>
 #include <ClientExtensions.h>
@@ -19,6 +20,10 @@ class Main
     static void startup()
     {
         LOG_INFO << "Client starting up";
+        ClientLua::allowOutOfBoundsPointer();
+        LOG_INFO << "Client pointer extension applied";
+        MSDFBootstrap::initialize();
+        LOG_INFO << "MSDF font rendering initialized";
         // gets this from scripts.generated.ih
         MiscFixes::SetYearOffsetMultiplier();
         LOG_INFO << "Time offset set.";
@@ -26,8 +31,6 @@ class Main
         LOG_INFO << "Client init scripts";
         DHConfig::Initialize();
         LOG_INFO << "Save file initialized";
-        ClientLua::allowOutOfBoundsPointer();
-        LOG_INFO << "Client pointer extension applied";
         ClientNetwork::initialize();
         LOG_INFO << "Client network initialized";
         // some people get windows crashes, idk

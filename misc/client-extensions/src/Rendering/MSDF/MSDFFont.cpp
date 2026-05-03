@@ -1,0 +1,379 @@
+#include "MSDFFont.h"
+#include "MSDFCache.h"
+#include "MSDFValidator.h"
+#include "MSDFUtils.h"
+#include <ranges>
+#include <immintrin.h>
+
+MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
+    : m_ftFace(face), m_msdfFont(nullptr), m_isValid(false), m_oldestPage(0), m_evictionCount(0)
+{
+    memset(m_hotCache, 0xFF, sizeof(m_hotCache));
+    if (!face) return;
+
+    m_msdfFont = CreateMSDFHandle(fontData, dataSize);
+    if (!m_msdfFont) return;
+
+    m_cache = std::make_unique<MSDFCache>(fontData, dataSize,
+        face->family_name ? face->family_name : "Unknown", face->style_name ? face->style_name : "",
+        MSDF::SDF_RENDER_SIZE, MSDF::SDF_SPREAD);
+
+    m_isValid = m_cache->GetManifestSize() || MSDF::ALLOW_UNSAFE_FONTS || MSDFValidator::IsFontMSDFCompatible(m_msdfFont);
+    if (m_isValid) {
+        m_glyphPool.reserve(4096);
+        // Warmup: generate common ASCII characters immediately to prevent frame-time spikes during first use
+        for (uint32_t cp = 32; cp <= 126; ++cp) {
+            GetGlyph(cp);
+        }
+    }
+}
+
+MSDFFont::~MSDFFont() {
+    m_glyphPool.clear();
+    m_atlasPages.clear();
+    m_cache.reset();
+    if (m_msdfFont) {
+        msdfgen::destroyFont(m_msdfFont);
+        m_msdfFont = nullptr;
+    }
+}
+
+MSDFFont* MSDFFont::Get(FT_Face face) {
+    auto it = s_fontHandles.find(face);
+    if (it != s_fontHandles.end() && it->second->IsValid()) {
+        return it->second.get();
+    }
+    return nullptr;
+}
+
+void MSDFFont::Register(FT_Face face, const FT_Byte* data, FT_Long size) {
+    if (s_fontHandles.find(face) != s_fontHandles.end()) return;
+    auto font = std::make_unique<MSDFFont>(face, data, size);
+    if (font->m_msdfFont && font->m_isValid) s_fontHandles[face] = std::move(font);
+}
+
+void MSDFFont::Unregister(FT_Face face) {
+    auto it = s_fontHandles.find(face);
+    if (it != s_fontHandles.end()) {
+        s_fontHandles.erase(it);
+    }
+}
+
+void MSDFFont::ClearAllCache() {
+    for (auto& handle : s_fontHandles | std::views::values) {
+        if (handle) {
+			handle->m_glyphPool.clear();
+            handle->m_atlasPages.clear();
+            handle->m_oldestPage = 0;
+        	handle->m_evictionCount++;
+            memset(handle->m_hotCache, 0xFF, sizeof(handle->m_hotCache));
+        }
+    }
+}
+
+void MSDFFont::Shutdown() {
+    s_fontHandles.clear();
+}
+
+const GlyphMetrics* MSDFFont::FindInCache(uint32_t codepoint) {
+    const uint32_t hotIdx = codepoint & 63;
+    if (m_hotCache[hotIdx].cp == codepoint) return m_hotCache[hotIdx].m;
+
+    auto pit = m_glyphPool.find(codepoint);
+    if (pit != m_glyphPool.end()) {
+        UpdateHotCache(codepoint, &pit->second);
+        return &pit->second;
+    }
+
+    return nullptr;
+}
+
+const GlyphMetrics* MSDFFont::LoadAndCache(uint32_t codepoint) {
+    auto [it, inserted] = m_glyphPool.try_emplace(codepoint);
+    GlyphMetrics& metrics = it->second;
+
+    if (m_cache->TryLoadGlyph(codepoint, metrics)) {
+        UploadGlyphToAtlas(metrics, codepoint);
+        UpdateHotCache(codepoint, &metrics);
+        return &metrics;
+    }
+
+    GlyphMetricsToStore storage;
+    storage.codepoint = codepoint;
+
+    if (FT_Set_Pixel_Sizes(m_ftFace, MSDF::SDF_RENDER_SIZE, MSDF::SDF_RENDER_SIZE) != 0) {
+        m_glyphPool.erase(it);
+        return nullptr;
+    }
+
+    FT_UInt glyphIndex = FT_Get_Char_Index(m_ftFace, codepoint);
+    if (FT_Load_Glyph(m_ftFace, glyphIndex, FT_LOAD_NO_BITMAP | FT_LOAD_NO_HINTING) != 0) {
+        m_glyphPool.erase(it);
+        return nullptr;
+    }
+
+    storage.bitmapLeft = m_ftFace->glyph->bitmap_left;
+    storage.bitmapTop = m_ftFace->glyph->bitmap_top;
+
+    const bool hasOutline = m_ftFace->glyph->format == FT_GLYPH_FORMAT_OUTLINE &&
+        m_ftFace->glyph->outline.n_contours > 0;
+
+    if (hasOutline) {
+        FT_BBox bbox;
+        FT_Outline_Get_BBox(&m_ftFace->glyph->outline, &bbox);
+
+        uint16_t w = static_cast<uint16_t>(std::max(0, static_cast<int>(((bbox.xMax + 63) >> 6) - (bbox.xMin >> 6))));
+        uint16_t h = static_cast<uint16_t>(std::max(0, static_cast<int>(((bbox.yMax + 63) >> 6) - (bbox.yMin >> 6))));
+
+        if (w > 0 && h > 0) {
+            uint16_t sdfW = w + 2 * MSDF::SDF_SPREAD;
+            uint16_t sdfH = h + 2 * MSDF::SDF_SPREAD;
+            storage.ownedPixelData.reserve(static_cast<size_t>(sdfW) * sdfH * 4);
+            if (GenerateMSDF(storage.ownedPixelData, m_msdfFont, codepoint, sdfW, sdfH)) {
+                storage.width = sdfW;
+                storage.height = sdfH;
+                storage.dataSize = static_cast<uint32_t>(storage.ownedPixelData.size());
+                metrics.width = storage.width;
+                metrics.height = storage.height;
+                metrics.bitmapLeft = storage.bitmapLeft;
+                metrics.bitmapTop = storage.bitmapTop;
+                metrics.pixelData = storage.ownedPixelData.data();
+                UploadGlyphToAtlas(metrics, codepoint);
+                UpdateHotCache(codepoint, &metrics);
+            }
+        }
+    }
+    m_cache->StoreGlyph(std::move(storage));
+
+    return &metrics;
+}
+
+void MSDFFont::UpdateHotCache(uint32_t codepoint, const GlyphMetrics* metrics) {
+    const uint32_t hotIdx = codepoint & 63;
+    m_hotCache[hotIdx].cp = codepoint;
+    m_hotCache[hotIdx].m = metrics;
+}
+
+const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
+    if (const GlyphMetrics* cached = FindInCache(codepoint)) return cached;
+    return LoadAndCache(codepoint);
+}
+
+MSDFFont::AtlasPage* MSDFFont::GetAtlasPage(size_t index) const {
+    if (index < m_atlasPages.size()) {
+        return m_atlasPages[index].get();
+    }
+    return nullptr;
+}
+
+bool MSDFFont::CreateAtlasPage() {
+    auto page = std::make_unique<AtlasPage>(MSDF::ATLAS_GUTTER);
+    if (!D3D::CreateTexture(&page->texture, {
+        .width = MSDF::ATLAS_SIZE,
+        .height = MSDF::ATLAS_SIZE,
+        .format = MSDF::D3DFMT,
+        .pool = D3DPOOL_MANAGED
+        })) {
+        return false;
+    }
+    m_atlasPages.push_back(std::move(page));
+    return true;
+}
+
+bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
+    if (!metrics.pixelData || metrics.width == 0 || metrics.height == 0) return true;
+
+    int16_t pageIndex = -1;
+    AtlasPage* targetPage = nullptr;
+
+    for (size_t i = 0; i < m_atlasPages.size(); ++i) {
+        AtlasPage* page = m_atlasPages[i].get();
+        if (page->nextX + metrics.width + MSDF::ATLAS_GUTTER <= MSDF::ATLAS_SIZE &&
+            page->nextY + metrics.height + MSDF::ATLAS_GUTTER <= MSDF::ATLAS_SIZE) {
+            pageIndex = static_cast<int16_t>(i);
+            targetPage = page;
+            break;
+        }
+        int nextY = page->nextY + page->rowHeight + MSDF::ATLAS_GUTTER;
+        if (nextY + metrics.height + MSDF::ATLAS_GUTTER <= MSDF::ATLAS_SIZE) {
+            page->nextX = MSDF::ATLAS_GUTTER;
+            page->nextY = nextY;
+            page->rowHeight = 0;
+            pageIndex = static_cast<int16_t>(i);
+            targetPage = page;
+            break;
+        }
+    }
+    if (pageIndex == -1) {
+        if (m_atlasPages.size() >= MSDF::MAX_ATLAS_PAGES) {
+            pageIndex = m_oldestPage;
+            targetPage = m_atlasPages[m_oldestPage].get();
+
+            for (uint32_t cp : targetPage->codepoints) {
+                uint32_t hotIdx = cp & 63;
+                if (m_hotCache[hotIdx].cp == cp) {
+                    m_hotCache[hotIdx].cp = 0xFFFFFFFF;
+                    m_hotCache[hotIdx].m = nullptr;
+                }
+ 
+                auto it = m_glyphPool.find(cp);
+                if (it != m_glyphPool.end()) {
+                    m_glyphPool.erase(it);
+                }
+            }
+            targetPage->Clear();
+
+            D3DLOCKED_RECT fullRect;
+            if (SUCCEEDED(targetPage->texture->LockRect(0, &fullRect, nullptr, 0))) {
+                memset(fullRect.pBits, 0, MSDF::ATLAS_SIZE * fullRect.Pitch);
+                targetPage->texture->UnlockRect(0);
+            }
+            m_evictionCount++;
+            m_oldestPage = (m_oldestPage + 1) % MSDF::MAX_ATLAS_PAGES;
+        }
+        else {
+            if (!CreateAtlasPage()) return false;
+            pageIndex = static_cast<int16_t>(m_atlasPages.size() - 1);
+            targetPage = m_atlasPages.back().get();
+        }
+    }
+    if (!targetPage->texture) return false;
+
+    D3DLOCKED_RECT lockedRect;
+    if (FAILED(targetPage->texture->LockRect(0, &lockedRect, nullptr, 0))) {
+        return false;
+    }
+    if (lockedRect.Pitch < metrics.width * 4) {
+        targetPage->texture->UnlockRect(0);
+        return false;
+    }
+
+    const unsigned char* src = metrics.pixelData;
+    unsigned char* dest = static_cast<unsigned char*>(lockedRect.pBits) +
+        targetPage->nextY * lockedRect.Pitch + targetPage->nextX * 4;
+    for (uint16_t y = 0; y < metrics.height; ++y) {
+        memcpy(dest, src, metrics.width * 4);
+        dest += lockedRect.Pitch;
+        src += metrics.width * 4;
+    }
+    targetPage->texture->UnlockRect(0);
+
+    float atlasSize = static_cast<float>(MSDF::ATLAS_SIZE);
+    metrics.u0 = static_cast<float>(targetPage->nextX) / atlasSize;
+    metrics.v0 = static_cast<float>(targetPage->nextY) / atlasSize;
+    metrics.u1 = static_cast<float>(targetPage->nextX + metrics.width) / atlasSize;
+    metrics.v1 = static_cast<float>(targetPage->nextY + metrics.height) / atlasSize;
+    metrics.atlasPageIndex = pageIndex;
+
+    targetPage->nextX += metrics.width + MSDF::ATLAS_GUTTER;
+    targetPage->rowHeight = std::max(targetPage->rowHeight, static_cast<int>(metrics.height));
+    targetPage->codepoints.push_back(codepoint);
+
+    return true;
+}
+
+bool MSDFFont::GenerateMSDF(std::vector<uint8_t>& outData, msdfgen::FontHandle* font, uint32_t codepoint, int sdfW, int sdfH) {
+    if (sdfW <= 0 || sdfH <= 0 || sdfW > 512 || sdfH > 512) return false;
+
+    msdfgen::Shape shape;
+    if (!msdfgen::loadGlyph(shape, font, codepoint)) return false;
+
+    if (shape.contours.empty()) {
+        outData.assign(sdfW * sdfH * 4, 0);
+        return true;
+    }
+
+    msdfgen::resolveShapeGeometry(shape);
+    msdfgen::edgeColoringInkTrap(shape, 3.0, 0);
+
+    auto bounds = shape.getBounds();
+    double shapeW = bounds.r - bounds.l;
+    double shapeH = bounds.t - bounds.b;
+    if (shapeW <= 0 || shapeH <= 0) return false;
+
+    double usableW = static_cast<double>(sdfW) - 2.0 * MSDF::SDF_SPREAD;
+    double usableH = static_cast<double>(sdfH) - 2.0 * MSDF::SDF_SPREAD;
+    if (usableW <= 0 || usableH <= 0) return false;
+
+    double scale = std::min(usableW / shapeW, usableH / shapeH);
+    msdfgen::Projection projection(
+        msdfgen::Vector2(scale, scale),
+        msdfgen::Vector2(MSDF::SDF_SPREAD / scale - bounds.l, MSDF::SDF_SPREAD / scale - bounds.b)
+    );
+
+    auto msdfBuf = MSDFPools::Float.AcquireSized(sdfW * sdfH * 3);
+    auto sdfBuf = MSDFPools::Float.AcquireSized(sdfW * sdfH);
+
+    msdfgen::BitmapRef<float, 3> msdfBitmap(msdfBuf.data(), sdfW, sdfH);
+    msdfgen::BitmapRef<float, 1> sdfBitmap(sdfBuf.data(), sdfW, sdfH);
+
+    msdfgen::MSDFGeneratorConfig config;
+    config.overlapSupport = true;
+
+    msdfgen::Range msdfRange(MSDF::SDF_SPREAD / scale);
+    msdfgen::generateMSDF(msdfBitmap, shape, projection, msdfRange, config);
+    msdfgen::SDFTransformation msdfTransform(projection, msdfRange);
+    msdfgen::distanceSignCorrection(msdfBitmap, shape, msdfTransform, msdfgen::FillRule::FILL_NONZERO);
+
+    msdfgen::Range sdfRange(MSDF::SDF_SPREAD / scale * 5.0);
+    msdfgen::generateSDF(sdfBitmap, shape, projection, sdfRange);
+    msdfgen::SDFTransformation sdfTransform(projection, sdfRange);
+    msdfgen::distanceSignCorrection(sdfBitmap, shape, sdfTransform, msdfgen::FillRule::FILL_NONZERO);
+
+    outData.resize(sdfW * sdfH * 4);
+    uint8_t* dest = outData.data();
+    const float* srcMSDF = msdfBuf.data();
+    const float* srcSDF = sdfBuf.data();
+
+    int totalPixels = sdfW * sdfH;
+    int i = 0;
+
+    // SIMD path: process 4 pixels at a time
+    const __m128 v255 = _mm_set1_ps(255.0f);
+    const __m128 v0 = _mm_set1_ps(0.0f);
+    const __m128i shuffleMask = _mm_setr_epi8(
+        0, 1, 2, 12, // Pixel 0: R0, G0, B0, A0
+        3, 4, 5, 13, // Pixel 1: R1, G1, B1, A1
+        6, 7, 8, 14, // Pixel 2: R2, G2, B2, A2
+        9, 10, 11, 15 // Pixel 3: R3, G3, B3, A3
+    );
+
+    for (; i <= totalPixels - 4; i += 4) {
+        __m128 m0 = _mm_loadu_ps(srcMSDF + i * 3);
+        __m128 m1 = _mm_loadu_ps(srcMSDF + i * 3 + 4);
+        __m128 m2 = _mm_loadu_ps(srcMSDF + i * 3 + 8);
+        __m128 s0 = _mm_loadu_ps(srcSDF + i);
+
+        m0 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m0, v255), v0), v255);
+        m1 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m1, v255), v0), v255);
+        m2 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(m2, v255), v0), v255);
+        s0 = _mm_min_ps(_mm_max_ps(_mm_mul_ps(s0, v255), v0), v255);
+
+        __m128i i0 = _mm_cvtps_epi32(m0);
+        __m128i i1 = _mm_cvtps_epi32(m1);
+        __m128i i2 = _mm_cvtps_epi32(m2);
+        __m128i is = _mm_cvtps_epi32(s0);
+
+        __m128i p01 = _mm_packus_epi32(i0, i1);
+        __m128i p2s = _mm_packus_epi32(i2, is);
+        __m128i pFull = _mm_packus_epi16(p01, p2s);
+
+        __m128i finalRGBA = _mm_shuffle_epi8(pFull, shuffleMask);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(dest + i * 4), finalRGBA);
+    }
+
+    for (; i < totalPixels; ++i) {
+        dest[i * 4 + 0] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 0] * 255.f, 0.f, 255.f));
+        dest[i * 4 + 1] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 1] * 255.f, 0.f, 255.f));
+        dest[i * 4 + 2] = static_cast<uint8_t>(std::clamp(srcMSDF[i * 3 + 2] * 255.f, 0.f, 255.f));
+        dest[i * 4 + 3] = static_cast<uint8_t>(std::clamp(srcSDF[i] * 255.f, 0.f, 255.f));
+    }
+    MSDFPools::Float.Release(std::move(msdfBuf));
+    MSDFPools::Float.Release(std::move(sdfBuf));
+
+    return true;
+}
+
+msdfgen::FontHandle* MSDFFont::CreateMSDFHandle(const FT_Byte* data, FT_Long size) {
+    return !MSDF::g_msdfFreetype ? nullptr : msdfgen::loadFontData(MSDF::g_msdfFreetype, data, size);
+}
