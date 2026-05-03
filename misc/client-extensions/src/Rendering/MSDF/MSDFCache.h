@@ -40,7 +40,7 @@ public:
     MSDFCache& operator=(MSDFCache&&) = delete;
 
 private:
-    static constexpr auto* CACHE_DIR = "Cache_AwesomeWotLK";
+    static constexpr auto* CACHE_DIR = "FontCache";
     static constexpr uint32_t CACHE_VERSION = 1;
     static constexpr uint32_t BLOCK_MAGIC = 0x4D534442;
     static constexpr uint32_t MANIFEST_MAGIC = 0x4D534D46;
