@@ -21,7 +21,6 @@ export namespace ClientExtensions {
                 + ` --config RelWithDebInfo`
                 , 'inherit');
             bpaths.client_extensions.dll_path.copy(ipaths.bin.ClientExtensions_dll)
-            bpaths.client_extensions.skia_dll_path.copy(ipaths.bin.Skia_dll)
         }
         else
         {
