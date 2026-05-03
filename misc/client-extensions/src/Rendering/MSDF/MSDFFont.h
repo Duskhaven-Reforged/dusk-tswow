@@ -59,6 +59,12 @@ private:
     std::unique_ptr<MSDFCache> m_cache;
     std::vector<std::unique_ptr<AtlasPage>> m_atlasPages;
 
+    struct HotGlyph {
+        uint32_t codepoint = 0xFFFFFFFF;
+        const GlyphMetrics* metrics = nullptr;
+    };
+    HotGlyph m_hotCache[64];
+ 
     ankerl::unordered_dense::map<uint32_t, GlyphMetrics> m_glyphPool;
 
     inline static ankerl::unordered_dense::map<FT_Face, std::unique_ptr<MSDFFont>> s_fontHandles;

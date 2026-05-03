@@ -8,6 +8,7 @@
 MSDFFont::MSDFFont(FT_Face face, const FT_Byte* fontData, FT_Long dataSize)
     : m_ftFace(face), m_msdfFont(nullptr), m_isValid(false), m_oldestPage(0), m_evictionCount(0)
 {
+    memset(m_hotCache, 0xFF, sizeof(m_hotCache));
     if (!face) return;
 
     m_msdfFont = CreateMSDFHandle(fontData, dataSize);
@@ -59,6 +60,7 @@ void MSDFFont::ClearAllCache() {
             handle->m_atlasPages.clear();
             handle->m_oldestPage = 0;
         	handle->m_evictionCount++;
+            memset(handle->m_hotCache, 0xFF, sizeof(handle->m_hotCache));
         }
     }
 }
@@ -68,14 +70,23 @@ void MSDFFont::Shutdown() {
 }
 
 const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
+    const uint32_t hotIdx = codepoint & 63;
+    if (m_hotCache[hotIdx].codepoint == codepoint) return m_hotCache[hotIdx].metrics;
+ 
     auto pit = m_glyphPool.find(codepoint);
-    if (pit != m_glyphPool.end()) return &pit->second;
+    if (pit != m_glyphPool.end()) {
+        m_hotCache[hotIdx].codepoint = codepoint;
+        m_hotCache[hotIdx].metrics = &pit->second;
+        return &pit->second;
+    }
 
     auto [it, inserted] = m_glyphPool.try_emplace(codepoint);
     GlyphMetrics& metrics = it->second;
 
     if (m_cache->TryLoadGlyph(codepoint, metrics)) {
         UploadGlyphToAtlas(metrics, codepoint);
+        m_hotCache[hotIdx].codepoint = codepoint;
+        m_hotCache[hotIdx].metrics = &metrics;
         return &metrics;
     }
 
@@ -119,6 +130,8 @@ const GlyphMetrics* MSDFFont::GetGlyph(uint32_t codepoint) {
                 metrics.bitmapTop = storage.bitmapTop;
                 metrics.pixelData = storage.ownedPixelData.data();
                 UploadGlyphToAtlas(metrics, codepoint);
+                m_hotCache[hotIdx].codepoint = codepoint;
+                m_hotCache[hotIdx].metrics = &metrics;
             }
         }
     }
@@ -178,6 +191,12 @@ bool MSDFFont::UploadGlyphToAtlas(GlyphMetrics& metrics, uint32_t codepoint) {
             targetPage = m_atlasPages[m_oldestPage].get();
 
             for (uint32_t cp : targetPage->codepoints) {
+                uint32_t hotIdx = cp & 63;
+                if (m_hotCache[hotIdx].codepoint == cp) {
+                    m_hotCache[hotIdx].codepoint = 0xFFFFFFFF;
+                    m_hotCache[hotIdx].metrics = nullptr;
+                }
+ 
                 auto it = m_glyphPool.find(cp);
                 if (it != m_glyphPool.end()) {
                     m_glyphPool.erase(it);
