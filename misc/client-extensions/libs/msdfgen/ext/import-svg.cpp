@@ -530,7 +530,6 @@ bool loadSvgShape(Shape &output, const char *filename, int pathIndex, Vector2 *d
     return buildShapeFromSvgPath(output, xmlDecode(pathAggregator.pathDefs[pathIndex].start, pathAggregator.pathDefs[pathIndex].end).c_str(), ENDPOINT_SNAP_RANGE_PROPORTION*dims.length());
 }
 
-#endif
 
 #ifdef MSDFGEN_USE_TINYXML2
 int loadSvgShape(Shape &output, Shape::Bounds &viewBox, const char *filename) {
@@ -597,11 +596,6 @@ int loadSvgShape(Shape &output, Shape::Bounds &viewBox, const char *filename) {
         return SVG_IMPORT_FAILURE;
     return parseSvgShape(output, viewBox, svgData.empty() ? NULL : &svgData[0], svgData.size());
 }
-
-#endif
-
-#endif
-
 }
-
+#endif
 #endif
