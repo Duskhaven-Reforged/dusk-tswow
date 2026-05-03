@@ -11,40 +11,32 @@
     "configurePresets": [
         {
             "name": "win64",
-            "displayName": "Windows x64 default config (static, vcpkg, Skia)",
-            "inherits": [ "win64-base", "vcpkg", "skia" ]
+            "displayName": "Windows x64 default config (static, vcpkg)",
+            "inherits": [ "win64-base", "vcpkg" ]
         }, {
             "name": "win32",
-            "displayName": "Windows x86 default config (static, vcpkg, Skia)",
-            "inherits": [ "win32-base", "vcpkg", "skia" ]
+            "displayName": "Windows x86 default config (static, vcpkg)",
+            "inherits": [ "win32-base", "vcpkg" ]
         }, {
             "name": "win64-omp",
-            "displayName": "Windows x64 config with OpenMP (static, vcpkg, Skia)",
-            "inherits": [ "win64-base", "openmp", "vcpkg", "skia" ],
+            "displayName": "Windows x64 config with OpenMP (static, vcpkg)",
+            "inherits": [ "win64-base", "openmp", "vcpkg" ],
             "binaryDir": "${sourceDir}/build/win64-omp"
         }, {
             "name": "win32-omp",
-            "displayName": "Windows x86 config with OpenMP (static, vcpkg, Skia)",
-            "inherits": [ "win32-base", "openmp", "vcpkg", "skia" ],
+            "displayName": "Windows x86 config with OpenMP (static, vcpkg)",
+            "inherits": [ "win32-base", "openmp", "vcpkg" ],
             "binaryDir": "${sourceDir}/build/win32-omp"
         }, {
             "name": "win64-dynamic",
-            "displayName": "Windows x64 dynamic config (vcpkg, Skia)",
-            "inherits": [ "win64-base", "vcpkg", "skia", "dynamic-runtime", "dynamic-lib" ],
+            "displayName": "Windows x64 dynamic config (vcpkg)",
+            "inherits": [ "win64-base", "vcpkg", "dynamic-runtime", "dynamic-lib" ],
             "binaryDir": "${sourceDir}/build/win64-dynamic"
         }, {
             "name": "win32-dynamic",
-            "displayName": "Windows x86 dynamic config (vcpkg, Skia)",
-            "inherits": [ "win32-base", "vcpkg", "skia", "dynamic-runtime", "dynamic-lib" ],
+            "displayName": "Windows x86 dynamic config (vcpkg)",
+            "inherits": [ "win32-base", "vcpkg", "dynamic-runtime", "dynamic-lib" ],
             "binaryDir": "${sourceDir}/build/win32-dynamic"
-        }, {
-            "name": "win64-no-skia",
-            "displayName": "Windows x64 config without Skia (static, vcpkg)",
-            "inherits": [ "win64-base", "vcpkg", "no-skia" ]
-        }, {
-            "name": "win32-no-skia",
-            "displayName": "Windows x86 config without Skia (static, vcpkg)",
-            "inherits": [ "win32-base", "vcpkg", "no-skia" ]
         }, {
             "name": "win64-core",
             "displayName": "Windows x64 core-only config (static)",
@@ -59,20 +51,20 @@
 
         {
             "name": "osx-vcpkg-rel",
-            "displayName": "Mac OS release config with vcpkg and Skia (static)",
-            "inherits": [ "osx-rel-base", "vcpkg", "skia" ]
+            "displayName": "Mac OS release config with vcpkg (static)",
+            "inherits": [ "osx-rel-base", "vcpkg" ]
         }, {
             "name": "osx-vcpkg-dbg",
-            "displayName": "Mac OS debug config with vcpkg and Skia (static)",
-            "inherits": [ "osx-dbg-base", "vcpkg", "skia" ]
+            "displayName": "Mac OS debug config with vcpkg (static)",
+            "inherits": [ "osx-dbg-base", "vcpkg" ]
         }, {
-            "name": "osx-no-skia-rel",
-            "displayName": "Mac OS release config with system libraries and no Skia (static, install)",
-            "inherits": [ "osx-rel-base", "no-vcpkg", "no-skia", "install" ]
+            "name": "osx-system-rel",
+            "displayName": "Mac OS release config with system libraries (static, install)",
+            "inherits": [ "osx-rel-base", "no-vcpkg", "install" ]
         }, {
-            "name": "osx-no-skia-dbg",
-            "displayName": "Mac OS debug config with system libraries and no Skia (static, install)",
-            "inherits": [ "osx-dbg-base", "no-vcpkg", "no-skia", "install" ]
+            "name": "osx-system-dbg",
+            "displayName": "Mac OS debug config with system libraries (static, install)",
+            "inherits": [ "osx-dbg-base", "no-vcpkg", "install" ]
         }, {
             "name": "osx-core-rel",
             "displayName": "Mac OS release core-only config (static, install)",
@@ -87,20 +79,20 @@
 
         {
             "name": "linux-vcpkg-rel",
-            "displayName": "Linux release config with vcpkg and Skia (static)",
-            "inherits": [ "linux-rel-base", "vcpkg", "skia" ]
+            "displayName": "Linux release config with vcpkg (static)",
+            "inherits": [ "linux-rel-base", "vcpkg" ]
         }, {
             "name": "linux-vcpkg-dbg",
-            "displayName": "Linux debug config with vcpkg and Skia (static)",
-            "inherits": [ "linux-dbg-base", "vcpkg", "skia" ]
+            "displayName": "Linux debug config with vcpkg (static)",
+            "inherits": [ "linux-dbg-base", "vcpkg" ]
         }, {
-            "name": "linux-no-skia-rel",
-            "displayName": "Linux release config with system libraries and no Skia (static, install)",
-            "inherits": [ "linux-rel-base", "no-vcpkg", "no-skia", "install" ]
+            "name": "linux-system-rel",
+            "displayName": "Linux release config with system libraries (static, install)",
+            "inherits": [ "linux-rel-base", "no-vcpkg", "install" ]
         }, {
-            "name": "linux-no-skia-dbg",
-            "displayName": "Linux debug config with system libraries and no Skia (static, install)",
-            "inherits": [ "linux-dbg-base", "no-vcpkg", "no-skia", "install" ]
+            "name": "linux-system-dbg",
+            "displayName": "Linux debug config with system libraries (static, install)",
+            "inherits": [ "linux-dbg-base", "no-vcpkg", "install" ]
         }, {
             "name": "linux-core-rel",
             "displayName": "Linux release core-only config (static, install)",
@@ -163,22 +155,6 @@
             "configurePreset": "win32-dynamic",
             "configuration": "Debug"
         }, {
-            "name": "win64-no-skia-rel",
-            "configurePreset": "win64-no-skia",
-            "configuration": "Release"
-        }, {
-            "name": "win64-no-skia-dbg",
-            "configurePreset": "win64-no-skia",
-            "configuration": "Debug"
-        }, {
-            "name": "win32-no-skia-rel",
-            "configurePreset": "win32-no-skia",
-            "configuration": "Release"
-        }, {
-            "name": "win32-no-skia-dbg",
-            "configurePreset": "win32-no-skia",
-            "configuration": "Debug"
-        }, {
             "name": "win64-core-rel",
             "configurePreset": "win64-core",
             "configuration": "Release"
@@ -203,11 +179,11 @@
             "name": "osx-vcpkg-dbg",
             "configurePreset": "osx-vcpkg-dbg"
         }, {
-            "name": "osx-no-skia-rel",
-            "configurePreset": "osx-no-skia-rel"
+            "name": "osx-system-rel",
+            "configurePreset": "osx-system-rel"
         }, {
-            "name": "osx-no-skia-dbg",
-            "configurePreset": "osx-no-skia-dbg"
+            "name": "osx-system-dbg",
+            "configurePreset": "osx-system-dbg"
         }, {
             "name": "osx-core-rel",
             "configurePreset": "osx-core-rel"
@@ -223,11 +199,11 @@
             "name": "linux-vcpkg-dbg",
             "configurePreset": "linux-vcpkg-dbg"
         }, {
-            "name": "linux-no-skia-rel",
-            "configurePreset": "linux-no-skia-rel"
+            "name": "linux-system-rel",
+            "configurePreset": "linux-system-rel"
         }, {
-            "name": "linux-no-skia-dbg",
-            "configurePreset": "linux-no-skia-dbg"
+            "name": "linux-system-dbg",
+            "configurePreset": "linux-system-dbg"
         }, {
             "name": "linux-core-rel",
             "configurePreset": "linux-core-rel"

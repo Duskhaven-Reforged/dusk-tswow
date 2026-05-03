@@ -9,7 +9,7 @@
  * The extension module provides ways to easily load input and save output using popular formats.
  *
  * Third party dependencies in extension module:
- * - Skia by Google
+ * - Direct2D (Windows only)
  *   (to resolve self-intersecting paths)
  * - FreeType 2
  *   (to load input font files)

@@ -1,148 +1,158 @@
 #include "resolve-shape-geometry.h"
 
-#ifdef MSDFGEN_USE_SKIA
-
-#include <core/SkPath.h>
-#include <core/SkPathBuilder.h>  // Added for SkPathBuilder
-#include <pathops/SkPathOps.h>
+#include <windows.h>
+#include <d2d1.h>
+#include <wrl/client.h>
 
 #include "../core/Contour.h"
 #include "../core/Vector2.hpp"
-#include "../core/arithmetics.hpp"
 #include "../core/edge-segments.h"
+
+using Microsoft::WRL::ComPtr;
 
 namespace msdfgen {
 
-    SkPoint pointToSkiaPoint(Point2 p) {
-        return SkPoint::Make((SkScalar)p.x, (SkScalar)p.y);
+class ShapeSink : public ID2D1SimplifiedGeometrySink {
+public:
+    ShapeSink(Shape& shape) : shape(shape), currentContour(nullptr), currentPoint{0, 0} {}
+
+    // IUnknown methods
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == __uuidof(ID2D1SimplifiedGeometrySink) || riid == __uuidof(IUnknown)) {
+            *ppv = static_cast<ID2D1SimplifiedGeometrySink*>(this);
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+    STDMETHOD_(ULONG, AddRef)() override { return 1; }
+    STDMETHOD_(ULONG, Release)() override { return 1; }
+
+    // ID2D1SimplifiedGeometrySink methods
+    STDMETHOD_(void, SetFillMode)(D2D1_FILL_MODE fillMode) override {}
+    STDMETHOD_(void, SetSegmentFlags)(D2D1_PATH_SEGMENT vertexFlags) override {}
+
+    STDMETHOD_(void, BeginFigure)(D2D1_POINT_2F startPoint, D2D1_FIGURE_BEGIN figureBegin) override {
+        currentContour = &shape.addContour();
+        currentPoint = startPoint;
     }
 
-    Point2 pointFromSkiaPoint(const SkPoint p) {
-        return Point2((double)p.x(), (double)p.y());
+    STDMETHOD_(void, AddLines)(const D2D1_POINT_2F* points, UINT32 pointsCount) override {
+        for (UINT32 i = 0; i < pointsCount; ++i) {
+            currentContour->addEdge(EdgeHolder(
+                Point2(currentPoint.x, currentPoint.y),
+                Point2(points[i].x, points[i].y)
+            ));
+            currentPoint = points[i];
+        }
     }
 
-    void shapeToSkiaPath(SkPath& skPath, const Shape& shape) {
-        SkPathBuilder builder;  // Use Builder to match your library symbols
+    STDMETHOD_(void, AddBeziers)(const D2D1_BEZIER_SEGMENT* beziers, UINT32 beziersCount) override {
+        for (UINT32 i = 0; i < beziersCount; ++i) {
+            currentContour->addEdge(EdgeHolder(
+                Point2(currentPoint.x, currentPoint.y),
+                Point2(beziers[i].point1.x, beziers[i].point1.y),
+                Point2(beziers[i].point2.x, beziers[i].point2.y),
+                Point2(beziers[i].point3.x, beziers[i].point3.y)
+            ));
+            currentPoint = beziers[i].point3;
+        }
+    }
 
-        for (std::vector<Contour>::const_iterator contour = shape.contours.begin();
-            contour != shape.contours.end(); ++contour) {
-            if (!contour->edges.empty()) {
-                const EdgeSegment* edge = contour->edges.back();
-                builder.moveTo(pointToSkiaPoint(*edge->controlPoints()));
+    STDMETHOD_(void, EndFigure)(D2D1_FIGURE_END figureEnd) override {
+        // Direct2D's Simplify can sometimes produce empty contours or open ones
+        if (currentContour && currentContour->edges.empty()) {
+            shape.contours.pop_back();
+        }
+    }
 
-                for (std::vector<EdgeHolder>::const_iterator nextEdge =
-                    contour->edges.begin();
-                    nextEdge != contour->edges.end(); edge = *nextEdge++) {
-                    const Point2* p = edge->controlPoints();
-                    switch (edge->type()) {
-                    case (int)LinearSegment::EDGE_TYPE:
-                        builder.lineTo(pointToSkiaPoint(p[1]));
-                        break;
-                    case (int)QuadraticSegment::EDGE_TYPE:
-                        builder.quadTo(pointToSkiaPoint(p[1]), pointToSkiaPoint(p[2]));
-                        break;
-                    case (int)CubicSegment::EDGE_TYPE:
-                        builder.cubicTo(pointToSkiaPoint(p[1]), pointToSkiaPoint(p[2]),
-                            pointToSkiaPoint(p[3]));
-                        break;
-                    }
-                }
+    STDMETHODIMP Close() override { return S_OK; }
+
+private:
+    Shape& shape;
+    Contour* currentContour;
+    D2D1_POINT_2F currentPoint;
+};
+
+bool resolveShapeGeometry(Shape& shape) {
+    static ComPtr<ID2D1Factory> factory;
+    if (!factory) {
+        if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf()))) {
+            return false;
+        }
+    }
+
+    ComPtr<ID2D1PathGeometry> pathGeometry;
+    if (FAILED(factory->CreatePathGeometry(&pathGeometry))) {
+        return false;
+    }
+
+    ComPtr<ID2D1GeometrySink> sink;
+    if (FAILED(pathGeometry->Open(&sink))) {
+        return false;
+    }
+
+    sink->SetFillMode(D2D1_FILL_MODE_WINDING);
+
+    for (const auto& contour : shape.contours) {
+        if (contour.edges.empty()) continue;
+
+        Point2 p = contour.edges.back()->point(1);
+        sink->BeginFigure(D2D1::Point2F((float)p.x, (float)p.y), D2D1_FIGURE_BEGIN_FILLED);
+
+        for (const auto& edge : contour.edges) {
+            const Point2* cp = edge->controlPoints();
+            switch (edge->type()) {
+            case (int)LinearSegment::EDGE_TYPE:
+                sink->AddLine(D2D1::Point2F((float)cp[1].x, (float)cp[1].y));
+                break;
+            case (int)QuadraticSegment::EDGE_TYPE:
+                sink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(
+                    D2D1::Point2F((float)cp[1].x, (float)cp[1].y),
+                    D2D1::Point2F((float)cp[2].x, (float)cp[2].y)
+                ));
+                break;
+            case (int)CubicSegment::EDGE_TYPE:
+                sink->AddBezier(D2D1::BezierSegment(
+                    D2D1::Point2F((float)cp[1].x, (float)cp[1].y),
+                    D2D1::Point2F((float)cp[2].x, (float)cp[2].y),
+                    D2D1::Point2F((float)cp[3].x, (float)cp[3].y)
+                ));
+                break;
             }
         }
-        skPath = builder.detach();  // Convert builder content back to SkPath
+        sink->EndFigure(D2D1_FIGURE_END_CLOSED);
     }
 
-    void shapeFromSkiaPath(Shape& shape, const SkPath& skPath) {
-        shape.contours.clear();
-        Contour* contour = &shape.addContour();
-
-        // SkPath::Iter remains the same for reading
-        SkPath::Iter pathIterator(skPath, true);
-        SkPoint edgePoints[4];
-        for (SkPath::Verb op;
-            (op = pathIterator.next(edgePoints)) != SkPath::kDone_Verb;) {
-            switch (op) {
-            case SkPath::kMove_Verb:
-                if (!contour->edges.empty()) contour = &shape.addContour();
-                break;
-            case SkPath::kLine_Verb:
-                contour->addEdge(EdgeHolder(pointFromSkiaPoint(edgePoints[0]),
-                    pointFromSkiaPoint(edgePoints[1])));
-                break;
-            case SkPath::kQuad_Verb:
-                contour->addEdge(EdgeHolder(pointFromSkiaPoint(edgePoints[0]),
-                    pointFromSkiaPoint(edgePoints[1]),
-                    pointFromSkiaPoint(edgePoints[2])));
-                break;
-            case SkPath::kCubic_Verb:
-                contour->addEdge(EdgeHolder(pointFromSkiaPoint(edgePoints[0]),
-                    pointFromSkiaPoint(edgePoints[1]),
-                    pointFromSkiaPoint(edgePoints[2]),
-                    pointFromSkiaPoint(edgePoints[3])));
-                break;
-            case SkPath::kConic_Verb: {
-                SkPoint quadPoints[5];
-                SkPath::ConvertConicToQuads(edgePoints[0], edgePoints[1], edgePoints[2],
-                    pathIterator.conicWeight(), quadPoints, 1);
-                contour->addEdge(EdgeHolder(pointFromSkiaPoint(quadPoints[0]),
-                    pointFromSkiaPoint(quadPoints[1]),
-                    pointFromSkiaPoint(quadPoints[2])));
-                contour->addEdge(EdgeHolder(pointFromSkiaPoint(quadPoints[2]),
-                    pointFromSkiaPoint(quadPoints[3]),
-                    pointFromSkiaPoint(quadPoints[4])));
-            } break;
-            case SkPath::kClose_Verb:
-            case SkPath::kDone_Verb:
-                break;
-            }
-        }
-        if (contour->edges.empty()) shape.contours.pop_back();
+    if (FAILED(sink->Close())) {
+        return false;
     }
 
-    static void pruneCrossedQuadrilaterals(Shape& shape) {
-        int n = 0;
-        for (int i = 0; i < (int)shape.contours.size(); ++i) {
-            Contour& contour = shape.contours[i];
-            if (contour.edges.size() == 4 &&
-                contour.edges[0]->type() == (int)LinearSegment::EDGE_TYPE &&
-                contour.edges[1]->type() == (int)LinearSegment::EDGE_TYPE &&
-                contour.edges[2]->type() == (int)LinearSegment::EDGE_TYPE &&
-                contour.edges[3]->type() == (int)LinearSegment::EDGE_TYPE &&
-                (sign(crossProduct(contour.edges[0]->direction(1),
-                    contour.edges[1]->direction(0))) +
-                    sign(crossProduct(contour.edges[1]->direction(1),
-                        contour.edges[2]->direction(0))) +
-                    sign(crossProduct(contour.edges[2]->direction(1),
-                        contour.edges[3]->direction(0))) +
-                    sign(crossProduct(contour.edges[3]->direction(1),
-                        contour.edges[0]->direction(0)))) == 0) {
-                contour.edges.clear();
-            }
-            else {
-                if (i != n) {
-#ifdef MSDFGEN_USE_CPP11
-                    shape.contours[n] = (Contour&&)contour;
-#else
-                    shape.contours[n] = contour;
-#endif
-                }
-                ++n;
-            }
-        }
-        shape.contours.resize(n);
+    ComPtr<ID2D1PathGeometry> simplifiedGeometry;
+    if (FAILED(factory->CreatePathGeometry(&simplifiedGeometry))) {
+        return false;
     }
 
-    bool resolveShapeGeometry(Shape& shape) {
-        SkPath skPath;
-        shape.normalize();
-        shapeToSkiaPath(skPath, shape);
-        if (!Simplify(skPath, &skPath)) return false;
-        shapeFromSkiaPath(shape, skPath);
-        pruneCrossedQuadrilaterals(shape);
+    ComPtr<ID2D1GeometrySink> simplifiedSink;
+    if (FAILED(simplifiedGeometry->Open(&simplifiedSink))) {
+        return false;
+    }
+
+    if (FAILED(pathGeometry->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES, nullptr, simplifiedSink.Get()))) {
+        return false;
+    }
+    simplifiedSink->Close();
+
+    // Now read back from simplifiedGeometry
+    Shape result;
+    ShapeSink shapeSink(result);
+    if (SUCCEEDED(simplifiedGeometry->Simplify(D2D1_GEOMETRY_SIMPLIFICATION_OPTION_CUBICS_AND_LINES, nullptr, &shapeSink))) {
+        shape = (Shape&&)result;
         shape.orientContours();
         return true;
     }
 
-}  // namespace msdfgen
+    return false;
+}
 
-#endif
+} // namespace msdfgen

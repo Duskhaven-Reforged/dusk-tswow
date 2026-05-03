@@ -339,18 +339,12 @@ static const char *writeOutput(const BitmapConstRef<float, N> &bitmap, const cha
 #elif !defined(MSDFGEN_EXTENSIONS)
     #define TITLE_SUFFIX     " - core only"
     #define SUFFIX_UNDERLINE "------------"
-#elif defined(MSDFGEN_USE_SKIA) && defined(MSDFGEN_USE_OPENMP)
-    #define TITLE_SUFFIX     " with Skia & OpenMP"
-    #define SUFFIX_UNDERLINE "-------------------"
-#elif defined(MSDFGEN_USE_SKIA)
-    #define TITLE_SUFFIX     " with Skia"
-    #define SUFFIX_UNDERLINE "----------"
 #elif defined(MSDFGEN_USE_OPENMP)
-    #define TITLE_SUFFIX     " with OpenMP"
-    #define SUFFIX_UNDERLINE "------------"
+    #define TITLE_SUFFIX     " with Direct2D & OpenMP"
+    #define SUFFIX_UNDERLINE "-----------------------"
 #else
-    #define TITLE_SUFFIX
-    #define SUFFIX_UNDERLINE
+    #define TITLE_SUFFIX     " with Direct2D"
+    #define SUFFIX_UNDERLINE "--------------"
 #endif
 
 static const char *const versionText =
@@ -447,21 +441,8 @@ static const char *const helpText =
     "  -noemnormalize\n"
         "\tRaw integer font glyph coordinates will be used. Without this option, legacy scaling will be applied.\n"
 #endif
-#ifdef MSDFGEN_USE_SKIA
     "  -nopreprocess\n"
         "\tDisables path preprocessing which resolves self-intersections and overlapping contours.\n"
-#else
-    "  -nooverlap\n"
-        "\tDisables resolution of overlapping contours.\n"
-    "  -noscanline\n"
-        "\tDisables the scanline pass, which corrects the distance field's signs according to the selected fill rule.\n"
-#endif
-    "  -o <filename>\n"
-        "\tSets the output file name. The default value is \"output." DEFAULT_IMAGE_EXTENSION "\".\n"
-#ifdef MSDFGEN_USE_SKIA
-    "  -overlap\n"
-        "\tSwitches to distance field generator with support for overlapping contours.\n"
-#endif
     "  -printmetrics\n"
         "\tPrints relevant metrics of the shape to the standard output.\n"
     "  -pxrange <range>\n"
@@ -472,10 +453,8 @@ static const char *const helpText =
         "\tGenerates the distance field as if the shape's vertices were in reverse order.\n"
     "  -scale <scale>\n"
         "\tSets the scale used to convert shape units to pixels.\n"
-#ifdef MSDFGEN_USE_SKIA
     "  -scanline\n"
         "\tPerforms an additional scanline pass to fix the signs of the distances.\n"
-#endif
     "  -seed <n>\n"
         "\tSets the random seed for edge coloring heuristic.\n"
     "  -stdout\n"
@@ -545,13 +524,7 @@ int main(int argc, const char *const *argv) {
         NO_PREPROCESS,
         WINDING_PREPROCESS,
         FULL_PREPROCESS
-    } geometryPreproc = (
-        #ifdef MSDFGEN_USE_SKIA
-            FULL_PREPROCESS
-        #else
-            NO_PREPROCESS
-        #endif
-    );
+    } geometryPreproc = FULL_PREPROCESS;
     bool legacyMode = false;
     MSDFGeneratorConfig generatorConfig;
     generatorConfig.overlapSupport = geometryPreproc == NO_PREPROCESS;
@@ -1104,16 +1077,12 @@ int main(int argc, const char *const *argv) {
             shape.orientContours();
             break;
         case FULL_PREPROCESS:
-            #ifdef MSDFGEN_USE_SKIA
-                if (!resolveShapeGeometry(shape))
-                    fputs("Shape geometry preprocessing failed, skipping.\n", stderr);
-                else if (skipColoring) {
-                    skipColoring = false;
-                    fputs("Note: Input shape coloring won't be preserved due to geometry preprocessing.\n", stderr);
-                }
-            #else
-                ABORT("Shape geometry preprocessing (-preprocess) is not available in this version because the Skia library is not present.");
-            #endif
+            if (!resolveShapeGeometry(shape))
+                fputs("Shape geometry preprocessing failed, skipping.\n", stderr);
+            else if (skipColoring) {
+                skipColoring = false;
+                fputs("Note: Input shape coloring won't be preserved due to geometry preprocessing.\n", stderr);
+            }
             break;
     }
     shape.normalize();

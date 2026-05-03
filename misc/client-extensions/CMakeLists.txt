@@ -18,7 +18,6 @@ set(LUA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/lua-5.1")
 set(CUSTOM_PACKET_DIR "${CMAKE_CURRENT_SOURCE_DIR}/CustomPackets")
 set(FREETYPE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/freetype-2.14.1")
 set(MSDFGEN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/msdfgen")
-set(SKIA_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/skia")
 set(UNORDERED_DENSE_DEST_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/unordered_dense")
 
 file(GLOB_RECURSE Detours_sources CONFIGURE_DEPENDS
@@ -68,7 +67,6 @@ set(MSDFGEN_DISABLE_PNG ON CACHE BOOL "" FORCE)
 set(MSDFGEN_INSTALL OFF CACHE BOOL "" FORCE)
 set(MSDFGEN_BUILD_STANDALONE OFF CACHE BOOL "" FORCE)
 set(MSDFGEN_USE_VCPKG OFF CACHE BOOL "" FORCE)
-set(MSDFGEN_USE_SKIA ON CACHE BOOL "" FORCE)
 set(MSDFGEN_DYNAMIC_RUNTIME OFF CACHE BOOL "" FORCE)
 add_subdirectory("${MSDFGEN_SOURCE_DIR}" EXCLUDE_FROM_ALL)
 foreach(_msdf_target IN ITEMS msdfgen-core msdfgen-ext freetype)
@@ -163,7 +161,7 @@ target_link_libraries(ClientExtensions PRIVATE
     d3d9
     d3dcompiler
     onecore
-    "${SKIA_SOURCE_DIR}/skia.lib"
+    d2d1
     ankerl::unordered_dense
 )
 
@@ -179,7 +177,6 @@ target_include_directories(ClientExtensions PUBLIC
     ${FREETYPE_SOURCE_DIR}/include
     ${MSDFGEN_SOURCE_DIR}
     ${CMAKE_BINARY_DIR}/libs/msdfgen
-    ${SKIA_SOURCE_DIR}/include
     ${UNORDERED_DENSE_DEST_DIR}/include
 )
 
@@ -194,21 +191,12 @@ if(LUA_LOGGING)
 endif()
 
 set(CLIENT_PATH "" CACHE PATH "Path to your wow client")
-    add_custom_command(
-        TARGET ClientExtensions POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${SKIA_SOURCE_DIR}/skia.dll"
-        $<TARGET_FILE_DIR:ClientExtensions>
-    )
     if(NOT CLIENT_PATH STREQUAL "")
 
     add_custom_command(
         TARGET ClientExtensions POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:ClientExtensions>
-        ${CLIENT_PATH}
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${SKIA_SOURCE_DIR}/skia.dll"
         ${CLIENT_PATH}
     )
     message("ClientExtensions.dll will be written to ${CLIENT_PATH} on build")

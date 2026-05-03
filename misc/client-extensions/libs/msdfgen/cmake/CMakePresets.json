@@ -92,8 +92,7 @@
             "hidden": true,
             "cacheVariables": {
                 "MSDFGEN_CORE_ONLY": "ON",
-                "MSDFGEN_USE_VCPKG": "OFF",
-                "MSDFGEN_USE_SKIA": "OFF"
+                "MSDFGEN_USE_VCPKG": "OFF"
             }
         }, {
             "name": "vcpkg",
@@ -115,20 +114,6 @@
             "hidden": true,
             "cacheVariables": {
                 "MSDFGEN_USE_OPENMP": "ON"
-            }
-        }, {
-            "name": "skia",
-            "displayName": "Configuration with Skia geometry preprocessing",
-            "hidden": true,
-            "cacheVariables": {
-                "MSDFGEN_USE_SKIA": "ON"
-            }
-        }, {
-            "name": "no-skia",
-            "displayName": "Configuration without Skia geometry preprocessing",
-            "hidden": true,
-            "cacheVariables": {
-                "MSDFGEN_USE_SKIA": "OFF"
             }
         }, {
             "name": "install",

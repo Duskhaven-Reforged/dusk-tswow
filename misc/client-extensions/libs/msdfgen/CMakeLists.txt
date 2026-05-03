@@ -7,7 +7,6 @@ option(MSDFGEN_BUILD_STANDALONE "Build the msdfgen standalone executable" ON)
 option(MSDFGEN_USE_VCPKG "Use vcpkg package manager to link project dependencies" OFF)
 option(MSDFGEN_USE_OPENMP "Build with OpenMP support for multithreaded code" OFF)
 option(MSDFGEN_USE_CPP11 "Build with C++11 enabled" ON)
-option(MSDFGEN_USE_SKIA "Build with the Skia library" ON)
 option(MSDFGEN_DISABLE_SVG "Disable SVG support" OFF)
 option(MSDFGEN_DISABLE_PNG "Disable PNG support" OFF)
 option(MSDFGEN_INSTALL "Generate installation target" OFF)
@@ -130,22 +129,8 @@ if(NOT MSDFGEN_CORE_ONLY)
     )
     set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT msdfgen-ext)
 
-    if(MSDFGEN_USE_SKIA)
-        # Ensure threads target exists
-        set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
-        set(THREADS_PREFER_PTHREAD_FLAG TRUE)
-        find_package(Threads REQUIRED)  # <- this must be called before linking
-
-        # Manually specify Skia include and lib
-        target_include_directories(msdfgen-ext PUBLIC
-            "${CMAKE_CURRENT_SOURCE_DIR}/../skia/"
-            "${CMAKE_CURRENT_SOURCE_DIR}/../skia/include"
-        )
-        set(MSDFGEN_SKIA_LIB "${CMAKE_CURRENT_SOURCE_DIR}/../skia/skia.lib")
-
-        target_compile_features(msdfgen-ext PUBLIC cxx_std_17)
-        target_compile_definitions(msdfgen-ext PUBLIC MSDFGEN_USE_SKIA)
-        target_link_libraries(msdfgen-ext PRIVATE Threads::Threads "${MSDFGEN_SKIA_LIB}")
+    if(WIN32)
+        target_link_libraries(msdfgen-ext PRIVATE d2d1)
     endif()
 
     if(BUILD_SHARED_LIBS AND WIN32)
@@ -201,9 +186,6 @@ set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER meta)
         endif()
         if(NOT MSDFGEN_CORE_ONLY)
             set(MSDFGEN_ADDITIONAL_DEFINES "${MSDFGEN_ADDITIONAL_DEFINES}\n#define MSDFGEN_EXTENSIONS")
-            if(MSDFGEN_USE_SKIA)
-                set(MSDFGEN_ADDITIONAL_DEFINES "${MSDFGEN_ADDITIONAL_DEFINES}\n#define MSDFGEN_USE_SKIA")
-            endif()
             if(NOT MSDFGEN_DISABLE_SVG)
                 set(MSDFGEN_ADDITIONAL_DEFINES "${MSDFGEN_ADDITIONAL_DEFINES}\n#define MSDFGEN_USE_TINYXML2")
             else()
@@ -245,9 +227,6 @@ if(MSDFGEN_INSTALL)
     endif()
     if(NOT MSDFGEN_CORE_ONLY)
         set(MSDFGEN_ADDITIONAL_DEFINES "${MSDFGEN_ADDITIONAL_DEFINES}\n#define MSDFGEN_EXTENSIONS")
-        if(MSDFGEN_USE_SKIA)
-            set(MSDFGEN_ADDITIONAL_DEFINES "${MSDFGEN_ADDITIONAL_DEFINES}\n#define MSDFGEN_USE_SKIA")
-        endif()
         if(NOT MSDFGEN_DISABLE_SVG)
             set(MSDFGEN_ADDITIONAL_DEFINES "${MSDFGEN_ADDITIONAL_DEFINES}\n#define MSDFGEN_USE_TINYXML2")
         else()

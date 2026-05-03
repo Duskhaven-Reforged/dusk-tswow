@@ -24,7 +24,7 @@ bool buildShapeFromSvgPath(Shape &shape, const char *pathDef, double endpointSna
 /// Reads a single <path> element found in the specified SVG file and converts it to output Shape
 bool loadSvgShape(Shape &output, const char *filename, int pathIndex = 0, Vector2 *dimensions = NULL);
 
-/// New version - if Skia is available, reads the entire geometry of the SVG file into the output Shape, otherwise may only read one path, returns SVG import flags
+/// Reads the entire geometry of the SVG file into the output Shape, returns SVG import flags
 int loadSvgShape(Shape &output, Shape::Bounds &viewBox, const char *filename);
 
 }

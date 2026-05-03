@@ -28,7 +28,7 @@ Those are exposed by the [msdfgen-ext.h](msdfgen-ext.h) header. This module uses
 [FreeType](https://freetype.org/),
 [TinyXML2](https://www.grinninglizard.com/tinyxml2/),
 [libpng](http://www.libpng.org/pub/png/libpng.html),
-and (optionally) [Skia](https://skia.org/).
+and (optionally) [Direct2D](https://learn.microsoft.com/en-us/windows/win32/direct2d/direct2d-portal) (Windows only).
 
 Additionally, there is the [main.cpp](main.cpp), which wraps the functionality into
 a comprehensive standalone console program. To start using the program immediately,

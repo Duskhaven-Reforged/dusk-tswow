@@ -4,7 +4,6 @@
     "version": "1.12.1",
     "default-features": [
         "extensions",
-        "geometry-preprocessing",
         "standalone"
     ],
     "features": {
@@ -18,18 +17,6 @@
                 "tinyxml2",
                 "libpng"
             ]
-        },
-        "geometry-preprocessing": {
-            "description": "Preprocessing of non-compliant vector geometry via the Skia library",
-            "dependencies": [ {
-                "name": "msdfgen",
-                "default-features": false,
-                "features": [ "extensions" ]
-            }, {
-                "name": "skia",
-                "default-features": false,
-                "version>=": "0.36.0#3"
-            } ]
         },
         "standalone": {
             "description": "Build a command line utility that wraps the library's functionality"
