@@ -48,6 +48,11 @@ namespace {
     int s_msdfMode = 1;
     bool s_freeTypeInitHooked = false;
 	std::vector<uint8_t> s_prefetchPayload;
+ 
+    float s_lastControlFlag[4] = { -1.0f, -1.0f, -1.0f, -1.0f };
+    IDirect3DTexture9* s_lastAtlasTextures[MSDF::MAX_ATLAS_PAGES] = { nullptr };
+    MSDFFont* s_lastFontHandle = nullptr;
+
 
     void __cdecl PrefetchCodepoints(CGxString* pThis) {
         if (s_prefetchPayload.empty()) return;
@@ -175,19 +180,27 @@ namespace {
         IDirect3DDevice9* device = D3D::GetDevice();
         if (!device) return;
 
-        for (uint32_t pageIdx = 0; pageIdx < fontHandle->GetAtlasPageCount(); ++pageIdx) {
-            auto* atlasTexture = fontHandle->GetAtlasPage(pageIdx);
-            if (atlasTexture && atlasTexture->texture) {
-                uint32_t slot = (/* max d3d9 tex slots */ 15 - MSDF::MAX_ATLAS_PAGES + 1) + pageIdx;
-                device->SetTexture(slot, atlasTexture->texture);
-                device->SetSamplerState(slot, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
-                device->SetSamplerState(slot, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-                device->SetSamplerState(slot, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-                device->SetSamplerState(slot, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
-                device->SetSamplerState(slot, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+        if (s_lastFontHandle != fontHandle) {
+            for (uint32_t pageIdx = 0; pageIdx < fontHandle->GetAtlasPageCount(); ++pageIdx) {
+                auto* atlasTexture = fontHandle->GetAtlasPage(pageIdx);
+                IDirect3DTexture9* tex = atlasTexture ? atlasTexture->texture : nullptr;
+ 
+                if (s_lastAtlasTextures[pageIdx] != tex) {
+                    uint32_t slot = (/* max d3d9 tex slots */ 15 - MSDF::MAX_ATLAS_PAGES + 1) + pageIdx;
+                    device->SetTexture(slot, tex);
+                    if (tex) {
+                        device->SetSamplerState(slot, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+                        device->SetSamplerState(slot, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+                        device->SetSamplerState(slot, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+                        device->SetSamplerState(slot, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+                        device->SetSamplerState(slot, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+                    }
+                    s_lastAtlasTextures[pageIdx] = tex;
+                }
             }
+            s_lastFontHandle = fontHandle;
         }
-
+ 
         const uint32_t flags = pThis->m_fontObj->m_atlasPages[0].m_flags;
         const bool is3d = pThis->m_flags & 0x80;
         const float controlFlag[4] = {
@@ -195,12 +208,22 @@ namespace {
             is3d ? 0.0f : ((flags & 8) ? 2.0f : ((flags & 1) ? 1.0f : 0.0f)),
             MSDF::SDF_SPREAD, MSDF::ATLAS_SIZE
         };
-        device->SetPixelShaderConstantF(MSDF::SDF_SAMPLER_SLOT, controlFlag, 1);
-        device->SetVertexShaderConstantF(MSDF::SDF_SAMPLER_SLOT, controlFlag, 1);
+ 
+        if (memcmp(s_lastControlFlag, controlFlag, sizeof(controlFlag)) != 0) {
+            device->SetPixelShaderConstantF(MSDF::SDF_SAMPLER_SLOT, controlFlag, 1);
+            device->SetVertexShaderConstantF(MSDF::SDF_SAMPLER_SLOT, controlFlag, 1);
+            memcpy(s_lastControlFlag, controlFlag, sizeof(controlFlag));
+        }
     }
 
     void __fastcall CGxuFontRenderBatchHk(CGxuFont* pThis) {
         pThis->RenderBatch();
+ 
+        // invalidate cache as other UI elements might have changed states
+        s_lastFontHandle = nullptr;
+        memset(s_lastAtlasTextures, 0, sizeof(s_lastAtlasTextures));
+        memset(s_lastControlFlag, 0xFF, sizeof(s_lastControlFlag));
+ 
         if (IDirect3DDevice9* device = D3D::GetDevice()) {
             // reset since font PS also handles UI elements
             constexpr float resetControl[4] = { 0, 0, 0, 0 };
