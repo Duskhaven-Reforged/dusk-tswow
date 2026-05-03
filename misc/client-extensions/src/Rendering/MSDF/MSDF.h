@@ -3,6 +3,7 @@
 #undef min
 #undef max
 
+#include <ClientMacros.h>
 #include "GameClient.h"
 #include "D3D.h"
 
@@ -48,8 +49,10 @@ namespace MSDF {
     inline constexpr size_t CJK_CACHE_THRESHOLD = 10000;
 	// ----
 
-	inline CGxDevice::ShaderData*& g_FontPixelShader = *reinterpret_cast<CGxDevice::ShaderData**>(0x00C7D2CC);
-	inline CGxDevice::ShaderData*& g_FontVertexShader = *reinterpret_cast<CGxDevice::ShaderData**>(0x00C7D2D0);
+    CLIENT_ADDRESS(CGxDevice::ShaderData*, g_FontPixelShaderPtr, 0x00C7D2CC)
+    CLIENT_ADDRESS(CGxDevice::ShaderData*, g_FontVertexShaderPtr, 0x00C7D2D0)
+	inline CGxDevice::ShaderData*& g_FontPixelShader = *g_FontPixelShaderPtr;
+	inline CGxDevice::ShaderData*& g_FontVertexShader = *g_FontVertexShaderPtr;
 
 	inline FT_Library g_realFtLibrary = nullptr;
 	inline msdfgen::FreetypeHandle* g_msdfFreetype = nullptr;

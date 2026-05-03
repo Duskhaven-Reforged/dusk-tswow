@@ -1,5 +1,6 @@
 #include "Hooks.h"
 #include "D3D.h"
+#include <ClientDetours.h>
 #include <detours.h>
 #include <d3dcompiler.h>
 #include <cstdio>
@@ -223,8 +224,8 @@ namespace D3D {
             return oReset(device, pPP);
         }
 
-        int __fastcall CGxDevice__DeviceCreateHk(void* pThis, void* edx, IDirect3DDevice9* dev, int pCreateInfo) {
-            const int result = CGxDevice::DeviceCreateFn(pThis, dev, pCreateInfo);
+        CLIENT_DETOUR_THISCALL(CGxDevice__DeviceCreate_MSDF, 0x00682CB0, int, (IDirect3DDevice9* dev, int pCreateInfo)) {
+            const int result = CGxDevice__DeviceCreate_MSDF(self, dev, pCreateInfo);
             if (result) {
                 if (IDirect3DDevice9* device = GetDevice()) {
                     __try {
@@ -294,38 +295,38 @@ namespace D3D {
             return result;
         }
 
-        int __fastcall CGxDeviceD3d__IDestroyD3dHk(int* pThis) {
+        CLIENT_DETOUR_THISCALL_NOARGS(CGxDeviceD3d__IDestroyD3d_MSDF, 0x006903B0, int) {
             for (auto& cb : g_onDestroyCallbacks) cb();
-            return CGxDevice::IDestroyD3dFn(pThis);
+            return CGxDeviceD3d__IDestroyD3d_MSDF(self);
         }
 
-        int __fastcall CGxDeviceD3d__IReleaseD3dResourcesHk(void* pThis, void* edx, int res) {
+        CLIENT_DETOUR_THISCALL(CGxDeviceD3d__IReleaseD3dResources_MSDF, 0x00690150, int, (int res)) {
             CleanupManagedResources();
             for (auto& cb : g_onReleaseCallbacks) cb();
-            return CGxDevice::IReleaseD3dResourcesFn(pThis, res);
+            return CGxDeviceD3d__IReleaseD3dResources_MSDF(self, res);
         }
 
-        int __fastcall CGxDevice__NotifyOnDeviceRestoredHk(void* pThis) {
+        CLIENT_DETOUR_THISCALL_NOARGS(CGxDevice__NotifyOnDeviceRestored_MSDF, 0x006843B0, int) {
             RestoreManagedResources();
             for (auto& cb : g_onRestoreCallbacks) cb();
-            return CGxDevice::NotifyOnDeviceRestoredFn(pThis);
+            return CGxDevice__NotifyOnDeviceRestored_MSDF(self);
         }
 
-        int __fastcall CGxDeviceD3d__DeviceSetFormatHk(char* lpParam, void* edx, const void* GxDeviceFormat) {
-            const int result = CGxDevice::DeviceSetFormatFn(lpParam, GxDeviceFormat);
+        CLIENT_DETOUR_THISCALL(CGxDeviceD3d__DeviceSetFormat_MSDF, 0x006904D0, int, (const void* GxDeviceFormat)) {
+            const int result = CGxDeviceD3d__DeviceSetFormat_MSDF(self, GxDeviceFormat);
             RestoreManagedResources();
             for (auto& cb : g_onRestoreCallbacks) cb();
             return result;
         }
 
 
-        void __fastcall CGxDeviceD3d__IShaderCreateVertexHk(int pThis, void* edx, CGxDevice::ShaderData* shaderData) {
-            CGxDevice::IShaderCreateVertexFn(pThis, shaderData);
+        CLIENT_DETOUR_THISCALL(CGxDeviceD3d__IShaderCreateVertex_MSDF, 0x006AA0D0, void, (CGxDevice::ShaderData* shaderData)) {
+            CGxDeviceD3d__IShaderCreateVertex_MSDF(self, shaderData);
             for (auto& cb : g_vertexShaderCallbacks) cb(shaderData);
         }
 
-        void __fastcall CGxDeviceD3d__IShaderCreatePixelHk(int pThis, void* edx, CGxDevice::ShaderData* shaderData) {
-            CGxDevice::IShaderCreatePixelFn(pThis, shaderData);
+        CLIENT_DETOUR_THISCALL(CGxDeviceD3d__IShaderCreatePixel_MSDF, 0x006AA070, void, (CGxDevice::ShaderData* shaderData)) {
+            CGxDeviceD3d__IShaderCreatePixel_MSDF(self, shaderData);
             for (auto& cb : g_pixelShaderCallbacks) cb(shaderData);
         }
     }
@@ -512,14 +513,4 @@ namespace D3D {
 }
 
 void D3D::initialize() {
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
-    Hooks::Detour(&CGxDevice::DeviceCreateFn, CGxDevice__DeviceCreateHk);
-    Hooks::Detour(&CGxDevice::NotifyOnDeviceRestoredFn, CGxDevice__NotifyOnDeviceRestoredHk);
-    Hooks::Detour(&CGxDevice::DeviceSetFormatFn, CGxDeviceD3d__DeviceSetFormatHk);
-    Hooks::Detour(&CGxDevice::IDestroyD3dFn, CGxDeviceD3d__IDestroyD3dHk);
-    Hooks::Detour(&CGxDevice::IReleaseD3dResourcesFn,CGxDeviceD3d__IReleaseD3dResourcesHk);
-    Hooks::Detour(&CGxDevice::IShaderCreateVertexFn, CGxDeviceD3d__IShaderCreateVertexHk);
-    Hooks::Detour(&CGxDevice::IShaderCreatePixelFn, CGxDeviceD3d__IShaderCreatePixelHk);
-    DetourTransactionCommit();
 }

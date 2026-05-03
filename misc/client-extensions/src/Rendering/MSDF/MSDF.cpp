@@ -14,35 +14,35 @@ namespace {
     IDirect3DPixelShader9* s_cachedPS = nullptr;
     IDirect3DVertexShader9* s_cachedVS = nullptr;
 
-    auto(*CGxString__CheckGeometry_call)() = reinterpret_cast<void(*)()>(0x006C4B09);
-    constexpr uintptr_t CGxString__CheckGeometry_call_jmpback = 0x006C4B10;
+    CLIENT_FUNCTION(CGxString__CheckGeometry_ProcessGeometryCallSite, 0x006C4B09, __cdecl, void, ())
+    constexpr uintptr_t CGxString__CheckGeometry_ProcessGeometryCallSite_jmpback = 0x006C4B10;
 
-    auto(*CGxString__CheckGeometry_site)() = reinterpret_cast<void(*)()>(0x006C4AF3);
-    constexpr uintptr_t CGxString__CheckGeometry_site_loopstart = 0x006C4B00;
+    CLIENT_FUNCTION(CGxString__CheckGeometry_PrefetchLoopSite, 0x006C4AF3, __cdecl, void, ())
+    constexpr uintptr_t CGxString__CheckGeometry_PrefetchLoopSite_loopstart = 0x006C4B00;
 
-    auto(*CGxString__GetGlyphYMetrics_site)() = reinterpret_cast<void(*)()>(0x006C8C71);
-    constexpr uintptr_t CGxString__GetGlyphYMetrics_site_jmpback = 0x006C8C77;
+    CLIENT_FUNCTION(CGxString__GetGlyphYMetrics_BaselineSite, 0x006C8C71, __cdecl, void, ())
+    constexpr uintptr_t CGxString__GetGlyphYMetrics_BaselineSite_jmpback = 0x006C8C77;
 
-    auto(*CGxDevice__AllocateFontIndexBuffer_site)() = reinterpret_cast<void(*)()>(0x006C480C);
-    constexpr uintptr_t CGxDevice__AllocateFontIndexBuffer_site_jmpback = 0x006C4811;
+    CLIENT_FUNCTION(CGxDevice__AllocateFontIndexBuffer_SizeSite, 0x006C480C, __cdecl, void, ())
+    constexpr uintptr_t CGxDevice__AllocateFontIndexBuffer_SizeSite_jmpback = 0x006C4811;
 
-    auto(*CGxDevice__InitFontIndexBuffer_site)() = reinterpret_cast<void(*)()>(0x006C47BD);
-    constexpr uintptr_t CGxDevice__InitFontIndexBuffer_site_jmpback = 0x006C47D8;
+    CLIENT_FUNCTION(CGxDevice__InitFontIndexBuffer_PoolCreateSite, 0x006C47BD, __cdecl, void, ())
+    constexpr uintptr_t CGxDevice__InitFontIndexBuffer_PoolCreateSite_jmpback = 0x006C47D8;
 
-    auto(*IGxuFontProcessBatch_site)() = reinterpret_cast<void(*)()>(0x006C4CC4);
-    constexpr uintptr_t IGxuFontProcessBatch_site_jmpback = 0x006C4CC9;
+    CLIENT_FUNCTION(IGxuFontProcessBatch_ReturnSite, 0x006C4CC4, __cdecl, void, ())
+    constexpr uintptr_t IGxuFontProcessBatch_ReturnSite_jmpback = 0x006C4CC9;
 
-    auto(*CGxDevice__BufStream_site)() = reinterpret_cast<void(*)()>(0x006C4B40);
-    constexpr uintptr_t CGxDevice__BufStream_site_jmpback = 0x006C4B45;
+    CLIENT_FUNCTION(CGxDevice__BufStream_FontVertexCountSite, 0x006C4B40, __cdecl, void, ())
+    constexpr uintptr_t CGxDevice__BufStream_FontVertexCountSite_jmpback = 0x006C4B45;
 
-    auto(*bufalloc_1_site)() = reinterpret_cast<void(*)()>(0x006C4B64);
-    constexpr uintptr_t bufalloc_1_site_jmpback = 0x006C4B70;
+    CLIENT_FUNCTION(CGxString__CheckGeometry_BufferAllocInitSite, 0x006C4B64, __cdecl, void, ())
+    constexpr uintptr_t CGxString__CheckGeometry_BufferAllocInitSite_jmpback = 0x006C4B70;
 
-    auto(*bufalloc_2_site)() = reinterpret_cast<void(*)()>(0x006C4C67);
-    constexpr uintptr_t bufalloc_2_site_jmpback = 0x006C4C8A;
+    CLIENT_FUNCTION(CGxString__CheckGeometry_BufferAllocGrowSite, 0x006C4C67, __cdecl, void, ())
+    constexpr uintptr_t CGxString__CheckGeometry_BufferAllocGrowSite_jmpback = 0x006C4C8A;
 
-    auto(*bufalloc_3_site)() = reinterpret_cast<void(*)()>(0x006C4C36);
-    constexpr uintptr_t bufalloc_3_site_jmpback = 0x006C4C4B;
+    CLIENT_FUNCTION(CGxString__CheckGeometry_BufferAllocFlushSite, 0x006C4C36, __cdecl, void, ())
+    constexpr uintptr_t CGxString__CheckGeometry_BufferAllocFlushSite_jmpback = 0x006C4C4B;
 
 	CVar* s_cvar_MSDFMode;
     int s_msdfMode = 1;
@@ -250,7 +250,7 @@ namespace {
     // run the original loop, then prefetch once per frame
     // drop out back to loopstart and loop again (ebx preserved)
     // this time, call processGeom to resolve, now with a warmed up cache
-    __declspec(naked) void CGxString__CheckGeometry_siteHk() {
+    __declspec(naked) void CGxString__CheckGeometry_PrefetchLoopSiteHk() {
         __asm {
             pushad;
             mov edi, ebx;
@@ -280,20 +280,20 @@ namespace {
             push ebx;
             call PrefetchCodepoints;
             add esp, 4;
-            jmp CGxString__CheckGeometry_site_loopstart;
+            jmp CGxString__CheckGeometry_PrefetchLoopSite_loopstart;
         }
     }
 
-    __declspec(naked) void CGxString__CheckGeometry_callHk() {
+    __declspec(naked) void CGxString__CheckGeometry_ProcessGeometryCallSiteHk() {
         __asm {
             mov ecx, ebx;
             call ProcessGeometry;
-            jmp CGxString__CheckGeometry_call_jmpback;
+            jmp CGxString__CheckGeometry_ProcessGeometryCallSite_jmpback;
         }
     }
 
      bool __cdecl MSDFFont_Get(FT_Face face) { return MSDFFont::Get(face); }
-    __declspec(naked) void CGxString_GetGlyphYMetrics_siteHk() { // skip the orig baseline calc
+    __declspec(naked) void CGxString__GetGlyphYMetrics_BaselineSiteHk() { // skip the orig baseline calc
         __asm {
             mov edx, [ecx + 54h];
             pushad;
@@ -304,10 +304,10 @@ namespace {
             popad;
             jz font_unsafe;
             xor ecx, ecx;
-            jmp CGxString__GetGlyphYMetrics_site_jmpback;
+            jmp CGxString__GetGlyphYMetrics_BaselineSite_jmpback;
         font_unsafe:
             mov ecx, [edx + 68h];
-            jmp CGxString__GetGlyphYMetrics_site_jmpback;
+            jmp CGxString__GetGlyphYMetrics_BaselineSite_jmpback;
         }
     }
 
@@ -315,35 +315,35 @@ namespace {
     // makes sure the overlap from having a single piece of text rendered with multiple draws isn't happening
     // this is probably overkill and irrelevant for 99.99% of the actual draw cases where text vertCount is naturally < hardcoded 2004-era 2048 buffer
     // but...
-    __declspec(naked) void CGxDevice__AllocateFontIndexBuffer_siteHk() {
+    __declspec(naked) void CGxDevice__AllocateFontIndexBuffer_SizeSiteHk() {
         __asm {
             mov ebx, 3FFFh;
-            jmp CGxDevice__AllocateFontIndexBuffer_site_jmpback;
+            jmp CGxDevice__AllocateFontIndexBuffer_SizeSite_jmpback;
         }
     }
-    __declspec(naked) void CGxDevice__InitFontIndexBuffer_siteHk() {
+    __declspec(naked) void CGxDevice__InitFontIndexBuffer_PoolCreateSiteHk() {
         __asm {
             push 30000h;
             push 0;
             push 1;
-            call CGxDevice::PoolCreateFn;
+            call MSDFClient::CGxDevice__PoolCreate;
             mov ecx, dword ptr ds : [0C5DF88h] ; // g_theGxDevicePtr
             push 0;
             push 1801Ah;
-            jmp CGxDevice__InitFontIndexBuffer_site_jmpback;
+            jmp CGxDevice__InitFontIndexBuffer_PoolCreateSite_jmpback;
         }
     }
-    __declspec(naked) void IGxuFontProcessBatch_siteHk() {
+    __declspec(naked) void IGxuFontProcessBatch_ReturnSiteHk() {
         __asm {
             mov g_runtimeVBSize, 0;
             pop ebx;
             pop esi;
             mov esp, ebp;
             pop ebp;
-            jmp IGxuFontProcessBatch_site_jmpback;
+            jmp IGxuFontProcessBatch_ReturnSite_jmpback;
         }
     }
-    __declspec(naked) void CGxDevice__BufStream_siteHk() { // clamp to [2048-65532]
+    __declspec(naked) void CGxDevice__BufStream_FontVertexCountSiteHk() { // clamp to [2048-65532]
         __asm {
             mov eax, g_runtimeVBSize;
             cmp eax, 800h;
@@ -357,18 +357,18 @@ namespace {
         do_push:
             mov g_runtimeVBSize, eax;
             push eax;
-            jmp CGxDevice__BufStream_site_jmpback;
+            jmp CGxDevice__BufStream_FontVertexCountSite_jmpback;
         }
     }
-    __declspec(naked) void bufalloc_1_siteHk() {
+    __declspec(naked) void CGxString__CheckGeometry_BufferAllocInitSiteHk() {
         __asm {
             xor eax, eax;
             mov esi, 0B4h;
             mov ebx, g_runtimeVBSize;
-            jmp bufalloc_1_site_jmpback;
+            jmp CGxString__CheckGeometry_BufferAllocInitSite_jmpback;
         }
     }
-    __declspec(naked) void bufalloc_2_siteHk() {
+    __declspec(naked) void CGxString__CheckGeometry_BufferAllocGrowSiteHk() {
         __asm {
             cmp ebx, g_runtimeVBSize;
             jz orig_skip;
@@ -377,24 +377,24 @@ namespace {
             push ecx;
             lea edx, [ebp - 18h];
             push edx;
-            call CGxDevice::FlushBufferFn;
+            call MSDFClient::CGxDevice__FlushBuffer;
             add esp, 8;
             mov edi, eax;
             mov ebx, g_runtimeVBSize;
-            jmp bufalloc_2_site_jmpback;
+            jmp CGxString__CheckGeometry_BufferAllocGrowSite_jmpback;
         orig_skip:
-            jmp bufalloc_2_site_jmpback;
+            jmp CGxString__CheckGeometry_BufferAllocGrowSite_jmpback;
         }
     }
-    __declspec(naked) void bufalloc_3_siteHk() {
+    __declspec(naked) void CGxString__CheckGeometry_BufferAllocFlushSiteHk() {
         __asm {
             push g_runtimeVBSize;
             push eax;
-            call CGxDevice::FlushBufferFn;
+            call MSDFClient::CGxDevice__FlushBuffer;
             add esp, 8;
             mov edi, eax;
             mov ebx, g_runtimeVBSize;
-            jmp bufalloc_3_site_jmpback;
+            jmp CGxString__CheckGeometry_BufferAllocFlushSite_jmpback;
         }
     }
 
@@ -459,39 +459,39 @@ namespace {
             MSDF::INITIALIZED = true;
             MSDF::ALLOW_UNSAFE_FONTS = s_msdfMode > 1;
 
-            if (MSDF::IS_CJK) return FreeType::InitFn(memory, alibrary);
+            if (MSDF::IS_CJK) return MSDFClient::FreeType__Init(memory, alibrary);
 
             DetourTransactionBegin();
             DetourUpdateThread(GetCurrentThread());
-            Hooks::Detour(&FreeType::NewMemoryFaceFn, FreeType_NewMemoryFaceHk);
-            Hooks::Detour(&FreeType::NewFaceFn, FreeType_NewFaceHk);
-            Hooks::Detour(&FreeType::Done_FaceFn, FreeType_Done_FaceHk);
-            Hooks::Detour(&FreeType::SetPixelSizesFn, FreeType_SetPixelSizesHk);
-            Hooks::Detour(&FreeType::GetCharIndexFn, FreeType_GetCharIndexHk);
-            Hooks::Detour(&FreeType::LoadGlyphFn, FreeType_LoadGlyphHk);
-            Hooks::Detour(&FreeType::GetKerningFn, FreeType_GetKerningHk);
-            Hooks::Detour(&FreeType::Done_FreeTypeFn, FreeType_Done_FreeTypeHk);
+            Hooks::Detour(&MSDFClient::FreeType__NewMemoryFace, FreeType_NewMemoryFaceHk);
+            Hooks::Detour(&MSDFClient::FreeType__NewFace, FreeType_NewFaceHk);
+            Hooks::Detour(&MSDFClient::FreeType__DoneFace, FreeType_Done_FaceHk);
+            Hooks::Detour(&MSDFClient::FreeType__SetPixelSizes, FreeType_SetPixelSizesHk);
+            Hooks::Detour(&MSDFClient::FreeType__GetCharIndex, FreeType_GetCharIndexHk);
+            Hooks::Detour(&MSDFClient::FreeType__LoadGlyph, FreeType_LoadGlyphHk);
+            Hooks::Detour(&MSDFClient::FreeType__GetKerning, FreeType_GetKerningHk);
+            Hooks::Detour(&MSDFClient::FreeType__DoneFreeType, FreeType_Done_FreeTypeHk);
 
-            Hooks::Detour(&CGxuFont::RenderBatchFn, CGxuFontRenderBatchHk);
-            Hooks::Detour(&CGxuFont::RenderGlyphFn, GxuFontGlyphRenderGlyphHk);
-            Hooks::Detour(&CGxFont::GetOrCreateGlyphEntryFn, CGxString__GetOrCreateGlyphEntryHk);
+            Hooks::Detour(&MSDFClient::CGxuFont__RenderBatch, CGxuFontRenderBatchHk);
+            Hooks::Detour(&MSDFClient::CGxuFont__RenderGlyph, GxuFontGlyphRenderGlyphHk);
+            Hooks::Detour(&MSDFClient::CGxFont__GetOrCreateGlyphEntry, CGxString__GetOrCreateGlyphEntryHk);
 
-            Hooks::Detour(&CGxDevice__AllocateFontIndexBuffer_site, CGxDevice__AllocateFontIndexBuffer_siteHk);
-            Hooks::Detour(&CGxDevice__InitFontIndexBuffer_site, CGxDevice__InitFontIndexBuffer_siteHk);
+            Hooks::Detour(&CGxDevice__AllocateFontIndexBuffer_SizeSite, CGxDevice__AllocateFontIndexBuffer_SizeSiteHk);
+            Hooks::Detour(&CGxDevice__InitFontIndexBuffer_PoolCreateSite, CGxDevice__InitFontIndexBuffer_PoolCreateSiteHk);
 
-            Hooks::Detour(&CGxString__GetGlyphYMetrics_site, CGxString_GetGlyphYMetrics_siteHk);
-            Hooks::Detour(&CGxString__CheckGeometry_site, CGxString__CheckGeometry_siteHk);
-            Hooks::Detour(&CGxString__CheckGeometry_call, CGxString__CheckGeometry_callHk);
+            Hooks::Detour(&CGxString__GetGlyphYMetrics_BaselineSite, CGxString__GetGlyphYMetrics_BaselineSiteHk);
+            Hooks::Detour(&CGxString__CheckGeometry_PrefetchLoopSite, CGxString__CheckGeometry_PrefetchLoopSiteHk);
+            Hooks::Detour(&CGxString__CheckGeometry_ProcessGeometryCallSite, CGxString__CheckGeometry_ProcessGeometryCallSiteHk);
 
-            Hooks::Detour(&IGxuFontProcessBatch_site, IGxuFontProcessBatch_siteHk);
-            Hooks::Detour(&CGxDevice__BufStream_site, CGxDevice__BufStream_siteHk);
-            Hooks::Detour(&bufalloc_1_site, bufalloc_1_siteHk);
-            Hooks::Detour(&bufalloc_2_site, bufalloc_2_siteHk);
-            Hooks::Detour(&bufalloc_3_site, bufalloc_3_siteHk);
+            Hooks::Detour(&IGxuFontProcessBatch_ReturnSite, IGxuFontProcessBatch_ReturnSiteHk);
+            Hooks::Detour(&CGxDevice__BufStream_FontVertexCountSite, CGxDevice__BufStream_FontVertexCountSiteHk);
+            Hooks::Detour(&CGxString__CheckGeometry_BufferAllocInitSite, CGxString__CheckGeometry_BufferAllocInitSiteHk);
+            Hooks::Detour(&CGxString__CheckGeometry_BufferAllocGrowSite, CGxString__CheckGeometry_BufferAllocGrowSiteHk);
+            Hooks::Detour(&CGxString__CheckGeometry_BufferAllocFlushSite, CGxString__CheckGeometry_BufferAllocFlushSiteHk);
 
-            Hooks::Detour(&CGxString::CheckGeometryFn, CGxString__CheckGeometryHk);
-            Hooks::Detour(&CGxString::WriteGeometryFn, CGxString__WriteGeometryHk);
-            Hooks::Detour(&CGxString::InitializeTextLineFn, CGxString__InitializeTextLineHk);
+            Hooks::Detour(&MSDFClient::CGxString__CheckGeometry, CGxString__CheckGeometryHk);
+            Hooks::Detour(&MSDFClient::CGxString__WriteGeometry, CGxString__WriteGeometryHk);
+            Hooks::Detour(&MSDFClient::CGxString__InitializeTextLine, CGxString__InitializeTextLineHk);
             DetourTransactionCommit();
 
             D3D::RegisterOnDestroy([]() {
@@ -552,10 +552,10 @@ namespace {
 
             s_prefetchPayload.reserve(16383);
 
-            CGxDevice::InitFontIndexBufferFn(); // engine has already run it at this point
+            MSDFClient::CGxDevice__InitFontIndexBuffer(); // engine has already run it at this point
         }
         else if (MSDF::IS_CJK) {
-            return FreeType::InitFn(memory, alibrary);
+            return MSDFClient::FreeType__Init(memory, alibrary);
         }
         if (const FT_Error error = FT_Init_FreeType(&MSDF::g_realFtLibrary)) return error;
 
@@ -575,7 +575,7 @@ namespace {
         if (s_msdfMode > 0 && !s_freeTypeInitHooked) {
             DetourTransactionBegin();
             DetourUpdateThread(GetCurrentThread());
-            Hooks::Detour(&FreeType::InitFn, FreeType_InitHk);
+            Hooks::Detour(&MSDFClient::FreeType__Init, FreeType_InitHk);
             DetourTransactionCommit();
             s_freeTypeInitHooked = true;
         }

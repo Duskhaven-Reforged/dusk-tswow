@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Types.h"
 
+#include <ClientMacros.h>
 #include <ft2build.h>
 #include <d3d9.h>
 #include FT_FREETYPE_H
@@ -1147,6 +1148,13 @@ struct CFontCache {
     uint32_t m_mask;
 };
 
+class CGxFont;
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(CGxFont__GetOrCreateGlyphEntry, 0x006C3FC0, __thiscall, CGxGlyphCacheEntry*, (CGxFont*, uint32_t))
+    CLIENT_FUNCTION(CGxFont__GetBearingX, 0x006C24F0, __thiscall, double, (CGxFont*, CGxGlyphCacheEntry*, float, float))
+}
+
 class CGxFont {
 public:
     CGxFont* m_prev;                                // 0x00
@@ -1167,16 +1175,21 @@ public:
     uint32_t m_effectivePixelHeight;                // 0x248
     uint32_t m_rasterTargetSize;                    // 0x24C
 
-    using GetOrCreateGlyphEntry_t = CGxGlyphCacheEntry * (__thiscall*)(CGxFont*, uint32_t codepoint);
-    using GetBearingX_t = double(__thiscall*)(CGxFont*, CGxGlyphCacheEntry*, float flag, float scale);
-
-    inline static GetOrCreateGlyphEntry_t GetOrCreateGlyphEntryFn = reinterpret_cast<GetOrCreateGlyphEntry_t>(0x006C3FC0);
-    inline static GetBearingX_t GetBearingXFn = reinterpret_cast<GetBearingX_t>(0x006C24F0);
-
-    double GetBearingX(CGxGlyphCacheEntry* entry, float flag, float scale) { return GetBearingXFn(this, entry, flag, scale); }
-    CGxGlyphCacheEntry* GetOrCreateGlyphEntry(uint32_t codepoint) { return GetOrCreateGlyphEntryFn(this, codepoint); }
+    double GetBearingX(CGxGlyphCacheEntry* entry, float flag, float scale) { return MSDFClient::CGxFont__GetBearingX(this, entry, flag, scale); }
+    CGxGlyphCacheEntry* GetOrCreateGlyphEntry(uint32_t codepoint) { return MSDFClient::CGxFont__GetOrCreateGlyphEntry(this, codepoint); }
 };
 static_assert(sizeof(CGxFont) == 0x250);
+
+class CGxString;
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(CGxString__GetFontFace, 0x006C8080, __cdecl, FT_Face, (void*))
+    CLIENT_FUNCTION(CGxString__WriteGeometry, 0x006C5E90, __thiscall, void, (CGxString*, int, int, int, int))
+    CLIENT_FUNCTION(CGxString__InitializeTextLine, 0x006C6CD0, __thiscall, int, (CGxString*, char*, int, int*, C3Vector*, void*, int))
+    CLIENT_FUNCTION(CGxString__ClearInstanceData, 0x006C6B90, __thiscall, int*, (CGxString*))
+    CLIENT_FUNCTION(CGxString__CheckGeometry, 0x006C7480, __thiscall, bool, (CGxString*))
+    CLIENT_FUNCTION(CGxString__GetVertCountForPage, 0x006C63E0, __thiscall, uint32_t, (CGxString*, int))
+}
 
 class CGxString {
 public:
@@ -1211,26 +1224,14 @@ public:
     CGxFontGeomBatch* m_geomBuffers[8];         // 0xB4
     uint32_t m_timeSinceUpdate;                 // 0xD4
 
-    FT_Face GetFontFace() const { return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(this->m_fontObj->m_ftWrapper); }
-    static FT_Face GetFontFace(void* ptr) { return reinterpret_cast<FT_Face(*)(void*)>(0x006C8080)(ptr); }
+    FT_Face GetFontFace() const { return MSDFClient::CGxString__GetFontFace(this->m_fontObj->m_ftWrapper); }
+    static FT_Face GetFontFace(void* ptr) { return MSDFClient::CGxString__GetFontFace(ptr); }
 
-    using WriteGeometry_t = void(__thiscall*)(CGxString*, int destPtr, int index, int vertIndex, int vertCount);
-    using InitializeTextLine_t = int(__thiscall*)(CGxString*, char* text, int textLength, int* a4, C3Vector* startPos, void*, int);
-    using ClearInstanceData_t = int* (__thiscall*)(CGxString*);
-    using CheckGeometry_t = bool(__thiscall*)(CGxString*);
-    using GetVertCountForPage_t = uint32_t(__thiscall*)(CGxString*, int pageIdx);
-
-    inline static WriteGeometry_t WriteGeometryFn = reinterpret_cast<WriteGeometry_t>(0x006C5E90);
-    inline static InitializeTextLine_t InitializeTextLineFn = reinterpret_cast<InitializeTextLine_t>(0x006C6CD0);
-    inline static ClearInstanceData_t ClearInstanceDataFn = reinterpret_cast<ClearInstanceData_t>(0x006C6B90);
-    inline static CheckGeometry_t CheckGeometryFn = reinterpret_cast<CheckGeometry_t>(0x006C7480);
-    inline static GetVertCountForPage_t GetVertCountForPageFn = reinterpret_cast<GetVertCountForPage_t>(0x006C63E0);
-
-    void WriteGeometry(int destPtr, int index, int vertIndex, int vertCount) {  WriteGeometryFn(this, destPtr, index, vertIndex, vertCount); }
-    int InitializeTextLine(char* text, int textLength, int* a4, C3Vector* startPos, void* a6, int a7) { return InitializeTextLineFn(this, text, textLength, a4, startPos, a6, a7); }
-    int* ClearInstanceData() { return ClearInstanceDataFn(this); }
-    bool CheckGeometry() { return CheckGeometryFn(this); }
-    uint32_t GetVertCountForPage(int pageIdx) { return GetVertCountForPageFn(this, pageIdx); }
+    void WriteGeometry(int destPtr, int index, int vertIndex, int vertCount) { MSDFClient::CGxString__WriteGeometry(this, destPtr, index, vertIndex, vertCount); }
+    int InitializeTextLine(char* text, int textLength, int* a4, C3Vector* startPos, void* a6, int a7) { return MSDFClient::CGxString__InitializeTextLine(this, text, textLength, a4, startPos, a6, a7); }
+    int* ClearInstanceData() { return MSDFClient::CGxString__ClearInstanceData(this); }
+    bool CheckGeometry() { return MSDFClient::CGxString__CheckGeometry(this); }
+    uint32_t GetVertCountForPage(int pageIdx) { return MSDFClient::CGxString__GetVertCountForPage(this, pageIdx); }
 };
 static_assert(sizeof(CGxString) == 0xD8);
 
@@ -1279,6 +1280,15 @@ struct GxuFontBatchNode {
 };
 static_assert(sizeof(GxuFontBatchNode) == 0x2C);
 
+class CGxuFont;
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(CGxuFont__RenderBatch, 0x006C53A0, __thiscall, void, (CGxuFont*))
+    CLIENT_FUNCTION(CGxuFont__GetFontEffectiveWidth, 0x006C0B60, __cdecl, double, (int, float))
+    CLIENT_FUNCTION(CGxuFont__GetFontEffectiveHeight, 0x006C0B20, __cdecl, double, (int, float))
+    CLIENT_FUNCTION(CGxuFont__RenderGlyph, 0x006C8CC0, __cdecl, char, (FT_Face, uint32_t, uint32_t, uint32_t, CGxGlyphMetrics*, uint32_t, uint32_t))
+}
+
 class CGxuFont {
 public:
     void* vmt;
@@ -1289,21 +1299,11 @@ public:
     unk_t unk_14;
     GxuFontBatchNode m_head;
 
-    using RenderBatch_t = void(__thiscall*)(CGxuFont*);
-    using GetFontEffectiveWidth_t = double(__cdecl*)(int, float);
-    using GetFontEffectiveHeight_t = double(__cdecl*)(int, float);
-    using RenderGlyph_t = char(__cdecl*)(FT_Face, uint32_t, uint32_t, uint32_t, CGxGlyphMetrics*, uint32_t, uint32_t);
-
-    inline static RenderBatch_t RenderBatchFn = reinterpret_cast<RenderBatch_t>(0x006C53A0);
-    inline static GetFontEffectiveWidth_t GetFontEffectiveWidthFn = reinterpret_cast<GetFontEffectiveWidth_t>(0x006C0B60);
-    inline static GetFontEffectiveHeight_t GetFontEffectiveHeightFn = reinterpret_cast<GetFontEffectiveHeight_t>(0x006C0B20);
-    inline static RenderGlyph_t RenderGlyphFn = reinterpret_cast<RenderGlyph_t>(0x006C8CC0);
-
-    void RenderBatch() { RenderBatchFn(this); }
-    static double GetFontEffectiveWidth(int is3d, float fontSizeMult) { return GetFontEffectiveWidthFn(is3d, fontSizeMult); }
-    static double GetFontEffectiveHeight(int is3d, float fontSizeMult) { return GetFontEffectiveHeightFn(is3d, fontSizeMult); }
+    void RenderBatch() { MSDFClient::CGxuFont__RenderBatch(this); }
+    static double GetFontEffectiveWidth(int is3d, float fontSizeMult) { return MSDFClient::CGxuFont__GetFontEffectiveWidth(is3d, fontSizeMult); }
+    static double GetFontEffectiveHeight(int is3d, float fontSizeMult) { return MSDFClient::CGxuFont__GetFontEffectiveHeight(is3d, fontSizeMult); }
     static char RenderGlyph(FT_Face face, uint32_t fontSize, uint32_t codepoint, uint32_t pageInfo, CGxGlyphMetrics* entry, uint32_t outline_flag, uint32_t pad) {
-        return RenderGlyphFn(face, fontSize, codepoint, pageInfo, entry, outline_flag, pad);
+        return MSDFClient::CGxuFont__RenderGlyph(face, fontSize, codepoint, pageInfo, entry, outline_flag, pad);
     }
 };
 static_assert(sizeof(CGxuFont) == 0x44);
@@ -1410,6 +1410,18 @@ public:
 static_assert(sizeof(CGNamePlate) == 0x300);
 
 // CVar
+class CVar;
+using CVarHandler_t = int(*)(CVar*, const char*, const char*, void*);
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(CVar__Initialize, 0x007663F0, __cdecl, void, ())
+    CLIENT_FUNCTION(CVar__InternalSet, 0x007667B0, __thiscall, void, (CVar*, const char*, bool, bool, bool, bool))
+    CLIENT_FUNCTION(CVar__Register, 0x00767FC0, __cdecl, CVar*, (const char*, const char*, unsigned, const char*, CVarHandler_t, int, int, int, int))
+    CLIENT_FUNCTION(CVar__SetValue, 0x007668C0, __thiscall, char, (CVar*, const char*, int, int, int, int))
+    CLIENT_FUNCTION(CVar__Get, 0x00767460, __cdecl, CVar*, (const char*))
+    CLIENT_FUNCTION(CVar__Find, 0x00767440, __cdecl, CVar*, (const char*))
+}
+
 class CVar {
 public:
     enum CVarFlags : uint16_t {
@@ -1419,7 +1431,7 @@ public:
         CVarFlags_ReadOnlyForUser = 0x100,
     };
 
-    using Handler_t = int(*)(CVar* cvar, const char* prevVal, const char* newVal, void* userData);
+    using Handler_t = CVarHandler_t;
 
     uint32_t m_hash;
     unk_t unk_04[4];
@@ -1435,18 +1447,9 @@ public:
     Handler_t m_handler;
     void* m_userData;
 
-    inline static auto InitializeFn = reinterpret_cast<DummyCallback_t>(0x007663F0);
+    static void Initialize() { MSDFClient::CVar__Initialize(); }
 
-    using InternalSet_t = void(__thiscall*)(CVar*, const char*, bool, bool, bool, bool);
-    inline static auto InternalSetFn = reinterpret_cast<InternalSet_t>(0x007667B0);
-
-    using Register_t = CVar* (*)(const char*, const char*, unsigned, const char*, CVar::Handler_t, int, int, int, int);
-    inline static auto RegisterFn = reinterpret_cast<Register_t>(0x00767FC0);
-
-    using SetValue_t = char(__thiscall*)(CVar*, const char*, int, int, int, int);
-    inline static auto SetValueFn = reinterpret_cast<SetValue_t>(0x007668C0);
-
-    char SetValue(const char* value, int a3, int a4, int a5, int a6) { return SetValueFn(this, value, a3, a4, a5, a6); }
+    char SetValue(const char* value, int a3, int a4, int a5, int a6) { return MSDFClient::CVar__SetValue(this, value, a3, a4, a5, a6); }
 
     template<typename T>
     int Sync(const char* rawValue, T* globalVar, T minVal, T maxVal, const char* fmt) {
@@ -1460,54 +1463,45 @@ public:
             char buf[32];
             if constexpr (std::is_floating_point_v<T>) snprintf(buf, sizeof(buf), fmt, static_cast<double>(clamped));
             else snprintf(buf, sizeof(buf), fmt, clamped);
-            InternalSetFn(this, buf, true, false, false, true);
+            MSDFClient::CVar__InternalSet(this, buf, true, false, false, true);
             return 0;
         }
         return 1;
     }
 
-    static CVar* Get(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767460))(name); }
-    static CVar* Find(const char* name) { return (reinterpret_cast<CVar* (*)(const char*)>(0x00767440))(name); }
+    static CVar* Get(const char* name) { return MSDFClient::CVar__Get(name); }
+    static CVar* Find(const char* name) { return MSDFClient::CVar__Find(name); }
     static CVar* Register(const char* name, const char* desc, unsigned flags, const char* defaultVal, Handler_t callback,
             int a6, int a7, int a8, int a9) {
-        return RegisterFn(name, desc, flags, defaultVal, callback, a6, a7, a8, a9);
+        return MSDFClient::CVar__Register(name, desc, flags, defaultVal, callback, a6, a7, a8, a9);
     }
 };
 static_assert(sizeof(CVar) == 0x70);
 
 class FreeType {
 public:
-    using Init_t = int(__cdecl*)(void* memory, FT_Library*);
-    using NewMemoryFace_t = int(__cdecl*)(FT_Library, const FT_Byte* file_base, FT_Long file_size, FT_Long face_index, FT_Face*);
-    using Done_Face_t = int(__cdecl*)(FT_Face);
-    using SetPixelSizes_t = int(__cdecl*)(FT_Face, FT_UInt pixel_width, FT_UInt pixel_height);
-    using GetCharIndex_t = FT_UInt(__cdecl*)(FT_Face, FT_ULong charcode);
-    using LoadGlyph_t = int(__cdecl*)(FT_Face, FT_ULong glyph_index, FT_Int32 load_flags);
-    using GetKerning_t = int(__cdecl*)(FT_Face, FT_UInt left_glyph, FT_UInt right_glyph, FT_UInt kern_mode, FT_Vector* akerning);
-    using Done_FreeType_t = int(__cdecl*)(FT_Library);
-    using NewFace_t = int(__cdecl*)(int* library, int face_descriptor);
-
-    inline static auto InitFn = reinterpret_cast<Init_t>(0x00991320);
-    inline static auto NewMemoryFaceFn = reinterpret_cast<NewMemoryFace_t>(0x00993370);
-    inline static auto Done_FaceFn = reinterpret_cast<Done_Face_t>(0x00992610);
-    inline static auto SetPixelSizesFn = reinterpret_cast<SetPixelSizes_t>(0x00992780);
-    inline static auto GetCharIndexFn = reinterpret_cast<GetCharIndex_t>(0x009911A0);
-    inline static auto LoadGlyphFn = reinterpret_cast<LoadGlyph_t>(0x00992DA0);
-    inline static auto GetKerningFn = reinterpret_cast<GetKerning_t>(0x00991050);
-    inline static auto Done_FreeTypeFn = reinterpret_cast<Done_FreeType_t>(0x00992CB0);
-    inline static auto NewFaceFn = reinterpret_cast<NewFace_t>(0x009931A0);
 };
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(FreeType__Init, 0x00991320, __cdecl, int, (void*, FT_Library*))
+    CLIENT_FUNCTION(FreeType__NewMemoryFace, 0x00993370, __cdecl, int, (FT_Library, const FT_Byte*, FT_Long, FT_Long, FT_Face*))
+    CLIENT_FUNCTION(FreeType__DoneFace, 0x00992610, __cdecl, int, (FT_Face))
+    CLIENT_FUNCTION(FreeType__SetPixelSizes, 0x00992780, __cdecl, int, (FT_Face, FT_UInt, FT_UInt))
+    CLIENT_FUNCTION(FreeType__GetCharIndex, 0x009911A0, __cdecl, FT_UInt, (FT_Face, FT_ULong))
+    CLIENT_FUNCTION(FreeType__LoadGlyph, 0x00992DA0, __cdecl, int, (FT_Face, FT_ULong, FT_Int32))
+    CLIENT_FUNCTION(FreeType__GetKerning, 0x00991050, __cdecl, int, (FT_Face, FT_UInt, FT_UInt, FT_UInt, FT_Vector*))
+    CLIENT_FUNCTION(FreeType__DoneFreeType, 0x00992CB0, __cdecl, int, (FT_Library))
+    CLIENT_FUNCTION(FreeType__NewFace, 0x009931A0, __cdecl, int, (int*, int))
+}
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(CGxDevice__FlushBuffer, 0x006C48D0, __cdecl, int, (int*, int))
+    CLIENT_FUNCTION(CGxDevice__InitFontIndexBuffer, 0x006C47B0, __cdecl, int, ())
+    CLIENT_FUNCTION(CGxDevice__PoolCreate, 0x006876D0, __thiscall, void*, (IDirect3DDevice9*, int, int, int, int, const char*))
+}
 
 class CGxDevice {
 public:
-    using FlushBuffer_t = int(__cdecl*)(int* bufferHandle, int bufferSize);
-    using InitFontIndexBuffer_t = int(__cdecl*)();
-    using PoolCreate_t = void* (__thiscall*)(IDirect3DDevice9*, int flags, int pad, int size, int usage, const char* name);
-
-    inline static auto FlushBufferFn = reinterpret_cast<FlushBuffer_t>(0x006C48D0);
-    inline static auto InitFontIndexBufferFn = reinterpret_cast<InitFontIndexBuffer_t>(0x006C47B0);
-    inline static auto PoolCreateFn = reinterpret_cast<PoolCreate_t>(0x006876D0);
-
     struct ShaderData {
         IUnknown* base_interface;                       // 0x00
         DWORD unknown_vtable_ptr;                       // 0x04
@@ -1577,23 +1571,6 @@ public:
         DWORD final_validation;                         // 0xFC
     };
 
-    using DeviceCreate_t = int(__thiscall*)(void*, IDirect3DDevice9*, int);
-    using NotifyOnDeviceRestored_t = int(__thiscall*)(void*);
-
-    using DeviceSetFormat_t = int(__thiscall*)(char*, const void*);
-    using IDestroyD3d_t = int(__thiscall*)(int*);
-    using IReleaseD3dResources_t = int(__thiscall*)(void*, int);
-    using IShaderCreateVertex_t = void(__thiscall*)(int, ShaderData*);
-    using IShaderCreatePixel_t = void(__thiscall*)(int, ShaderData*);
-
-    inline static auto DeviceCreateFn = reinterpret_cast<DeviceCreate_t>(0x00682CB0);
-    inline static auto NotifyOnDeviceRestoredFn = reinterpret_cast<NotifyOnDeviceRestored_t>(0x006843B0);
-
-    inline static auto DeviceSetFormatFn = reinterpret_cast<DeviceSetFormat_t>(0x006904D0);
-    inline static auto IDestroyD3dFn = reinterpret_cast<IDestroyD3d_t>(0x006903B0);
-    inline static auto IReleaseD3dResourcesFn = reinterpret_cast<IReleaseD3dResources_t>(0x00690150);
-    inline static auto IShaderCreateVertexFn = reinterpret_cast<IShaderCreateVertex_t>(0x006AA0D0);
-    inline static auto IShaderCreatePixelFn = reinterpret_cast<IShaderCreatePixel_t>(0x006AA070);
 };
 
 class DBItemCache {

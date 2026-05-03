@@ -1,5 +1,6 @@
 #pragma once
 #include "Enums.h"
+#include <ClientMacros.h>
 #include <Windows.h>
 #include <functional>
 #include <algorithm>
@@ -522,9 +523,19 @@ struct BattlegroundData {
 struct __declspec(novtable) XMLObject {
     unk_t unk_00[0x38 / 4];
 
-    using Constructor_t = XMLObject * (__thiscall*)(XMLObject*, int, const char*);
-    using SetValue_t = void(__thiscall*)(XMLObject*, const char*, const char*);
-
-    XMLObject(int a1, const char* parentName) { (reinterpret_cast<Constructor_t>(0x00814AD0))(this, a1, parentName); }
-	void setValue(const char* key, const char* value) { (reinterpret_cast<SetValue_t>(0x00814C40))(this, key, value); }
+    XMLObject(int a1, const char* parentName);
+    void SetValue(const char* key, const char* value);
 };
+
+namespace MSDFClient {
+    CLIENT_FUNCTION(XMLObject__Constructor, 0x00814AD0, __thiscall, XMLObject*, (XMLObject*, int, const char*))
+    CLIENT_FUNCTION(XMLObject__SetValue, 0x00814C40, __thiscall, void, (XMLObject*, const char*, const char*))
+}
+
+inline XMLObject::XMLObject(int a1, const char* parentName) {
+    MSDFClient::XMLObject__Constructor(this, a1, parentName);
+}
+
+inline void XMLObject::SetValue(const char* key, const char* value) {
+    MSDFClient::XMLObject__SetValue(this, key, value);
+}
