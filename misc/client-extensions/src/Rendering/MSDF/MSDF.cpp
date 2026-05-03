@@ -52,6 +52,7 @@ namespace {
  
     float s_lastControlFlag[4] = { -1.0f, -1.0f, -1.0f, -1.0f };
     IDirect3DTexture9* s_lastAtlasTextures[MSDF::MAX_ATLAS_PAGES] = { nullptr };
+    bool s_samplerValidated[MSDF::MAX_ATLAS_PAGES] = { false };
     MSDFFont* s_lastFontHandle = nullptr;
  
  
@@ -199,12 +200,13 @@ namespace {
                 if (s_lastAtlasTextures[pageIdx] != tex) {
                     uint32_t slot = (/* max d3d9 tex slots */ 15 - MSDF::MAX_ATLAS_PAGES + 1) + pageIdx;
                     device->SetTexture(slot, tex);
-                    if (tex) {
+                    if (tex && !s_samplerValidated[pageIdx]) {
                         device->SetSamplerState(slot, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
                         device->SetSamplerState(slot, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
                         device->SetSamplerState(slot, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
                         device->SetSamplerState(slot, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
                         device->SetSamplerState(slot, D3DSAMP_MIPFILTER, D3DTEXF_NONE);
+                        s_samplerValidated[pageIdx] = true;
                     }
                     s_lastAtlasTextures[pageIdx] = tex;
                 }
@@ -233,6 +235,7 @@ namespace {
         // invalidate cache as other UI elements might have changed states
         s_lastFontHandle = nullptr;
         memset(s_lastAtlasTextures, 0, sizeof(s_lastAtlasTextures));
+        memset(s_samplerValidated, 0, sizeof(s_samplerValidated));
         memset(s_lastControlFlag, 0xFF, sizeof(s_lastControlFlag));
  
         if (IDirect3DDevice9* device = D3D::GetDevice()) {
