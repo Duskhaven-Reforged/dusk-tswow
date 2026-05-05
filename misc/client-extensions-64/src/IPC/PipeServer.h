@@ -3,8 +3,10 @@
 #include <windows.h>
 #endif
 #include <atomic>
+#include <cstdint>
 #include <thread>
 #include <string>
+#include "SharedMemoryRingBuffer.h"
 #include "OpcodeDispatcher.h"
 #include "../handlers/Opcodes.h"
 #include "PacketBuilder.h"
@@ -20,8 +22,7 @@ public:
 private:
 #ifdef _WIN32
 	void ThreadMain(std::wstring pipeName);
-	bool ReadExact(HANDLE h, void* dst, uint32_t bytes);
-	bool WriteExact(HANDLE h, const void* src, uint32_t bytes);
+	bool DispatchFrame(const uint8_t* frame, uint32_t frameBytes);
 #endif
 
 	OpcodeDispatcher& dispatcher_;
@@ -30,5 +31,6 @@ private:
 
 #ifdef _WIN32
 	std::atomic<bool> clientConnected_{ false };
+	Duskhaven::IPC::SharedMemoryRingBuffer channel_;
 #endif
 };

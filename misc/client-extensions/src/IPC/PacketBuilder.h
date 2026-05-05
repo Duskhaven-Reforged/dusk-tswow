@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -18,6 +19,18 @@ struct MsgHeader
 };
 #pragma pack(pop)
 static const std::wstring PIPE_NAME = L"duskhaven_social_sdk_pipe";
+
+static inline IPCClient& CommandIPCClient()
+{
+    static IPCClient client;
+    return client;
+}
+
+static inline std::mutex& CommandIPCMutex()
+{
+    static std::mutex mutex;
+    return mutex;
+}
 // ---------------------------
 // Endianness helpers (little-endian)
 // ---------------------------
@@ -134,24 +147,40 @@ class PacketBuilder
         return *this;
     }
 
-    // Placeholder send- must push to IPC somewhere later.
     void Send()
     {
-        IPCClient c;
-        if (!c.Connect(PIPE_NAME))
-        {
-            LOG_INFO << "Failed to connect to host pipe\n";
-            return;
-        }
-        // payload length excludes header
+        std::lock_guard<std::mutex> lock(CommandIPCMutex());
+
         const size_t payloadLen = buffer_.size();
         if (payloadLen > UINT32_MAX)
         {
             throw std::runtime_error("Payload too large for uint32 length");
         }
         header_.length = static_cast<uint32_t>(payloadLen);
-        sendHeader(c);
-        c.Send(buffer_);
+
+        uint8_t headerBytes[sizeof(MsgHeader)]{};
+        Duskhaven::IPC::StoreU32LE(headerBytes, header_.opcode.raw());
+        Duskhaven::IPC::StoreU32LE(headerBytes + sizeof(uint32_t), header_.length);
+
+        IPCClient& client = CommandIPCClient();
+        if (!client.IsConnected() && !client.Connect(PIPE_NAME))
+        {
+            LOG_INFO << "Failed to connect to host IPC shared ring\n";
+            return;
+        }
+
+        Duskhaven::IPC::SharedRingSegment segments[2] = {
+            {headerBytes, static_cast<uint32_t>(sizeof(headerBytes))},
+            {buffer_.empty() ? nullptr : buffer_.data(), static_cast<uint32_t>(buffer_.size())}
+        };
+        const uint32_t segmentCount = buffer_.empty() ? 1u : 2u;
+        if (!client.Send(segments, segmentCount))
+        {
+            if (!client.Connect(PIPE_NAME) || !client.Send(segments, segmentCount))
+            {
+                LOG_INFO << "Failed to write host IPC shared ring\n";
+            }
+        }
     }
 
     const std::vector<uint8_t>& bytes() const
@@ -161,29 +190,6 @@ class PacketBuilder
 
   private:
     PacketBuilder() = default;
-
-    void sendHeader(IPCClient& c)
-    {
-        std::vector<uint8_t> data;
-        data.resize(sizeof(MsgHeader));
-
-        const uint32_t opv = header_.opcode.raw();
-        const uint32_t len = header_.length;
-
-        // opcode (bytes 0–3)
-        data[0] = static_cast<uint8_t>(opv & 0xFF);
-        data[1] = static_cast<uint8_t>((opv >> 8) & 0xFF);
-        data[2] = static_cast<uint8_t>((opv >> 16) & 0xFF);
-        data[3] = static_cast<uint8_t>((opv >> 24) & 0xFF);
-
-        // length (bytes 4–7)
-        data[4] = static_cast<uint8_t>(len & 0xFF);
-        data[5] = static_cast<uint8_t>((len >> 8) & 0xFF);
-        data[6] = static_cast<uint8_t>((len >> 16) & 0xFF);
-        data[7] = static_cast<uint8_t>((len >> 24) & 0xFF);
-
-        c.Send(data);
-    }
 
     MsgHeader header_{};
     std::vector<uint8_t> buffer_;

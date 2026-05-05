@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 
+#include "SharedMemoryRingBuffer.h"
 #include "PacketBuilder.h"
 
 class UpdatePipeClient
@@ -22,9 +23,9 @@ class UpdatePipeClient
 #ifdef _WIN32
     bool ConnectLocked();
     void DisconnectLocked();
-    bool WriteExactLocked(const void* src, uint32_t bytes);
+    bool WritePacketLocked(const PacketBuilder& packet);
 
-    HANDLE pipe_ = INVALID_HANDLE_VALUE;
+    Duskhaven::IPC::SharedMemoryRingBuffer channel_;
 #endif
 
     std::wstring pipeName_;

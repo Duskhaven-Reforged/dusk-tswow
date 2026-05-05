@@ -23,40 +23,25 @@ void UpdatePipeClient::Disconnect()
 
 bool UpdatePipeClient::Send(const PacketBuilder& packet)
 {
-#ifdef _WIN32
     std::lock_guard<std::mutex> lock(mutex_);
     if (!ConnectLocked())
     {
         return false;
     }
 
-    const MsgHeader header = packet.header();
-    const std::vector<uint8_t>& payload = packet.bytes();
-
-    if (WriteExactLocked(&header, sizeof(header)) &&
-        (payload.empty() || WriteExactLocked(payload.data(), static_cast<uint32_t>(payload.size()))))
+    if (WritePacketLocked(packet))
     {
         return true;
     }
 
     DisconnectLocked();
-    if (!ConnectLocked())
-    {
-        return false;
-    }
-
-    return WriteExactLocked(&header, sizeof(header)) &&
-           (payload.empty() || WriteExactLocked(payload.data(), static_cast<uint32_t>(payload.size())));
-#else
-    (void)packet;
-    return false;
-#endif
+    return ConnectLocked() && WritePacketLocked(packet);
 }
 
 #ifdef _WIN32
 bool UpdatePipeClient::ConnectLocked()
 {
-    if (pipe_ != INVALID_HANDLE_VALUE)
+    if (channel_.IsOpen())
     {
         return true;
     }
@@ -66,59 +51,30 @@ bool UpdatePipeClient::ConnectLocked()
         return false;
     }
 
-    const std::wstring fullPipeName = L"\\\\.\\pipe\\" + pipeName_;
-    while (true)
-    {
-        pipe_ = CreateFileW(
-            fullPipeName.c_str(),
-            GENERIC_WRITE,
-            0,
-            nullptr,
-            OPEN_EXISTING,
-            0,
-            nullptr);
-
-        if (pipe_ != INVALID_HANDLE_VALUE)
-        {
-            return true;
-        }
-
-        const DWORD error = GetLastError();
-        if (error != ERROR_PIPE_BUSY)
-        {
-            return false;
-        }
-
-        if (!WaitNamedPipeW(fullPipeName.c_str(), 2000))
-        {
-            return false;
-        }
-    }
+    return channel_.Open(pipeName_, 0);
 }
 
 void UpdatePipeClient::DisconnectLocked()
 {
-    if (pipe_ != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle(pipe_);
-        pipe_ = INVALID_HANDLE_VALUE;
-    }
+    channel_.Close();
 }
 
-bool UpdatePipeClient::WriteExactLocked(const void* src, uint32_t bytes)
+bool UpdatePipeClient::WritePacketLocked(const PacketBuilder& packet)
 {
-    const uint8_t* data = reinterpret_cast<const uint8_t*>(src);
-    uint32_t written = 0;
-    while (written < bytes)
-    {
-        DWORD chunkWritten = 0;
-        if (!WriteFile(pipe_, data + written, bytes - written, &chunkWritten, nullptr) || chunkWritten == 0)
-        {
-            return false;
-        }
-        written += chunkWritten;
-    }
-    return true;
+    const MsgHeader header = packet.header();
+    const std::vector<uint8_t>& payload = packet.bytes();
+
+    uint8_t headerBytes[sizeof(MsgHeader)]{};
+    Duskhaven::IPC::StoreU32LE(headerBytes, header.opcode.raw());
+    Duskhaven::IPC::StoreU32LE(headerBytes + sizeof(uint32_t), header.length);
+
+    Duskhaven::IPC::SharedRingSegment segments[2] = {
+        {headerBytes, static_cast<uint32_t>(sizeof(headerBytes))},
+        {payload.empty() ? nullptr : payload.data(), static_cast<uint32_t>(payload.size())}
+    };
+    const uint32_t segmentCount = payload.empty() ? 1u : 2u;
+
+    return channel_.Write(segments, segmentCount, 50);
 }
 
 #endif

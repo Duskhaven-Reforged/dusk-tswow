@@ -5,8 +5,10 @@
 #endif
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
+#include "SharedMemoryRingBuffer.h"
 #include "Logger.h"
 
 class IPCClient {
@@ -18,11 +20,12 @@ public:
 
     bool IsConnected() const;
     bool Send(const std::vector<uint8_t>& payload = {});
+    bool Send(const Duskhaven::IPC::SharedRingSegment* segments, uint32_t segmentCount);
 
 private:
 #ifdef _WIN32
-    bool WriteExact(const void* src, uint32_t bytes);
-
-    HANDLE pipe_ = INVALID_HANDLE_VALUE;
+    Duskhaven::IPC::SharedMemoryRingBuffer channel_;
 #endif
+
+    mutable std::mutex mutex_;
 };
