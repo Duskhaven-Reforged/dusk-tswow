@@ -93,6 +93,18 @@ type ExtractedLoothavenRegistration = {
     parentedId: number | null;
 };
 
+type LoothavenCallSite = {
+    filePath: string;
+    line: number;
+    column: number;
+};
+
+type LoothavenCallSiteResult = {
+    callSite: LoothavenCallSite | null;
+    bestCandidate: LoothavenCallSite | null;
+    stack: string | null;
+};
+
 SQL.Databases.world_dest.writeEarly(`
 DROP TABLE IF EXISTS \`loothaven_registry\`;
 CREATE TABLE \`loothaven_registry\` (
@@ -136,10 +148,21 @@ export function registerLoothavenItemExplicit(item: ItemTemplate, options: Looth
 
 function registerLoothavenItemAuto(item: ItemTemplate, metadata?: any): void
 {
-    const callSite = getLoothavenCallSiteInfo();
+    const callSiteResult = getLoothavenCallSiteInfo();
+    const callSite = callSiteResult.callSite;
     if (!callSite)
     {
-        console.error("Loothaven: could not determine call site from stack trace");
+        if (callSiteResult.bestCandidate)
+        {
+            const candidate = callSiteResult.bestCandidate;
+            console.error(`Loothaven: could not determine call site from stack trace; best candidate file was ${candidate.filePath}:${candidate.line}:${candidate.column}`);
+        }
+        else
+        {
+            console.error("Loothaven: could not determine call site from stack trace");
+            if (callSiteResult.stack)
+                console.error(`Loothaven: stack trace was: ${callSiteResult.stack}`);
+        }
         return;
     }
 
@@ -192,13 +215,54 @@ function normalizeStackFilePath(raw: string): string
     return filePath;
 }
 
-function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: number } | null
+function parseLoothavenStackFrame(rawLine: string): LoothavenCallSite | null
+{
+    let match = rawLine.match(/\((.*):(\d+):(\d+)\)/);
+    if (!match)
+        match = rawLine.match(/^\s*at\s+(.*):(\d+):(\d+)\s*$/);
+    if (!match)
+        match = rawLine.match(/(.*\.(?:ts|js)):(\d+):(\d+)/);
+    if (!match)
+        return null;
+
+    const line = parseInt(match[2], 10);
+    const column = parseInt(match[3], 10);
+    if (!Number.isFinite(line) || !Number.isFinite(column))
+        return null;
+
+    let filePath = normalizeStackFilePath(match[1]);
+    if (filePath.startsWith("async "))
+        filePath = filePath.substring("async ".length).trim();
+
+    if (filePath.endsWith(".js"))
+    {
+        const normalized = filePath.replace(/\\/g, "/");
+        const buildIndex = normalized.indexOf("/build/");
+        if (buildIndex !== -1)
+        {
+            const beforeBuild = normalized.substring(0, buildIndex);
+            const afterBuild = normalized.substring(buildIndex + "/build/".length);
+
+            filePath = (beforeBuild + "/datascripts/" + afterBuild).replace(/\.js$/, ".ts");
+            filePath = normalizeStackFilePath(filePath);
+        }
+        else
+        {
+            filePath = filePath.replace(/\.js$/, ".ts");
+        }
+    }
+
+    return { filePath, line, column };
+}
+
+function getLoothavenCallSiteInfo(): LoothavenCallSiteResult
 {
     const stack = new Error().stack;
     if (!stack)
-        return null;
+        return { callSite: null, bestCandidate: null, stack: null };
 
     const lines = stack.split("\n");
+    let bestCandidate: LoothavenCallSite | null = null;
     for (const rawLine of lines)
     {
         if (rawLine.includes("node:internal") || rawLine.includes("/internal/"))
@@ -208,43 +272,20 @@ function getLoothavenCallSiteInfo(): { filePath: string; line: number; column: n
         if (rawLine.includes("createLoothavenRegistrar") || rawLine.includes("registerLoothavenItemAuto"))
             continue;
 
-        let match = rawLine.match(/\(([^)]+):(\d+):(\d+)\)/);
-        if (!match)
-            match = rawLine.match(/([^:\s]+\.(ts|js)):(\d+):(\d+)/);
-        
-        if (!match)
+        const candidate = parseLoothavenStackFrame(rawLine);
+        if (!candidate)
             continue;
 
-        let filePath = match[1];
-        const line = parseInt(match[2] || match[3]);
-        const column = parseInt(match[3] || match[4]);
+        if (!bestCandidate)
+            bestCandidate = candidate;
 
-        filePath = normalizeStackFilePath(filePath);
-
-        if (filePath.endsWith(".js"))
+        if (fs.existsSync(candidate.filePath) || fs.existsSync(candidate.filePath.split("\\").join("/")))
         {
-            const normalized = filePath.replace(/\\/g, "/");
-            const buildIndex = normalized.indexOf("/build/");
-            if (buildIndex !== -1)
-            {
-                const beforeBuild = normalized.substring(0, buildIndex);
-                const afterBuild = normalized.substring(buildIndex + "/build/".length);
-                
-                filePath = (beforeBuild + "/datascripts/" + afterBuild).replace(/\.js$/, ".ts");
-                filePath = normalizeStackFilePath(filePath);
-            }
-            else
-            {
-                filePath = filePath.replace(/\.js$/, ".ts");
-            }
-        }
-        if (fs.existsSync(filePath) || fs.existsSync(filePath.split("\\").join("/")))
-        {
-            return { filePath, line, column };
+            return { callSite: candidate, bestCandidate, stack };
         }
     }
 
-    return null;
+    return { callSite: null, bestCandidate, stack };
 }
 
 function extractConstNameNearCall(lines: string[], callLineIndex: number): string | null
