@@ -11,11 +11,6 @@ namespace X64FileStartup
 
     void StartDHV()
     {
-        if (!DHConfig::ReadInt("allowDiscord", 1))
-        {
-            LOG_INFO << "Skipping ClientExtensions64 startup because allowDiscord is false";
-            return;
-        }
 
         STARTUPINFOA si = {};
         si.cb           = sizeof(si);
@@ -25,7 +20,7 @@ namespace X64FileStartup
 
         const char* executable = "./ClientExtensions64.exe";
         char cmd[4096]         = {};
-        std::snprintf(cmd, sizeof(cmd), "%s", executable);
+        std::snprintf(cmd, sizeof(cmd), "\"%s\" --allowDiscord=%d", executable, DHConfig::ReadInt("allowDiscord", 1));
 
         g_job = CreateJobObjectA(NULL, NULL);
         if (!g_job)

@@ -1,78 +1,47 @@
 #include "IPCClient.h"
 
 #ifdef _WIN32
-#include <iostream>
 #include <Logger.h>
 
 bool IPCClient::Connect(const std::wstring& pipeName) {
-    Disconnect();
+    std::lock_guard<std::mutex> lock(mutex_);
+    channel_.Close();
 
-    const std::wstring full =  L"\\\\.\\pipe\\" + pipeName;
-    // Try to connect; if busy, wait a bit.
-    while (true) {
-        pipe_ = CreateFileW(
-            full.c_str(),
-            GENERIC_READ | GENERIC_WRITE,
-            0,              // no sharing
-            NULL,
-            OPEN_EXISTING,
-            0,
-            NULL
-        );
-
-        if (pipe_ != INVALID_HANDLE_VALUE) break;
-
-        DWORD err = GetLastError();
-        if (err != ERROR_PIPE_BUSY) {
-            LOG_INFO << L"CreateFileW failed for pipe: "
-                       << L" error=" << err;
-            return false;
-        }
-
-        // Wait for server to become available
-        if (!WaitNamedPipeW(full.c_str(), 2000)) {
-             LOG_INFO << L"WaitNamedPipeW timed out for: " ;
-            return false;
-        }
+    if (!channel_.Open(pipeName, 2000)) {
+        LOG_INFO << "Failed to open IPC shared ring";
+        return false;
     }
-
-    // Optional: ensure byte mode (server uses PIPE_TYPE_BYTE/READMODE_BYTE)
-    DWORD mode = PIPE_READMODE_BYTE;
-    SetNamedPipeHandleState(pipe_, &mode, nullptr, nullptr);
 
     return true;
 }
 
 void IPCClient::Disconnect() {
-    if (pipe_ != INVALID_HANDLE_VALUE) {
-        CloseHandle(pipe_);
-        pipe_ = INVALID_HANDLE_VALUE;
-    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    channel_.Close();
 }
 
 bool IPCClient::IsConnected() const {
-    return pipe_ != INVALID_HANDLE_VALUE;
-}
-
-bool IPCClient::WriteExact(const void* src, uint32_t bytes) {
-    const uint8_t* p = reinterpret_cast<const uint8_t*>(src);
-    uint32_t sent = 0;
-
-    while (sent < bytes) {
-        DWORD w = 0;
-        if (!WriteFile(pipe_, p + sent, bytes - sent, &w, nullptr) || w == 0) {
-            LOG_INFO << "WriteFile failed, gle=" << GetLastError();
-            return false;
-        }
-        sent += w;
-    }
-    return true;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return channel_.IsOpen();
 }
 
 bool IPCClient::Send(const std::vector<uint8_t>& payload) {
-    if (!IsConnected()) return false;
-    
-    if (payload.size() > 0 && !WriteExact(payload.data(), payload.size())) return false;
+    Duskhaven::IPC::SharedRingSegment segment{
+        payload.empty() ? nullptr : payload.data(),
+        static_cast<uint32_t>(payload.size())
+    };
+    return Send(&segment, 1);
+}
+
+bool IPCClient::Send(const Duskhaven::IPC::SharedRingSegment* segments, uint32_t segmentCount) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!channel_.IsOpen()) return false;
+
+    if (!channel_.Write(segments, segmentCount, 2000)) {
+        LOG_INFO << "IPC shared ring write failed";
+        channel_.Close();
+        return false;
+    }
     return true;
 }
 

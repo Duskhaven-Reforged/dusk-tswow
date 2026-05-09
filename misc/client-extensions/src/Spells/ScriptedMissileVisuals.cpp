@@ -438,7 +438,8 @@ namespace ScriptedMissileVisualsInternal
     void UpdateInstances()
     {
         uint64_t const now = OsGetAsyncTimeMs();
-        std::vector<uint32_t> expired;
+        static thread_local std::vector<uint32_t> expired;
+        expired.clear();
 
         for (auto& pair : s_instances)
         {

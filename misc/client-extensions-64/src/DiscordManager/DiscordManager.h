@@ -17,7 +17,7 @@
 class DiscordManager {
 public:
 
-	void ThreadMain(uint64_t appId);
+	void ThreadMain(uint64_t appId, bool allowDiscord);
 
 	std::atomic<bool> running_{ false };
 	std::atomic<bool> isReady_{ false };
@@ -28,7 +28,7 @@ public:
 
 	void OnConnect();
 
-	bool Start(uint64_t appId);
+	bool Start(uint64_t appId, bool allowDiscord);
 	void Stop();
 
 	// Called from any thread (enqueues onto SDK thread)

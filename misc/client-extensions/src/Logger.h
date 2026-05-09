@@ -11,8 +11,12 @@ public:
   Logger& operator<<(T const& obj)
   {
     m_file << obj;
-    m_file.flush();
     return *this;
+  }
+
+  void Flush()
+  {
+    m_file.flush();
   }
 };
 

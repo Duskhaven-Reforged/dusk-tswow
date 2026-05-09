@@ -1,0 +1,25 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/master/docs/vcpkg.schema.json",
+    "name": "msdfgen",
+    "version": "1.12.1",
+    "default-features": [
+        "extensions",
+        "standalone"
+    ],
+    "features": {
+        "openmp": {
+            "description": "Parallelization of the core algorithm via the OpenMP framework"
+        },
+        "extensions": {
+            "description": "Extended functionality that depends on external libraries - loading fonts and SVG files, generating PNG images",
+            "dependencies": [
+                "freetype",
+                "tinyxml2",
+                "libpng"
+            ]
+        },
+        "standalone": {
+            "description": "Build a command line utility that wraps the library's functionality"
+        }
+    }
+}

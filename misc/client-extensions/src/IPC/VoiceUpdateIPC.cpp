@@ -2,8 +2,10 @@
 
 #include "ClientLua.h"
 #include "PacketBuilder.h"
+#include "SharedMemoryRingBuffer.h"
 
 #include <atomic>
+#include <cstring>
 #include <deque>
 #include <mutex>
 #include <optional>
@@ -39,6 +41,7 @@ std::deque<QueuedVoiceUpdate> g_updates;
 std::mutex g_deviceMutex;
 DeviceSnapshot g_inputDevices;
 DeviceSnapshot g_outputDevices;
+Duskhaven::IPC::SharedMemoryRingBuffer g_updateChannel;
 
 void CacheDeviceUpdate(Opcode opcode, const std::vector<uint8_t>& payload);
 
@@ -479,70 +482,42 @@ int PushVoiceError(lua_State* L, Opcode opcode, const std::vector<uint8_t>& payl
 }
 
 #ifdef _WIN32
-bool ReadExact(HANDLE handle, void* dst, uint32_t bytes)
-{
-    uint8_t* out = reinterpret_cast<uint8_t*>(dst);
-    uint32_t received = 0;
-    while (received < bytes)
-    {
-        DWORD read = 0;
-        if (!ReadFile(handle, out + received, bytes - received, &read, nullptr) || read == 0)
-        {
-            return false;
-        }
-        received += read;
-    }
-    return true;
-}
-
 void ThreadMain()
 {
-    const std::wstring fullPipeName = L"\\\\.\\pipe\\" + std::wstring(kVoiceUpdatePipeName);
+    if (!g_updateChannel.Create(kVoiceUpdatePipeName))
+    {
+        g_started = false;
+        return;
+    }
 
+    std::vector<uint8_t> scratch;
     while (true)
     {
-        HANDLE pipe = CreateNamedPipeW(
-            fullPipeName.c_str(),
-            PIPE_ACCESS_INBOUND,
-            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-            1,
-            64 * 1024,
-            64 * 1024,
-            0,
-            nullptr);
-
-        if (pipe == INVALID_HANDLE_VALUE)
-        {
-            g_started = false;
-            return;
-        }
-
-        BOOL connected = ConnectNamedPipe(pipe, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
-        if (!connected)
-        {
-            CloseHandle(pipe);
-            continue;
-        }
-
-        while (true)
-        {
-            MsgHeader header{};
-            if (!ReadExact(pipe, &header, sizeof(header)))
+        g_updateChannel.Consume(
+            scratch,
+            [](const uint8_t* frame, uint32_t frameBytes)
             {
-                break;
-            }
+                if (frameBytes < sizeof(MsgHeader))
+                {
+                    return;
+                }
 
-            std::vector<uint8_t> payload(header.length);
-            if (header.length > 0 && !ReadExact(pipe, payload.data(), header.length))
-            {
-                break;
-            }
+                MsgHeader header{};
+                header.opcode = Opcode(Duskhaven::IPC::LoadU32LE(frame));
+                header.length = Duskhaven::IPC::LoadU32LE(frame + sizeof(uint32_t));
+                if (frameBytes - sizeof(MsgHeader) < header.length)
+                {
+                    return;
+                }
 
-            QueueUpdate(header.opcode, std::move(payload));
-        }
+                std::vector<uint8_t> payload(header.length);
+                if (header.length > 0)
+                {
+                    std::memcpy(payload.data(), frame + sizeof(MsgHeader), header.length);
+                }
 
-        DisconnectNamedPipe(pipe);
-        CloseHandle(pipe);
+                QueueUpdate(header.opcode, std::move(payload));
+            });
     }
 }
 #endif
