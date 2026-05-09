@@ -39,6 +39,7 @@ Logger& log(const char* type, const char* file, size_t line)
   else
   {
     logger << "\n";
+    logger.Flush();
   }
   logger
     << "["

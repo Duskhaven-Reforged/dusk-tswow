@@ -15,6 +15,9 @@ void MiscFixes::Apply() {
 // Heavily inspired, and partially copied, from
 // https://github.com/someweirdhuman/awesome_wotlk/pull/25
 void MiscFixes::CameraCollisionFade() {
+    g_models_original_alphas.reserve(64);
+    g_models_current.reserve(64);
+    g_models_being_faded.reserve(64);
     g_models_alpha_cvar = CVar_C::Register("modelFadeAlpha", "Alpha value for objects in camera LOS", 1, "0.1", ModelsAlpha_CVarCallback, 5, 0, 0, 0);
     const uintptr_t fnAddress = reinterpret_cast<uintptr_t>(&CGWorldFrame_Intersect);
     Util::OverwriteUInt32AtAddress(0x006060FF, fnAddress - 0x00606103);
@@ -51,7 +54,9 @@ char __cdecl MiscFixes::CGWorldFrame_Intersect(C3Vector* start, C3Vector* end, C
     alignas(8) char stackBuf[BUFFER_SIZE] = {};
     void* buf = stackBuf;
     MiscFixes::g_models_collision_check = true;
-    if (CGWorldFrame_C::Intersect(start, end, hitPoint, distance, flag + 1, reinterpret_cast<uintptr_t>(buf)))
+    const char fadeHit = CGWorldFrame_C::Intersect(start, end, hitPoint, distance, flag + 1, reinterpret_cast<uintptr_t>(buf));
+    MiscFixes::g_models_collision_check = false;
+    if (fadeHit)
     {
         const uint32_t type = *reinterpret_cast<const uint32_t*>(buf);
         const uint32_t count = *reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(buf) + 4);
@@ -70,7 +75,6 @@ char __cdecl MiscFixes::CGWorldFrame_Intersect(C3Vector* start, C3Vector* end, C
             return 0;
         }
     }
-    MiscFixes::g_models_collision_check = false;
 
     if (++MiscFixes::g_models_cleanup_timer > MiscFixes::CLEANUP_INTERVAL) {
         g_models_cleanup_timer = 0;

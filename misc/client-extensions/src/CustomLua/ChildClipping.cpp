@@ -193,7 +193,8 @@ LUA_FUNCTION(GetFrameChildClipping, (lua_State* L))
 CLIENT_DETOUR_THISCALL(CSimpleFrame__OnFrameRender_ClipChildren, 0x00490840, char*, (int renderBatch, int layer))
 {
     char* result = CSimpleFrame__OnFrameRender_ClipChildren(self, renderBatch, layer);
-    if (layer == 4 && ClippedParents().count(self) != 0)
+    auto& clippedParents = ClippedParents();
+    if (layer == 4 && !clippedParents.empty() && clippedParents.count(self) != 0)
         CRenderBatch__QueueCallbackEx(reinterpret_cast<void*>(renderBatch), RenderClippedChildren, self);
     return result;
 }
@@ -203,8 +204,9 @@ CLIENT_DETOUR_THISCALL(CSimpleFrame__SetParent_ClipChildren, 0x004911B0, int, (v
     void* oldParent = ReadField<void*>(self, kParentOffset);
     int result = CSimpleFrame__SetParent_ClipChildren(self, newParent);
 
-    bool const oldClipped = oldParent && ClippedParents().count(oldParent) != 0;
-    bool const newClipped = newParent && ClippedParents().count(newParent) != 0;
+    auto& clippedParents = ClippedParents();
+    bool const oldClipped = oldParent && !clippedParents.empty() && clippedParents.count(oldParent) != 0;
+    bool const newClipped = newParent && !clippedParents.empty() && clippedParents.count(newParent) != 0;
 
     if (oldClipped != newClipped)
         CSimpleFrame__SetBeingScrolledEx(self, newClipped ? 1 : 0, newClipped ? 1 : 0);
