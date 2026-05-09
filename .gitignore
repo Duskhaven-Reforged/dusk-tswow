@@ -1,6 +1,6 @@
-install
+/install/
 node_modules
-config
+/config/
 install_garbage
 log.txt
 build.conf
