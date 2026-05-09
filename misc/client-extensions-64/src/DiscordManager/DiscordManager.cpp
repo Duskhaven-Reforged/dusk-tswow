@@ -334,13 +334,13 @@ DiscordManager *DiscordManager::Get()
     return instance_;
 }
 
-bool DiscordManager::Start(uint64_t appId)
+bool DiscordManager::Start(uint64_t appId, bool allowDiscord)
 {
     if (running_.exchange(true))
         return false;
     instance_ = this;
-    th_ = std::thread([this, appId]
-                      { ThreadMain(appId); });
+    th_ = std::thread([this, appId, allowDiscord]
+                      { ThreadMain(appId, allowDiscord); });
     return true;
 }
 
@@ -354,9 +354,8 @@ void DiscordManager::Stop()
         th_.join();
 }
 
-void DiscordManager::ThreadMain(uint64_t appId)
+void DiscordManager::ThreadMain(uint64_t appId, bool allowDiscord)
 {
-    std::cout << "🚀 Initializing Discord SDK in DiscordManager...\n";
     applicationId_ = appId;
     usingCachedAccessToken_ = false;
     refreshAttempted_ = false;
@@ -364,19 +363,23 @@ void DiscordManager::ThreadMain(uint64_t appId)
     interactiveAuthInProgress_ = false;
     cachedToken_.reset();
 
-    // Create client
-    client_ = std::make_shared<discordpp::Client>();
+    if (allowDiscord)
+    {
+        std::cout << "🚀 Initializing Discord SDK in DiscordManager...\n";
 
-    // Set up logging callback
-    // TODO: make this write to a file or something else.
-    client_->AddLogCallback([](auto message, auto severity)
-                            { std::cout << "[" << EnumToString(severity) << "] " << message << std::endl; }, discordpp::LoggingSeverity::Info);
+        // Create client
+        client_ = std::make_shared<discordpp::Client>();
 
-    // Set up status callback
-    // NOTE: We capturing 'this' safely because ThreadMain is a member, but be careful if *this is destroyed.
-    // However, Stop() joins the thread, so *this should be valid while thread runs.
-    client_->SetStatusChangedCallback([this](discordpp::Client::Status status, discordpp::Client::Error error, int32_t errorDetail)
-                                      {
+        // Set up logging callback
+        // TODO: make this write to a file or something else.
+        client_->AddLogCallback([](auto message, auto severity)
+                                { std::cout << "[" << EnumToString(severity) << "] " << message << std::endl; }, discordpp::LoggingSeverity::Info);
+
+        // Set up status callback
+        // NOTE: We capturing 'this' safely because ThreadMain is a member, but be careful if *this is destroyed.
+        // However, Stop() joins the thread, so *this should be valid while thread runs.
+        client_->SetStatusChangedCallback([this](discordpp::Client::Status status, discordpp::Client::Error error, int32_t errorDetail)
+                                          {
         std::cout << "🔄 Status changed: " << discordpp::Client::StatusToString(status) << std::endl;
         if (status == discordpp::Client::Status::Ready) {
             OnConnect();
@@ -384,7 +387,12 @@ void DiscordManager::ThreadMain(uint64_t appId)
             OnDisconnect(error, errorDetail);
         } });
 
-    BeginAuthentication(appId);
+        BeginAuthentication(appId);
+    }
+    else
+    {
+        std::cout << "Discord startup disabled by allowDiscord=0; IPC command handling remains available.\n";
+    }
 
     // Main loop
     while (running_)
@@ -400,7 +408,10 @@ void DiscordManager::ThreadMain(uint64_t appId)
             {
             }
         }
-        discordpp::RunCallbacks();
+        if (allowDiscord)
+        {
+            discordpp::RunCallbacks();
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(10)); // 10ms is what discord had in docs.
     }
 
