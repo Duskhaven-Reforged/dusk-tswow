@@ -160,15 +160,6 @@ static void PushGameObjectPosition(lua_State* L, CGGameObject_C* gameObject)
     ClientLua::PushNumber(L, gameObject->m_passenger.position.z);
 }
 
-static void PushGameObjectRotation(lua_State* L, CGGameObject_C* gameObject)
-{
-    float roll, pitch, yaw;
-    quat_to_euler(unpack_quat(gameObject->m_passenger.compressedRotation), roll, pitch, yaw);
-    ClientLua::PushNumber(L, yaw);
-    ClientLua::PushNumber(L, pitch);
-    ClientLua::PushNumber(L, roll);
-}
-
 LUA_FUNCTION(LogMouseoverGobValues, (lua_State*))
 {
     CGGameObject_C* gameObject = GameObjectByMouse();
@@ -245,16 +236,43 @@ LUA_FUNCTION(GetSelectedGobPosition, (lua_State * L))
     return 3;
 }
 
-LUA_FUNCTION(GetGobRotByMouse, (lua_State * L))
+LUA_FUNCTION(GetSelectedGobRotation, (lua_State * L))
 {
-    // TODO: use a GUID passed in
-    CGGameObject_C* gameObject = GameObjectByMouse();
+    CGGameObject_C* gameObject = SelectedGameObject();
     if (!gameObject)
         return 0;
 
-    PushGameObjectRotation(L, gameObject);
+    Quat q = unpack_quat(gameObject->m_passenger.compressedRotation);
 
-    return 3;
+    float roll, pitch, yaw;
+    quat_to_euler(q, roll, pitch, yaw);
+
+    ClientLua::PushNumber(L, q.x);
+    ClientLua::PushNumber(L, q.y);
+    ClientLua::PushNumber(L, q.z);
+    ClientLua::PushNumber(L, q.w);
+    return 4;
+}
+
+LUA_FUNCTION(SetGobRotationByGUID, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    float x = (float)ClientLua::GetNumber(L, 2);
+    float y = (float)ClientLua::GetNumber(L, 3);
+    float z = (float)ClientLua::GetNumber(L, 4);
+    float w = (float)ClientLua::GetNumber(L, 5);
+
+    gameObject->m_passenger.compressedRotation = pack_quat({w, x, y, z});
+    gameObject->UpdateWorldObject(0);
+
+    ClientLua::PushBoolean(L, true);
+    return 1;
 }
 
 LUA_FUNCTION(GetGobPositionByMouse, (lua_State * L))
