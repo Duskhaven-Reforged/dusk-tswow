@@ -75,15 +75,6 @@ namespace EditorRuntime
             return true;
         }
 
-        void ClearSelection()
-        {
-            EditorState& state = State();
-            state.currentObjectGuid = 0;
-            state.gizmoTranslationAxis = Axis::None;
-            state.gizmoRotationAxis = Axis::None;
-            state.gizmoDragState = {};
-        }
-
         int32_t OnMouseDown(const void* rawData, void*)
         {
             if (!Enabled())
@@ -210,6 +201,15 @@ namespace EditorRuntime
             state.gizmoRotationAxis = PickRotationGizmo(state.start, state.end, state.gizmoPosition, kRotationGizmoScale);
             return 1;
         }
+    }
+
+    void ClearSelection()
+    {
+        EditorState& state = State();
+        state.currentObjectGuid = 0;
+        state.gizmoTranslationAxis = Axis::None;
+        state.gizmoRotationAxis = Axis::None;
+        state.gizmoDragState = {};
     }
 
     bool SelectGameObject(uint64_t guid)

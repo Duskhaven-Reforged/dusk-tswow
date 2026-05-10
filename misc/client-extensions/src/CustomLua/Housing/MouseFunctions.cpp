@@ -206,6 +206,7 @@ LUA_FUNCTION(SelectGobByMouse, (lua_State * L))
 LUA_FUNCTION(ClearSelectedGob, (lua_State * L))
 {
     selectedGameObjectGuid = 0;
+    EditorRuntime::ClearSelection();
     return 0;
 }
 

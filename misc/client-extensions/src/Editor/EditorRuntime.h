@@ -10,5 +10,6 @@ namespace EditorRuntime
     void Apply();
     void OnGameClientInitialize();
     void OnGameClientDestroy();
+    void ClearSelection();
     void OnWorldRender(ClientData::CGWorldFrameFull* worldFrame);
 } // namespace EditorRuntime
