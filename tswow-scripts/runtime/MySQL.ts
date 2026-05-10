@@ -15,6 +15,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 import * as mysql_lib from 'mysql2';
+import crypto from 'crypto';
 import path from 'path';
 import { start } from 'repl';
 import { commands } from '../util/Commands';
@@ -395,17 +396,24 @@ export namespace mysql {
 
         for(const file of files.sort()) {
             const bn = path.basename(file);
+            const contents = wfs.read(file);
+            const hash = crypto.createHash('sha1').update(contents).digest('hex');
             const applied = await cons.query(
                 `SELECT * from \`updates\` WHERE \`name\` = "${bn}";`
             )
-            if(applied.length === 0) {
-                term.log('mysql',`Applying SQL update ${bn}`)
+            if(applied.length === 0 || (applied[0].hash !== hash && applied[0].hash !== 'tswow' && applied[0].hash !== '')) {
+                term.log('mysql',`${applied.length === 0 ? 'Applying' : 'Reapplying'} SQL update ${bn}`)
                 ++total;
                 await cons.query(
                         `START TRANSACTION;`
-                    + `${wfs.read(file)}`
-                    + `INSERT INTO updates (name,hash,speed) VALUES ("${bn}","tswow",0);`
+                    + `${contents}`
+                    + `REPLACE INTO updates (name,hash,speed) VALUES ("${bn}","${hash}",0);`
                     + `COMMIT;`
+                )
+            } else if(applied[0].hash === 'tswow' || applied[0].hash === '') {
+                term.log('mysql',`Re-hashing SQL update ${bn}`)
+                await cons.query(
+                    `REPLACE INTO updates (name,hash,speed) VALUES ("${bn}","${hash}",${applied[0].speed || 0});`
                 )
             }
         }
