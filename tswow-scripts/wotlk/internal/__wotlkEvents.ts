@@ -178,6 +178,40 @@ function syncAllMapDBCRows() {
     });
 }
 
+function syncCustomSpellCastTimeDBCRows() {
+    const rows = DBC.SpellCastTimes.queryAll({});
+    const baseRowCount = DBCFile.getBuffer(DBC.SpellCastTimes).baseRowCount;
+    rows
+        .filter(row => row.index >= baseRowCount && !row.isDeleted())
+        .forEach(row => {
+            let sqlRow = SQL.dbc_spellcasttimes.query({ ID: row.ID.get() });
+            if (!sqlRow) {
+                sqlRow = SQL.dbc_spellcasttimes.add(row.ID.get());
+            }
+
+            sqlRow.Base.set(row.Base.get())
+                .PerLevel.set(row.PerLevel.get())
+                .Minimum.set(row.Minimum.get());
+        });
+}
+
+function syncCustomSpellDurationDBCRows() {
+    const rows = DBC.SpellDuration.queryAll({});
+    const baseRowCount = DBCFile.getBuffer(DBC.SpellDuration).baseRowCount;
+    rows
+        .filter(row => row.index >= baseRowCount && !row.isDeleted())
+        .forEach(row => {
+            let sqlRow = SQL.dbc_spellduration.query({ ID: row.ID.get() });
+            if (!sqlRow) {
+                sqlRow = SQL.dbc_spellduration.add(row.ID.get());
+            }
+
+            sqlRow.Duration.set(row.Duration.get())
+                .DurationPerLevel.set(row.DurationPerLevel.get())
+                .MaxDuration.set(row.MaxDuration.get());
+        });
+}
+
 function saveDbc() {
     for (const file of DBCFiles) {
         saveDBCFile(file, '.dbc')
@@ -219,6 +253,8 @@ function saveDBCFile(file, ending)
 async function saveSQL() {
     syncAllSpellDBCRows();
     syncAllMapDBCRows();
+    syncCustomSpellCastTimeDBCRows();
+    syncCustomSpellDurationDBCRows();
     SQLTables.map(x=>{
         SqlTable.writeSQL(x);
     })

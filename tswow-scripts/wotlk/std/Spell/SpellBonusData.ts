@@ -1,6 +1,7 @@
 import * as fs from "fs";
 
 import { Cell } from "../../../data/cell/cells/Cell";
+import { EnumCon, makeEnum } from "../../../data/cell/cells/EnumCell";
 import { finish } from "../../../data/index";
 import { DBC } from "../../DBCFiles";
 import { spell_bonus_dataRow } from "../../sql/spell_bonus_data";
@@ -10,10 +11,12 @@ import { SpellEffect } from "./SpellEffect";
 
 type BonusScalarKind = "AP" | "SP" | "BV";
 
-export const enum BonusDataScalingMode {
+export enum BonusDataScalingMode {
     BOTH = 0,
     HIGHEST = 1,
 }
+
+export type BonusDataScalingModeInput = EnumCon<keyof typeof BonusDataScalingMode>;
 
 type BonusScalarCallSite = {
     filePath: string;
@@ -52,6 +55,7 @@ type BonusScalarRegistration = {
     targetCount: number;
     isAoe: boolean;
     powerCostPct: number;
+    scalingMode: number;
     filePath: string;
     line: number;
     column: number;
@@ -80,6 +84,8 @@ type BonusScalarTiming = {
     isAoe: boolean;
     powerCostPct: number;
 };
+
+let TRIGGER_PARENT_INDEX: Map<number, number> | null = null;
 
 const SPELL_FAMILY_NAMES: Record<number, string> = {
     0: "GENERIC",
@@ -128,6 +134,7 @@ CREATE TABLE \`powers_bonus_data_registry\` (
     target_count INT NOT NULL DEFAULT 1,
     is_aoe TINYINT(1) NOT NULL DEFAULT 0,
     power_cost_pct INT NOT NULL DEFAULT 0,
+    scaling_mode INT NOT NULL DEFAULT 0,
     module_name VARCHAR(100) NOT NULL DEFAULT '',
     file_path VARCHAR(500) NOT NULL DEFAULT '',
     line_number INT NOT NULL DEFAULT 0,
@@ -157,6 +164,10 @@ function registryKey(spellId: number, effectIndex: number, scalarKind: BonusScal
 
 function familyName(familyId: number): string {
     return SPELL_FAMILY_NAMES[familyId] ?? `FAMILY_${familyId}`;
+}
+
+function resolveBonusDataScalingMode(scalingMode: BonusDataScalingModeInput): BonusDataScalingMode {
+    return makeEnum(BonusDataScalingMode, scalingMode) as BonusDataScalingMode;
 }
 
 function titleCase(value: string): string {
@@ -210,6 +221,23 @@ function isAreaImplicitTarget(target: number): boolean {
     ].includes(target);
 }
 
+function getTriggerParentSpellId(spellId: number): number | null {
+    if (TRIGGER_PARENT_INDEX === null) {
+        TRIGGER_PARENT_INDEX = new Map<number, number>();
+        for (const parent of DBC.Spell.queryAll({} as any)) {
+            const parentId = parent.ID.get();
+            for (let effectIndex = 0; effectIndex < 3; effectIndex++) {
+                const childId = parent.EffectTriggerSpell.getIndex(effectIndex) ?? 0;
+                if (childId !== 0 && !TRIGGER_PARENT_INDEX.has(childId)) {
+                    TRIGGER_PARENT_INDEX.set(childId, parentId);
+                }
+            }
+        }
+    }
+
+    return TRIGGER_PARENT_INDEX.get(spellId) ?? null;
+}
+
 function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming {
     const row = DBC.Spell.findById(spellId);
     if (!row) {
@@ -230,15 +258,29 @@ function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming
         };
     }
 
-    const durationRow = DBC.SpellDuration.findById(row.DurationIndex.get());
-    const castRow = DBC.SpellCastTimes.findById(row.CastingTimeIndex.get());
-    const durationMs = Math.max(
+    const parentRow = DBC.Spell.findById(getTriggerParentSpellId(spellId) ?? 0);
+    const parentDurationRow = parentRow ? DBC.SpellDuration.findById(parentRow.DurationIndex.get()) : undefined;
+    const childDurationRow = DBC.SpellDuration.findById(row.DurationIndex.get());
+    const parentCastRow = parentRow ? DBC.SpellCastTimes.findById(parentRow.CastingTimeIndex.get()) : undefined;
+    const childCastRow = DBC.SpellCastTimes.findById(row.CastingTimeIndex.get());
+    const childDurationMs = Math.max(
         0,
-        durationRow?.Duration.get() ?? 0,
-        durationRow?.MaxDuration.get() ?? 0,
+        childDurationRow?.Duration.get() ?? 0,
+        childDurationRow?.MaxDuration.get() ?? 0,
     );
-    const castTimeMs = Math.max(0, castRow?.Base.get() ?? 0, castRow?.Minimum.get() ?? 0);
-    const cooldownMs = Math.max(0, row.RecoveryTime.get(), row.CategoryRecoveryTime.get());
+    const childCastTimeMs = Math.max(0, childCastRow?.Base.get() ?? 0, childCastRow?.Minimum.get() ?? 0);
+    const childIsInstant = childDurationMs === 0 && childCastTimeMs === 0;
+    const parentDurationMs = childIsInstant ? Math.max(
+        0,
+        parentDurationRow?.Duration.get() ?? 0,
+        parentDurationRow?.MaxDuration.get() ?? 0,
+    ) : 0;
+    const parentCastTimeMs = childIsInstant ? Math.max(0, parentCastRow?.Base.get() ?? 0, parentCastRow?.Minimum.get() ?? 0) : 0;
+    const parentCooldownMs = childIsInstant && parentRow ? Math.max(0, parentRow.RecoveryTime.get(), parentRow.CategoryRecoveryTime.get()) : 0;
+    const childCooldownMs = Math.max(0, row.RecoveryTime.get(), row.CategoryRecoveryTime.get());
+    const durationMs = parentDurationMs || childDurationMs;
+    const castTimeMs = parentCastTimeMs || childCastTimeMs;
+    const cooldownMs = parentCooldownMs || childCooldownMs;
     const auraType = row.EffectAura.getIndex(effectIndex) ?? 0;
     const chainAmplitude = row.EffectChainAmplitude.getIndex(effectIndex) ?? 1;
     const targetCount = Math.max(1, row.MaxTargets.get() || 1);
@@ -258,7 +300,7 @@ function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming
         hasCooldown: cooldownMs > 0,
         targetCount,
         isAoe: targetCount > 1 || chainAmplitude > 1 || isAreaImplicitTarget(implicitTargetA) || isAreaImplicitTarget(implicitTargetB),
-        powerCostPct: row.ManaCostPct.get() || 0,
+        powerCostPct: (childIsInstant ? parentRow?.ManaCostPct.get() : 0) || row.ManaCostPct.get() || 0,
     };
 }
 
@@ -417,7 +459,7 @@ function getRelativeFilePath(filePath: string): string {
     return p;
 }
 
-function registerBonusScalar(owner: SpellEffect, scalarKind: BonusScalarKind, scalarValue: number): void {
+function registerBonusScalar(owner: SpellEffect, scalarKind: BonusScalarKind, scalarValue: number, scalingMode?: number): void {
     const spellId = owner.row.ID.get();
     const effectIndex = owner.index;
     const callSite = getBonusScalarCallSite();
@@ -439,6 +481,7 @@ function registerBonusScalar(owner: SpellEffect, scalarKind: BonusScalarKind, sc
         className: inferred.className,
         specName: inferred.specName,
         ...timing,
+        scalingMode: scalingMode ?? 0,
         filePath: relativeFilePath,
         line: callSite?.line ?? 0,
         column: callSite?.column ?? 0,
@@ -485,6 +528,7 @@ function makeDatabaseRegistration(row: spell_bonus_dataRow, scalarKind: BonusSca
         className: inferred.className,
         specName: inferred.specName,
         ...timing,
+        scalingMode: row.scaling_mode.get(),
         filePath: "",
         line: 0,
         column: 0,
@@ -508,7 +552,7 @@ function writeBonusScalarRegistration(registry: BonusScalarRegistration): void {
             effect_type, aura_type, aura_period_ms, chain_amplitude,
             duration_ms, cast_time_ms, cooldown_ms,
             is_periodic, has_cast_time, has_cooldown, target_count,
-            is_aoe, power_cost_pct,
+            is_aoe, power_cost_pct, scaling_mode,
             module_name, file_path, line_number, column_number,
             script_kind, tag_name, parented_id, const_name, source_expr,
             exportable, source_kind
@@ -535,6 +579,7 @@ function writeBonusScalarRegistration(registry: BonusScalarRegistration): void {
             ${registry.targetCount},
             ${registry.isAoe ? 1 : 0},
             ${registry.powerCostPct},
+            ${Number.isFinite(registry.scalingMode) ? registry.scalingMode : 0},
             '${escapeSql(registry.moduleName)}',
             '${escapeSql(registry.filePath)}',
             ${registry.line},
@@ -567,6 +612,7 @@ function writeBonusScalarRegistration(registry: BonusScalarRegistration): void {
             target_count = VALUES(target_count),
             is_aoe = VALUES(is_aoe),
             power_cost_pct = VALUES(power_cost_pct),
+            scaling_mode = VALUES(scaling_mode),
             module_name = VALUES(module_name),
             file_path = VALUES(file_path),
             line_number = VALUES(line_number),
@@ -602,8 +648,10 @@ class BonusDataScalarCell extends Cell<number, SpellEffect> {
     }
 
     set(value: number): SpellEffect {
-        this.getter(MaybeSQLEntity.getOrCreateSQL(this.bonusData)).set(value);
-        registerBonusScalar(this.owner, this.scalarKind, value);
+        const sql = MaybeSQLEntity.getOrCreateSQL(this.bonusData);
+        this.getter(sql).set(value);
+        sql.scaling_mode.set(BonusDataScalingMode.BOTH);
+        registerBonusScalar(this.owner, this.scalarKind, value, BonusDataScalingMode.BOTH);
         return this.owner;
     }
 }
@@ -651,16 +699,17 @@ export class SpellBonusData extends MaybeSQLEntity<SpellEffect,spell_bonus_dataR
     get APBonus() { return new BonusDataScalarCell(this.owner, this, "AP", sql => sql.ap); }
     get BVBonus() { return new BonusDataScalarCell(this.owner, this, "BV", sql => sql.bv); }
 
-    set(ap: number, sp: number, bv: number, scalingMode: BonusDataScalingMode = BonusDataScalingMode.BOTH): SpellEffect {
+    set(ap: number, sp: number, bv: number, scalingMode: BonusDataScalingModeInput): SpellEffect {
+        const resolvedMode = resolveBonusDataScalingMode(scalingMode);
         const sql = MaybeSQLEntity.getOrCreateSQL(this);
         sql.ap.set(ap)
             .sp.set(sp)
             .bv.set(bv)
-            .scaling_mode.set(scalingMode);
+            .scaling_mode.set(resolvedMode);
 
-        registerBonusScalar(this.owner, "AP", ap);
-        registerBonusScalar(this.owner, "SP", sp);
-        registerBonusScalar(this.owner, "BV", bv);
+        registerBonusScalar(this.owner, "AP", ap, resolvedMode);
+        registerBonusScalar(this.owner, "SP", sp, resolvedMode);
+        registerBonusScalar(this.owner, "BV", bv, resolvedMode);
         return this.owner;
     }
 }
