@@ -134,9 +134,9 @@ namespace EditorRuntime
                 return 0;
             }
 
-            CGWorldFrameFull* worldFrame = CGWorldFrameFull::Current();
-            if (!worldFrame || worldFrame->currentGuid == 0 || !GameObjectByGuid(worldFrame->currentGuid))
-                ClearSelection();
+            // CGWorldFrameFull* worldFrame = CGWorldFrameFull::Current();
+            // if (!worldFrame || worldFrame->currentGuid == 0 || !GameObjectByGuid(worldFrame->currentGuid))
+            //     ClearSelection();
 
             return 1;
         }
