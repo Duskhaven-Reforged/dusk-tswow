@@ -269,6 +269,7 @@ LUA_FUNCTION(SetGobRotationByGUID, (lua_State * L))
     float w = (float)ClientLua::GetNumber(L, 5);
 
     gameObject->m_passenger.compressedRotation = pack_quat({w, x, y, z});
+    gameObject->UpdateWorldObject(0);
 
     ClientLua::PushBoolean(L, true);
     return 1;
