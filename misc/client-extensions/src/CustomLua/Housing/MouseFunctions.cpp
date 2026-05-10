@@ -254,6 +254,26 @@ LUA_FUNCTION(GetSelectedGobRotation, (lua_State * L))
     return 4;
 }
 
+LUA_FUNCTION(SetGobRotationByGUID, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    float x = (float)ClientLua::GetNumber(L, 2);
+    float y = (float)ClientLua::GetNumber(L, 3);
+    float z = (float)ClientLua::GetNumber(L, 4);
+    float w = (float)ClientLua::GetNumber(L, 5);
+
+    gameObject->m_passenger.compressedRotation = pack_quat({w, x, y, z});
+
+    ClientLua::PushBoolean(L, true);
+    return 1;
+}
+
 LUA_FUNCTION(GetGobPositionByMouse, (lua_State * L))
 {
     CGGameObject_C* gameObject = GameObjectByMouse();

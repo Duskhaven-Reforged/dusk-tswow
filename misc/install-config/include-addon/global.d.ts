@@ -63,7 +63,8 @@ declare function GetCDBCRow(dbcName: string, rowIndex: number): LuaMultiReturn<[
 declare function GetMouseWorldPosition(): LuaMultiReturn<[number, number, number]>
 declare function GetLastMouseoverGUID(): LuaMultiReturn<[string, number, number, number]>
 declare function SelectEditorGobByMouse(): LuaMultiReturn<[string, number, number, number]>
-declare function RotateGobByGUID(guid: string, yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
+declare function GetSelectedGobRotation(): LuaMultiReturn<[number, number, number, number]>
+declare function SetGobRotationByGUID(guid: string, qx: number,qy: number,qz: number,qw: number): boolean
 declare function RotateGobByMouse(yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
 declare function GetGobRotByMouse(): LuaMultiReturn<[number, number, number]>
 declare function MoveGobByGUID(guid: string, x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
