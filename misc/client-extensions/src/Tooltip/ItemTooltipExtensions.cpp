@@ -696,6 +696,10 @@ namespace {
         return statType >= 12 && statType <= 47;
     }
 
+    bool ItemModFormatUsesSignCharacter(const char* formatText) {
+        return formatText && std::strstr(formatText, "%c") != nullptr;
+    }
+
     void AddFormattedItemModLine(void* tooltip, char* formatKey, int32_t value, bool equipStyle) {
         if (!tooltip || !formatKey || !formatKey[0] || value == 0) {
             return;
@@ -709,12 +713,16 @@ namespace {
         LOG_DEBUG << formatKey << " : " << formatText;
 
         char line[512] = {};
-        SStr::Printf(
-            line,
-            sizeof(line),
-            formatText,
-            value <= 0 ? '-' : '+',
-            value < 0 ? -value : value);
+        if (ItemModFormatUsesSignCharacter(formatText)) {
+            SStr::Printf(
+                line,
+                sizeof(line),
+                formatText,
+                value <= 0 ? '-' : '+',
+                value < 0 ? -value : value);
+        } else {
+            SStr::Printf(line, sizeof(line), formatText, value);
+        }
 
         uint32_t lineColor = equipStyle ? kColorGreen0 : kColorWhite;
         AddSingleLine(tooltip, line, reinterpret_cast<void*>(lineColor), 1);

@@ -14,7 +14,7 @@
   */
 
 /* tslint:disable */
-import { float, mediumint, varchar } from '../../data/primitives'
+import { float, int, mediumint, varchar } from '../../data/primitives'
 import { PrimaryKey } from '../../data/table/PrimaryKey'
 import { SQLCell, SQLCellReadOnly } from '../../data/sql/SQLCell'
 import { SqlRow } from '../../data/sql/SQLRow'
@@ -55,6 +55,11 @@ export class spell_bonus_dataRow extends SqlRow<spell_bonus_dataCreator,spell_bo
     /**
      * No comment (yet!)
      */
+    get scaling_mode() {return new SQLCell<int, this>(this, 'scaling_mode')}
+
+    /**
+     * No comment (yet!)
+     */
     get comments() {return new SQLCell<varchar, this>(this, 'comments')}
 
     /**
@@ -76,6 +81,7 @@ export type spell_bonus_dataCreator = {
     sp? : float,
     ap? : float,
     bv? : float,
+    scaling_mode? : int,
     comments? : varchar,
 }
 
@@ -88,6 +94,7 @@ export type spell_bonus_dataQuery = {
     sp? : float,
     ap? : float,
     bv? : float,
+    scaling_mode? : int,
     comments? : varchar,
 }
 
