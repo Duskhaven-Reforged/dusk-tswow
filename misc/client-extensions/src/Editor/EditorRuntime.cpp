@@ -3,8 +3,6 @@
 #include <ClientData/Draw.h>
 #include <Editor/EditorState.h>
 #include <ClientData/Event.h>
-#include <ClientData/GameClient.h>
-#include <ClientData/GameObject.h>
 #include <Editor/GizmoDraw.h>
 #include <Editor/GizmoPick.h>
 #include <ClientData/GxDevice.h>
@@ -48,15 +46,6 @@ namespace EditorRuntime
         CGGameObject_C* GameObjectByGuid(uint64_t guid)
         {
             return AsClientGameObject(ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
-        }
-
-        CGGameObject_C* SelectedGameObject()
-        {
-            EditorState& state = State();
-            if (state.currentObjectGuid == 0)
-                return nullptr;
-
-            return GameObjectByGuid(state.currentObjectGuid);
         }
 
         bool UpdateMouseRay(EventDataMouse const* data)
@@ -201,6 +190,21 @@ namespace EditorRuntime
             state.gizmoRotationAxis = PickRotationGizmo(state.start, state.end, state.gizmoPosition, kRotationGizmoScale);
             return 1;
         }
+    }
+
+    CGGameObject_C* SelectedGameObject()
+    {
+        EditorState& state = State();
+        if (state.currentObjectGuid == 0)
+            return nullptr;
+
+        return GameObjectByGuid(state.currentObjectGuid);
+    }
+
+    uint64_t CurrentSelectedGobGUID()
+    {
+        EditorState& state = State();
+        return state.currentObjectGuid;
     }
 
     void ClearSelection()
