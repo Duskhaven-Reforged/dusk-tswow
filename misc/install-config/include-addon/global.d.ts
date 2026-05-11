@@ -62,13 +62,14 @@ declare function GetCDBCRow(dbcName: string, rowIndex: number): LuaMultiReturn<[
 //Housing
 declare function GetMouseWorldPosition(): LuaMultiReturn<[number, number, number]>
 declare function GetLastMouseoverGUID(): LuaMultiReturn<[string, number, number, number]>
+declare function LogMouseoverGobValues(): void
+declare function ClearSelectedGob(): void
 declare function SelectEditorGobByMouse(): LuaMultiReturn<[string, number, number, number]>
+declare function GetSelectedGobGUID(): string
+declare function GetSelectedGobPosition(): LuaMultiReturn<[number, number, number]>
 declare function GetSelectedGobRotation(): LuaMultiReturn<[number, number, number, number]>
 declare function SetGobRotationByGUID(guid: string, qx: number,qy: number,qz: number,qw: number): boolean
-declare function RotateGobByMouse(yaw: number, pitch: number, roll: number): LuaMultiReturn<[number, number, number]>
-declare function GetGobRotByMouse(): LuaMultiReturn<[number, number, number]>
-declare function MoveGobByGUID(guid: string, x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
-declare function MoveGobByMouse(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
+declare function SetGobPositionByGUID(guid: string, x: number, y: number, z: number): boolean
 //
 declare function ConvertCoordsToScreenSpace(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function ReloadMap(): void;

@@ -72,9 +72,9 @@ CLIENT_DETOUR_THISCALL(CGWorldFrame__HitTestPoint, 0x004F9DA0, int, (float a2, f
         HitTestResult* lastMouseHit = reinterpret_cast<HitTestResult*>(a5);
         lastMouseGUID =
             result >= 2 ? DecodeClientGuid(lastMouseHit->guidLow, lastMouseHit->guidHigh) : DecodeClientGuid(0, 0);
-        lastMouseHitX      = lastMouseHit->x;
-        lastMouseHitY      = lastMouseHit->y;
-        lastMouseHitZ      = lastMouseHit->z;
+        lastMouseHitX = lastMouseHit->x;
+        lastMouseHitY = lastMouseHit->y;
+        lastMouseHitZ = lastMouseHit->z;
     }
 
     return result;
@@ -204,6 +204,25 @@ LUA_FUNCTION(GetSelectedGobRotation, (lua_State * L))
     return 4;
 }
 
+
+LUA_FUNCTION(SetGobPositionByGUID, (lua_State * L))
+{
+    CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
+    if (!gameObject)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    gameObject->m_passenger.position.x = (float)ClientLua::GetNumber(L, 2);
+    gameObject->m_passenger.position.y = (float)ClientLua::GetNumber(L, 3);
+    gameObject->m_passenger.position.z = (float)ClientLua::GetNumber(L, 4);
+    gameObject->UpdateWorldObject(0);
+
+    ClientLua::PushBoolean(L, true);
+    return 1;
+}
+
 LUA_FUNCTION(SetGobRotationByGUID, (lua_State * L))
 {
     CGGameObject_C* gameObject = GameObjectByLuaGuid(L, 1);
@@ -223,14 +242,4 @@ LUA_FUNCTION(SetGobRotationByGUID, (lua_State * L))
 
     ClientLua::PushBoolean(L, true);
     return 1;
-}
-
-LUA_FUNCTION(GetGobPositionByMouse, (lua_State * L))
-{
-    CGGameObject_C* gameObject = GameObjectByMouse();
-    if (!gameObject)
-        return 0;
-
-    PushGameObjectPosition(L, gameObject);
-    return 3;
 }
