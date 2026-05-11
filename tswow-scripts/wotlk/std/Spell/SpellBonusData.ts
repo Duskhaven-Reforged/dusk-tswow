@@ -85,7 +85,17 @@ type BonusScalarTiming = {
     powerCostPct: number;
 };
 
-let TRIGGER_PARENT_INDEX: Map<number, number> | null = null;
+type TriggerParentEdge = {
+    parentId: number;
+    isChannelTrigger: boolean;
+};
+
+type TriggerParentInfo = {
+    parentId: number | null;
+    isChannelTrigger: boolean;
+};
+
+let TRIGGER_PARENT_INDEX: Map<number, TriggerParentEdge> | null = null;
 
 const SPELL_FAMILY_NAMES: Record<number, string> = {
     0: "GENERIC",
@@ -221,21 +231,38 @@ function isAreaImplicitTarget(target: number): boolean {
     ].includes(target);
 }
 
-function getTriggerParentSpellId(spellId: number): number | null {
+function getTriggerParentInfo(spellId: number): TriggerParentInfo {
     if (TRIGGER_PARENT_INDEX === null) {
-        TRIGGER_PARENT_INDEX = new Map<number, number>();
+        TRIGGER_PARENT_INDEX = new Map<number, TriggerParentEdge>();
         for (const parent of DBC.Spell.queryAll({} as any)) {
             const parentId = parent.ID.get();
             for (let effectIndex = 0; effectIndex < 3; effectIndex++) {
                 const childId = parent.EffectTriggerSpell.getIndex(effectIndex) ?? 0;
                 if (childId !== 0 && !TRIGGER_PARENT_INDEX.has(childId)) {
-                    TRIGGER_PARENT_INDEX.set(childId, parentId);
+                    const delayMs = parent.EffectMiscValue.getIndex(effectIndex) ?? 0;
+                    TRIGGER_PARENT_INDEX.set(childId, {
+                        parentId,
+                        isChannelTrigger: delayMs > 0,
+                    });
                 }
             }
         }
     }
 
-    return TRIGGER_PARENT_INDEX.get(spellId) ?? null;
+    const directEdge = TRIGGER_PARENT_INDEX.get(spellId) ?? null;
+    let parentId = directEdge?.parentId ?? null;
+    let isChannelTrigger = directEdge?.isChannelTrigger ?? false;
+    const seen = new Set<number>([spellId]);
+    while (parentId !== null && !seen.has(parentId)) {
+        seen.add(parentId);
+        const nextEdge = TRIGGER_PARENT_INDEX.get(parentId) ?? null;
+        if (nextEdge === null) {
+            break;
+        }
+        isChannelTrigger = isChannelTrigger || nextEdge.isChannelTrigger;
+        parentId = nextEdge.parentId;
+    }
+    return { parentId, isChannelTrigger };
 }
 
 function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming {
@@ -258,7 +285,8 @@ function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming
         };
     }
 
-    const parentRow = DBC.Spell.findById(getTriggerParentSpellId(spellId) ?? 0);
+    const parentInfo = getTriggerParentInfo(spellId);
+    const parentRow = DBC.Spell.findById(parentInfo.parentId ?? 0);
     const parentDurationRow = parentRow ? DBC.SpellDuration.findById(parentRow.DurationIndex.get()) : undefined;
     const childDurationRow = DBC.SpellDuration.findById(row.DurationIndex.get());
     const parentCastRow = parentRow ? DBC.SpellCastTimes.findById(parentRow.CastingTimeIndex.get()) : undefined;
@@ -270,13 +298,13 @@ function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming
     );
     const childCastTimeMs = Math.max(0, childCastRow?.Base.get() ?? 0, childCastRow?.Minimum.get() ?? 0);
     const childIsInstant = childDurationMs === 0 && childCastTimeMs === 0;
-    const parentDurationMs = childIsInstant ? Math.max(
+    const parentDurationMs = childIsInstant && parentInfo.isChannelTrigger ? Math.max(
         0,
         parentDurationRow?.Duration.get() ?? 0,
         parentDurationRow?.MaxDuration.get() ?? 0,
     ) : 0;
-    const parentCastTimeMs = childIsInstant ? Math.max(0, parentCastRow?.Base.get() ?? 0, parentCastRow?.Minimum.get() ?? 0) : 0;
-    const parentCooldownMs = childIsInstant && parentRow ? Math.max(0, parentRow.RecoveryTime.get(), parentRow.CategoryRecoveryTime.get()) : 0;
+    const parentCastTimeMs = childIsInstant && parentInfo.isChannelTrigger ? Math.max(0, parentCastRow?.Base.get() ?? 0, parentCastRow?.Minimum.get() ?? 0) : 0;
+    const parentCooldownMs = childIsInstant && parentInfo.isChannelTrigger && parentRow ? Math.max(0, parentRow.RecoveryTime.get(), parentRow.CategoryRecoveryTime.get()) : 0;
     const childCooldownMs = Math.max(0, row.RecoveryTime.get(), row.CategoryRecoveryTime.get());
     const durationMs = parentDurationMs || childDurationMs;
     const castTimeMs = parentCastTimeMs || childCastTimeMs;
@@ -300,7 +328,7 @@ function getSpellTiming(spellId: number, effectIndex: number): BonusScalarTiming
         hasCooldown: cooldownMs > 0,
         targetCount,
         isAoe: targetCount > 1 || chainAmplitude > 1 || isAreaImplicitTarget(implicitTargetA) || isAreaImplicitTarget(implicitTargetB),
-        powerCostPct: (childIsInstant ? parentRow?.ManaCostPct.get() : 0) || row.ManaCostPct.get() || 0,
+        powerCostPct: (childIsInstant && parentInfo.isChannelTrigger ? parentRow?.ManaCostPct.get() : 0) || row.ManaCostPct.get() || 0,
     };
 }
 
