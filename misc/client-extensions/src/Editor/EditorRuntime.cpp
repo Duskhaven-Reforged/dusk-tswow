@@ -1,16 +1,16 @@
 #include <Editor/EditorRuntime.h>
 
 #include <ClientData/Draw.h>
-#include <Editor/EditorState.h>
 #include <ClientData/Event.h>
-#include <Editor/GizmoDraw.h>
-#include <Editor/GizmoPick.h>
 #include <ClientData/GxDevice.h>
-#include <ClientData/ObjectManager.h>
 #include <ClientData/VectorMath.h>
 #include <ClientData/WorldFrame.h>
 #include <ClientDetours.h>
 #include <CustomLua/Housing/QuatFunctions.h>
+#include <Editor/EditorObject.h>
+#include <Editor/EditorState.h>
+#include <Editor/GizmoDraw.h>
+#include <Editor/GizmoPick.h>
 
 #include <cstdint>
 
@@ -41,11 +41,6 @@ namespace EditorRuntime
         {
             static bool registered = false;
             return registered;
-        }
-
-        CGGameObject_C* GameObjectByGuid(uint64_t guid)
-        {
-            return AsClientGameObject(ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
         }
 
         bool UpdateMouseRay(EventDataMouse const* data)
@@ -198,7 +193,7 @@ namespace EditorRuntime
         if (state.currentObjectGuid == 0)
             return nullptr;
 
-        return GameObjectByGuid(state.currentObjectGuid);
+        return EditorObject::GameObjectByGuid(state.currentObjectGuid);
     }
 
     uint64_t CurrentSelectedGobGUID()
@@ -218,7 +213,7 @@ namespace EditorRuntime
 
     bool SelectGameObject(uint64_t guid)
     {
-        CGGameObject_C* gameObject = GameObjectByGuid(guid);
+        CGGameObject_C* gameObject = EditorObject::GameObjectByGuid(guid);
         if (!gameObject)
         {
             ClearSelection();

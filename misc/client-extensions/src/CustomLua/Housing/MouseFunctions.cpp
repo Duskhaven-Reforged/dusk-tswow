@@ -1,16 +1,9 @@
-#include <ClientData/GameObject.h>
-#include <ClientData/MathTypes.h>
-#include <ClientData/ObjectFields.h>
-#include <ClientData/ObjectManager.h>
-#include <ClientData/SharedDefines.h>
 #include <ClientDetours.h>
 #include <ClientLua.h>
+#include <Editor/EditorObject.h>
 #include <Editor/EditorRuntime.h>
-#include <Editor/EditorState.h>
-#include <Editor/GizmoPick.h>
 #include <Logger.h>
 #include <cstdint>
-#include <cstdio>
 #include <fstream>
 #include <string>
 #include "CustomLua/Housing/QuatFunctions.h"
@@ -33,32 +26,7 @@ struct HitTestResult
     // float rayEndZ;     // 0x2C
 };
 
-struct DecodedGuid
-{
-    uint64_t full;
-    uint16_t type;
-    uint32_t entry;
-    uint32_t low;
-};
-
-static DecodedGuid DecodeClientGuid(uint32_t rawLow, uint32_t rawHigh)
-{
-    DecodedGuid g{};
-    g.full  = (uint64_t(rawHigh) << 32) | rawLow;
-    g.type  = (uint16_t)(g.full >> 48);
-    g.entry = (uint32_t)((g.full >> 24) & 0xFFFFFF);
-    g.low   = (uint32_t)(g.full & 0xFFFFFF);
-    return g;
-}
-
-static const char* GuidToString(uint64_t guid)
-{
-    static char buffer[32];
-    snprintf(buffer, sizeof(buffer), "%llu", (unsigned long long)guid);
-    return buffer;
-}
-
-static DecodedGuid lastMouseGUID;
+static EditorObject::DecodedGuid lastMouseGUID;
 static float lastMouseHitX;
 static float lastMouseHitY;
 static float lastMouseHitZ;
@@ -70,8 +38,8 @@ CLIENT_DETOUR_THISCALL(CGWorldFrame__HitTestPoint, 0x004F9DA0, int, (float a2, f
     if (a5)
     {
         HitTestResult* lastMouseHit = reinterpret_cast<HitTestResult*>(a5);
-        lastMouseGUID =
-            result >= 2 ? DecodeClientGuid(lastMouseHit->guidLow, lastMouseHit->guidHigh) : DecodeClientGuid(0, 0);
+        lastMouseGUID = result >= 2 ? EditorObject::DecodeClientGuid(lastMouseHit->guidLow, lastMouseHit->guidHigh)
+                                    : EditorObject::DecodeClientGuid(0, 0);
         lastMouseHitX = lastMouseHit->x;
         lastMouseHitY = lastMouseHit->y;
         lastMouseHitZ = lastMouseHit->z;
@@ -90,7 +58,7 @@ LUA_FUNCTION(GetMouseWorldPosition, (lua_State * L))
 
 LUA_FUNCTION(GetLastMouseoverGUID, (lua_State * L))
 {
-    ClientLua::PushString(L, GuidToString(lastMouseGUID.full));
+    ClientLua::PushString(L, EditorObject::GuidToString(lastMouseGUID.full).c_str());
     ClientLua::PushNumber(L, lastMouseGUID.entry);
     ClientLua::PushNumber(L, lastMouseGUID.low);
     ClientLua::PushNumber(L, lastMouseGUID.type);
@@ -102,19 +70,14 @@ static CGGameObject_C* SelectedGameObject()
     return EditorRuntime::SelectedGameObject();
 }
 
-static CGGameObject_C* GameObjectByGuid(uint64_t guid)
-{
-    return AsClientGameObject(ObjectManager::ObjectPtr(guid, TYPEMASK_OBJECT));
-}
-
 static CGGameObject_C* GameObjectByLuaGuid(lua_State* L, int index)
 {
-    return GameObjectByGuid(std::stoull(ClientLua::GetString(L, index)));
+    return EditorObject::GameObjectByGuid(std::stoull(ClientLua::GetString(L, index)));
 }
 
 static CGGameObject_C* GameObjectByMouse()
 {
-    return GameObjectByGuid(lastMouseGUID.full);
+    return EditorObject::GameObjectByGuid(lastMouseGUID.full);
 }
 
 static void PushGameObjectPosition(lua_State* L, CGGameObject_C* gameObject)
@@ -165,14 +128,14 @@ LUA_FUNCTION(SelectEditorGobByMouse, (lua_State * L))
     if (!gameObject || !EditorRuntime::SelectGameObject(lastMouseGUID.full))
         return 0;
 
-    ClientLua::PushString(L, GuidToString(lastMouseGUID.full));
+    ClientLua::PushString(L, EditorObject::GuidToString(lastMouseGUID.full).c_str());
     PushGameObjectPosition(L, gameObject);
     return 4;
 }
 
 LUA_FUNCTION(GetSelectedGobGUID, (lua_State * L))
 {
-    ClientLua::PushString(L, GuidToString(EditorRuntime::CurrentSelectedGobGUID()));
+    ClientLua::PushString(L, EditorObject::GuidToString(EditorRuntime::CurrentSelectedGobGUID()).c_str());
     return 1;
 }
 
