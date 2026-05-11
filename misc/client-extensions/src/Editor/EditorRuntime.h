@@ -1,7 +1,8 @@
 #pragma once
 
 #include <ClientData/WorldFrame.h>
-
+#include <ClientData/GameClient.h>
+#include <ClientData/GameObject.h>
 #include <cstdint>
 
 namespace EditorRuntime
@@ -10,5 +11,8 @@ namespace EditorRuntime
     void Apply();
     void OnGameClientInitialize();
     void OnGameClientDestroy();
+    void ClearSelection();
+    CGGameObject_C * SelectedGameObject();
+    uint64_t CurrentSelectedGobGUID();
     void OnWorldRender(ClientData::CGWorldFrameFull* worldFrame);
 } // namespace EditorRuntime

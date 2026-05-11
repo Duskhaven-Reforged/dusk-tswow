@@ -1,18 +1,16 @@
 #include <Editor/EditorRuntime.h>
 
 #include <ClientData/Draw.h>
-#include <Editor/EditorState.h>
 #include <ClientData/Event.h>
-#include <ClientData/GameClient.h>
-#include <ClientData/GameObject.h>
-#include <Editor/GizmoDraw.h>
-#include <Editor/GizmoPick.h>
 #include <ClientData/GxDevice.h>
-#include <ClientData/ObjectManager.h>
 #include <ClientData/VectorMath.h>
 #include <ClientData/WorldFrame.h>
 #include <ClientDetours.h>
 #include <CustomLua/Housing/QuatFunctions.h>
+#include <Editor/EditorObject.h>
+#include <Editor/EditorState.h>
+#include <Editor/GizmoDraw.h>
+#include <Editor/GizmoPick.h>
 
 #include <cstdint>
 
@@ -45,20 +43,6 @@ namespace EditorRuntime
             return registered;
         }
 
-        CGGameObject_C* GameObjectByGuid(uint64_t guid)
-        {
-            return AsClientGameObject(ObjectManager::GetObject(guid, TYPEMASK_OBJECT));
-        }
-
-        CGGameObject_C* SelectedGameObject()
-        {
-            EditorState& state = State();
-            if (state.currentObjectGuid == 0)
-                return nullptr;
-
-            return GameObjectByGuid(state.currentObjectGuid);
-        }
-
         bool UpdateMouseRay(EventDataMouse const* data)
         {
             if (!data)
@@ -73,15 +57,6 @@ namespace EditorRuntime
             GameClient::NDCToDDC(data->x, data->y, &ddcX, &ddcY);
             worldFrame->MouseToWorld(ddcX, ddcY, &State().start, &State().end);
             return true;
-        }
-
-        void ClearSelection()
-        {
-            EditorState& state = State();
-            state.currentObjectGuid = 0;
-            state.gizmoTranslationAxis = Axis::None;
-            state.gizmoRotationAxis = Axis::None;
-            state.gizmoDragState = {};
         }
 
         int32_t OnMouseDown(const void* rawData, void*)
@@ -134,9 +109,9 @@ namespace EditorRuntime
                 return 0;
             }
 
-            CGWorldFrameFull* worldFrame = CGWorldFrameFull::Current();
-            if (!worldFrame || worldFrame->currentGuid == 0 || !GameObjectByGuid(worldFrame->currentGuid))
-                ClearSelection();
+            // CGWorldFrameFull* worldFrame = CGWorldFrameFull::Current();
+            // if (!worldFrame || worldFrame->currentGuid == 0 || !GameObjectByGuid(worldFrame->currentGuid))
+            //     ClearSelection();
 
             return 1;
         }
@@ -212,9 +187,33 @@ namespace EditorRuntime
         }
     }
 
+    CGGameObject_C* SelectedGameObject()
+    {
+        EditorState& state = State();
+        if (state.currentObjectGuid == 0)
+            return nullptr;
+
+        return EditorObject::GameObjectByGuid(state.currentObjectGuid);
+    }
+
+    uint64_t CurrentSelectedGobGUID()
+    {
+        EditorState& state = State();
+        return state.currentObjectGuid;
+    }
+
+    void ClearSelection()
+    {
+        EditorState& state = State();
+        state.currentObjectGuid = 0;
+        state.gizmoTranslationAxis = Axis::None;
+        state.gizmoRotationAxis = Axis::None;
+        state.gizmoDragState = {};
+    }
+
     bool SelectGameObject(uint64_t guid)
     {
-        CGGameObject_C* gameObject = GameObjectByGuid(guid);
+        CGGameObject_C* gameObject = EditorObject::GameObjectByGuid(guid);
         if (!gameObject)
         {
             ClearSelection();
