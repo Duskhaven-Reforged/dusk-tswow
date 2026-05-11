@@ -8,6 +8,7 @@ struct SpellEffectScalarsRow {
     float sp;
     float ap;
     float bv;
+    int mode;
 
     int handleLuaPush(lua_State* L) {
         ClientLua::PushNumber(L, spellID);
@@ -15,7 +16,8 @@ struct SpellEffectScalarsRow {
         ClientLua::PushNumber(L, sp);
         ClientLua::PushNumber(L, ap);
         ClientLua::PushNumber(L, bv);
-        return 5;
+        ClientLua::PushNumber(L, mode);
+        return 6;
     }
 };
 
