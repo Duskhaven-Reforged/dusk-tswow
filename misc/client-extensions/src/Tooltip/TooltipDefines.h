@@ -40,9 +40,9 @@ enum SpellVariable : uint32_t {
     SPELLVARIABLE_MASTERY   = 188,
     SPELLVARIABLE_dpct      = 189,
     SPELLVARIABLE_ppct      = 190,
-    SPELLVARIABLE_E1        = 191,
-    SPELLVARIABLE_E2        = 192,
-    SPELLVARIABLE_E3        = 193,
+    SPELLVARIABLE_bon1      = 191,
+    SPELLVARIABLE_bon2      = 192,
+    SPELLVARIABLE_bon3      = 193,
 };
 
 namespace TooltipVariableExtensions
@@ -54,7 +54,7 @@ namespace TooltipVariableExtensions
             "power1", "power2", "power3", "power4", "power5", "power6", "power7",
             "POWER1", "POWER2", "POWER3", "POWER4", "POWER5", "POWER6", "POWER7",
             "mastery1", "mastery2", "mastery3", "mastery4", "MASTERY",
-            "dpct", "ppct", "E1", "E2", "E3"
+            "dpct", "ppct", "bon1", "bon2", "bon3"
         };
 
         count = sizeof(names) / sizeof(names[0]);

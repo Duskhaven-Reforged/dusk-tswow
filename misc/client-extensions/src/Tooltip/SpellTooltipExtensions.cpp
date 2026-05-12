@@ -130,11 +130,6 @@ namespace
         return dest[0] != '\0';
     }
 
-    bool SpellTooltipContainsUnresolvedTokens(const char* text)
-    {
-        return text && strchr(text, '$') != nullptr;
-    }
-
     uint32_t GetSpellChargeRemainingCooldown(uint32_t spellId, uint32_t fallbackCooldown)
     {
         auto it = CharacterDefines::spellChargeMap.find(spellId);
@@ -249,16 +244,16 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
                     case SPELLVARIABLE_ppct:
                         value = activePlayer->PlayerData->parryPct;
                         break;
-                    case SPELLVARIABLE_E1: {
+                    case SPELLVARIABLE_bon1: {
                         value = GetSpellScalarsForEffect(activePlayer, spell, 0);
                         value += GetNativeEffectMinPoints(spell, 0, a5, a8, a7, a9);
                     } break;
-                    case SPELLVARIABLE_E2: {
+                    case SPELLVARIABLE_bon2: {
                         value = GetSpellScalarsForEffect(activePlayer, spell, 1);
                         value += GetNativeEffectMinPoints(spell, 1, a5, a8, a7, a9);
                     }
                     break;
-                    case SPELLVARIABLE_E3: {
+                    case SPELLVARIABLE_bon3: {
                         value = GetSpellScalarsForEffect(activePlayer, spell, 2);
                         value += GetNativeEffectMinPoints(spell, 2, a5, a8, a7, a9);
                     }
@@ -1161,8 +1156,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     // Description text.
     if (spell->m_description_lang && *spell->m_description_lang) {
         char desc[2048] = {};
-        if (!SafeParseSpellTooltipDescription(spell, desc, sizeof(desc), a5, a7) ||
-            SpellTooltipContainsUnresolvedTokens(desc)) {
+        if (!SafeParseSpellTooltipDescription(spell, desc, sizeof(desc), a5, a7)) {
             desc[0] = '\0';
         }
 
