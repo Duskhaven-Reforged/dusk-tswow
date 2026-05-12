@@ -21,6 +21,8 @@ import { PrimaryKey } from '../../data/table/PrimaryKey'
 import { DBCKeyCell, DBCStringCell, DBCUIntCell, DBCFloatCell, DBCIntCell } from '../../data/dbc/DBCCell'
 import { CDBCFile } from './CDBCFile'
 import { DBCRow } from '../../data/dbc/DBCRow'
+import { SQL } from '../SQLFiles'
+import { CDBCGenerator } from './CDBCGenerator'
 
 /**
  * Main row definition
@@ -55,6 +57,11 @@ export class SpellEffectScalarsRow extends DBCRow<SpellEffectScalarsCreator,Spel
     get bv() { return new DBCFloatCell(this,this.buffer,this.offset+16) }
 
     /**
+     * Scaling mode: 0 = add AP and SP, 1 = pick higher AP/SP
+     */
+    get mode() { return new DBCIntCell(this,this.buffer,this.offset+20) }
+
+    /**
      * Creates a clone of this row with new primary keys.
      *
      * Cloned rows are automatically added at the end of the DBC file.
@@ -72,6 +79,7 @@ export type SpellEffectScalarsCreator = {
     sp?: float
     ap?: float
     bv?: float
+    mode?: int
 }
 
 /**
@@ -83,6 +91,7 @@ export type SpellEffectScalarsQuery = {
     sp?: Relation<float>
     ap?: Relation<float>
     bv?: Relation<float>
+    mode?: Relation<int>
 }
 
 /**
@@ -93,7 +102,7 @@ export class SpellEffectScalarsCDBCFile extends CDBCFile<
     SpellEffectScalarsCreator,
     SpellEffectScalarsQuery,
     SpellEffectScalarsRow> {
-    protected defaultRow = [1, 2, 0.0, 0.0, 0.0];
+    protected defaultRow = [1, 2, 0.0, 0.0, 0.0, 0];
 
     constructor() {
         super('SpellEffectScalars',(t,b,o)=> new SpellEffectScalarsRow(t,b,o))
@@ -101,6 +110,27 @@ export class SpellEffectScalarsCDBCFile extends CDBCFile<
     /** Loads a new SpellAdditionalCostData.dbc from a file. */
     static read(path: string): SpellEffectScalarsCDBCFile {
         return new SpellEffectScalarsCDBCFile().read(path)
+    }
+    fileWork() {
+        new CDBCGenerator(this.defaultRow).generate(this.getPath());
+        this.read(this.getPath());
+
+        for (const row of SQL.spell_bonus_data.queryAll({})) {
+            const sp = row.sp.get();
+            const ap = row.ap.get();
+            const bv = row.bv.get();
+            if (sp === 0 && ap === 0 && bv === 0) {
+                continue;
+            }
+
+            this.add(row.entry.get(), {
+                effectIdx: row.effect.get(),
+                sp,
+                ap,
+                bv,
+                mode: row.scaling_mode.get(),
+            });
+        }
     }
     add(ID : int, c? : SpellEffectScalarsCreator) : SpellEffectScalarsRow {
         return this.makeRow(0).clone(ID,c)

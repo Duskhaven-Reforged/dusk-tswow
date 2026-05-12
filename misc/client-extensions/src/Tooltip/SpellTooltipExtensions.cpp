@@ -33,48 +33,72 @@ void TooltipExtensions::SpellTooltipVariableExtension() {
     Util::OverwriteUInt32AtAddress(0x578E8B, Util::CalculateAddress(reinterpret_cast<uint32_t>(&GetVariableValueEx), 0x578E8F));
 }
 
-void GetSpellScalarsForEffect(int SpellId, int idx, float& ap, float& sp, float& bv)
+float GetSpellPowerBonusForSpell(CGPlayer* activePlayer, SpellRow* spell)
 {
+    if (!activePlayer || !spell)
+        return 0.0f;
+
+    int32_t spBonus = 0;
+    uint32_t schoolMask = spell->m_schoolMask;
+    for (uint32_t i = SPELL_SCHOOL_HOLY; i < MAX_SPELL_SCHOOL; ++i) {
+        if (schoolMask & (1 << i)) {
+            int32_t tempBonus = activePlayer->PlayerData->SPPos[i];
+            if (tempBonus > spBonus)
+                spBonus = tempBonus;
+        }
+    }
+
+    return static_cast<float>(spBonus);
+}
+
+float GetAttackPowerBonusForSpell(CGPlayer* activePlayer, SpellRow* spell)
+{
+    if (!activePlayer || !spell)
+        return 0.0f;
+
+    uint8_t attType = (spell->m_equippedItemClass == 2 && spell->m_equippedItemSubclass & 262156 && spell->m_defenseType != 2)
+        ? 2
+        : spell->m_attributesExC & SPELL_ATTR3_MAIN_HAND ? 0 : 1;
+    return static_cast<float>(CharacterDefines::GetTotalAttackPowerValue(attType, activePlayer));
+}
+
+float ApplyScalarRowForPlayer(CGPlayer* activePlayer, SpellRow* spell, const SpellEffectScalarsRow& row)
+{
+    float apValue = row.ap * GetAttackPowerBonusForSpell(activePlayer, spell);
+    float spValue = row.sp * GetSpellPowerBonusForSpell(activePlayer, spell);
+    float bvValue = row.bv * static_cast<float>(activePlayer->PlayerData->shieldBlock);
+
+    if (row.mode == 1)
+        return (std::max)(apValue, spValue) + bvValue;
+
+    return apValue + spValue + bvValue;
+}
+
+float GetSpellScalarsForEffect(CGPlayer* activePlayer, SpellRow* spell, int idx)
+{
+    if (!activePlayer || !spell)
+        return 0.0f;
+
+    float total = 0.0f;
     auto scalars = GlobalCDBCMap.getCDBC("SpellEffectScalars");
     for (auto scalar : scalars)
     {
         if (SpellEffectScalarsRow* row = std::any_cast<SpellEffectScalarsRow>(&scalar.second))
         {
-            if (row->spellID == SpellId && row->effectIdx == idx) {
-                ap += row->ap;
-                sp += row->sp;
-                bv += row->bv;
-
-                break;
-            }
+            if (row->spellID == spell->m_ID && row->effectIdx == idx)
+                total += ApplyScalarRowForPlayer(activePlayer, spell, *row);
         }
-    }
-}
-
-float ApplyScalarsForPlayer(CGPlayer* activePlayer, SpellRow* spell, int index, float ap, float sp, float bv)
-{
-    float total = 0.0;
-    if (ap) {
-        uint8_t attType = (spell->m_equippedItemClass == 2 && spell->m_equippedItemSubclass & 262156 && spell->m_defenseType != 2) ? 2 : spell->m_attributesExC & SPELL_ATTR3_MAIN_HAND ? 0 : 1;
-        total += ap * CharacterDefines::GetTotalAttackPowerValue(attType, activePlayer);
-    }
-    if (sp) {
-        int32_t spBonus = 0;
-        uint32_t schoolMask = spell->m_schoolMask;
-        for (uint32_t i = SPELL_SCHOOL_HOLY; i < MAX_SPELL_SCHOOL; ++i) {
-            if (schoolMask & (1 << i)) {
-                int32_t tempBonus = activePlayer->PlayerData->SPPos[i];
-                if (tempBonus > spBonus)
-                    spBonus = tempBonus;
-            }
-        }
-        total += sp * spBonus;
-    }
-    if (bv) {
-        total += bv * static_cast<float>(activePlayer->PlayerData->shieldBlock);
     }
 
     return total;
+}
+
+float GetNativeEffectMinPoints(SpellRow* spell, uint32_t effectIndex, uint32_t level, uint32_t a4, uint32_t a5, uint32_t a8)
+{
+    float minPoints = 0.0f;
+    float maxPoints = 0.0f;
+    QuestTextParser::GetMinMaxPoints(spell, effectIndex, &minPoints, &maxPoints, level, a4, a5, a8);
+    return minPoints;
 }
 
 // Client-side color pointers used by tooltip rendering helpers.
@@ -94,21 +118,16 @@ namespace
         dest[0] = '\0';
 #ifdef _MSC_VER
         __try {
-            SpellParser::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
+            TooltipVariableExtensions::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
             LOG_ERROR << "SpellTooltip parse failed for spellId=" << spell->m_ID;
             dest[0] = '\0';
             return false;
         }
 #else
-        SpellParser::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
+        TooltipVariableExtensions::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
 #endif
         return dest[0] != '\0';
-    }
-
-    bool SpellTooltipContainsUnresolvedTokens(const char* text)
-    {
-        return text && strchr(text, '$') != nullptr;
     }
 
     uint32_t GetSpellChargeRemainingCooldown(uint32_t spellId, uint32_t fallbackCooldown)
@@ -226,29 +245,17 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
                         value = activePlayer->PlayerData->parryPct;
                         break;
                     case SPELLVARIABLE_bon1: {
-                        float ap = 0.0;
-                        float sp = 0.0;
-                        float bv = 0.0;
-                        GetSpellScalarsForEffect(spell->m_ID, 0, ap, sp, bv);
-                        value = ApplyScalarsForPlayer(activePlayer, spell, 0, ap, sp, bv);
-                        value += spell->m_effectRealPointsPerLevel[0] * activePlayer->unitBase.unitData->level;
+                        value = GetSpellScalarsForEffect(activePlayer, spell, 0);
+                        value += GetNativeEffectMinPoints(spell, 0, a5, a8, a7, a9);
                     } break;
                     case SPELLVARIABLE_bon2: {
-                        float ap = 0.0;
-                        float sp = 0.0;
-                        float bv = 0.0;
-                        GetSpellScalarsForEffect(spell->m_ID, 1, ap, sp, bv);
-                        value = ApplyScalarsForPlayer(activePlayer, spell, 1, ap, sp, bv);
-                        value += spell->m_effectRealPointsPerLevel[1] * activePlayer->unitBase.unitData->level;
+                        value = GetSpellScalarsForEffect(activePlayer, spell, 1);
+                        value += GetNativeEffectMinPoints(spell, 1, a5, a8, a7, a9);
                     }
                     break;
                     case SPELLVARIABLE_bon3: {
-                        float ap = 0.0;
-                        float sp = 0.0;
-                        float bv = 0.0;
-                        GetSpellScalarsForEffect(spell->m_ID, 2, ap, sp, bv);
-                        value = ApplyScalarsForPlayer(activePlayer, spell, 2, ap, sp, bv);
-                        value += spell->m_effectRealPointsPerLevel[2] * activePlayer->unitBase.unitData->level;
+                        value = GetSpellScalarsForEffect(activePlayer, spell, 2);
+                        value += GetNativeEffectMinPoints(spell, 2, a5, a8, a7, a9);
                     }
                     break;
                     default:
@@ -268,15 +275,11 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
 }
 
 void TooltipExtensions::SetNewVariablePointers() {
-    const char* tooltipSpellVariablesExtensions[] = {
-        "hp", "HP", "ppl1", "ppl2", "ppl3", "PPL1", "PPL2", "PPL3",
-        "power1", "power2", "power3", "power4", "power5", "power6", "power7",
-        "POWER1", "POWER2", "POWER3", "POWER4", "POWER5", "POWER6", "POWER7",
-        "mastery1", "mastery2", "mastery3", "mastery4", "MASTERY",
-        "dpct", "ppct", "bon1", "bon2", "bon3"
-    };
+    size_t variableCount = 0;
+    const char* const* tooltipSpellVariablesExtensions =
+        TooltipVariableExtensions::GetExtendedSpellVariableNames(variableCount);
 
-    for (size_t i = 0; i < sizeof(tooltipSpellVariablesExtensions) / sizeof(tooltipSpellVariablesExtensions[0]); i++)
+    for (size_t i = 0; i < variableCount; i++)
         spellVariables[140 + i] = reinterpret_cast<uint32_t>(tooltipSpellVariablesExtensions[i]);
 }
 
@@ -1153,8 +1156,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     // Description text.
     if (spell->m_description_lang && *spell->m_description_lang) {
         char desc[2048] = {};
-        if (!SafeParseSpellTooltipDescription(spell, desc, sizeof(desc), a5, a7) ||
-            SpellTooltipContainsUnresolvedTokens(desc)) {
+        if (!SafeParseSpellTooltipDescription(spell, desc, sizeof(desc), a5, a7)) {
             desc[0] = '\0';
         }
 

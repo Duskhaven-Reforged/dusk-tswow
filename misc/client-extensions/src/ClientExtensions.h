@@ -8,6 +8,7 @@
 #include <Spells/Spells.h>
 #include <Tooltip/ItemTooltipExtensions.h>
 #include <Tooltip/SpellTooltipExtensions.h>
+#include <World/ExtendedTerrainTextures.h>
 #include <World/WorldData.h>
 #include <World/WMOLogging.h>
 

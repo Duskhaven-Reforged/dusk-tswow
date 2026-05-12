@@ -15,6 +15,8 @@ void ClientExtensions::initialize() {
     LOG_INFO << "Visible item overrides applied";
     WorldDataExtensions::Apply();
     LOG_INFO << "World data extensions applied";
+    ExtendedTerrainTextures::Apply();
+    LOG_INFO << "Extended terrain texture extension initialized";
     WMOLogging::Apply();
     LOG_INFO << "WMO logging applied";
     ItemTooltipExtensions::Apply();
