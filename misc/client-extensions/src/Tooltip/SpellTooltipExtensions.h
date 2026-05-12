@@ -7,6 +7,10 @@ namespace CFormula {
     CLIENT_FUNCTION(GetVariableValue, 0x5782D0, __thiscall, int, (void*, uint32_t, uint32_t, SpellRow*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))
 }
 
+namespace QuestTextParser {
+    CLIENT_FUNCTION(GetMinMaxPoints, 0x7FF770, __cdecl, float*, (SpellRow*, uint32_t, float*, float*, uint32_t, uint32_t, uint32_t, uint32_t))
+}
+
 namespace CGTooltip {
     CLIENT_FUNCTION(AddLine, 0x61FEC0, __thiscall, void, (void*, char*, char*, void*, void*, uint32_t))
     CLIENT_FUNCTION(GetDurationString, 0x61A9E0, __cdecl, void, (char*, uint32_t, uint64_t, char*, uint32_t, uint32_t, uint32_t))

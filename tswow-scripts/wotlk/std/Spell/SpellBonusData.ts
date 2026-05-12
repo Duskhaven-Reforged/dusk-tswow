@@ -95,7 +95,21 @@ type TriggerParentInfo = {
     isChannelTrigger: boolean;
 };
 
+type InferredBonusScalarSource = {
+    filePath: string;
+    line: number;
+    column: number;
+    moduleName: string;
+    tagName: string;
+    constName: string;
+    scriptKind: string;
+    parentedId: number | null;
+};
+
 let TRIGGER_PARENT_INDEX: Map<number, TriggerParentEdge> | null = null;
+let INTERNAL_SPELL_TAGS: Map<number, string> | null = null;
+const DATASCRIPT_TAG_FILE_CACHE = new Map<string, string | null>();
+const INFERRED_BONUS_SOURCE_CACHE = new Map<string, InferredBonusScalarSource | null>();
 
 const SPELL_FAMILY_NAMES: Record<number, string> = {
     0: "GENERIC",
@@ -487,6 +501,144 @@ function getRelativeFilePath(filePath: string): string {
     return p;
 }
 
+function candidateReleaseRoots(): string[] {
+    const cwd = normalizeStackFilePath(process.cwd?.() ?? "");
+    const candidates = [cwd, `${cwd}/release`];
+    const roots: string[] = [];
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        const normalized = candidate.replace(/\/$/, "");
+        if (roots.includes(normalized)) continue;
+        if (fs.existsSync(normalized) && fs.statSync(normalized).isDirectory()) {
+            roots.push(normalized);
+        }
+    }
+    return roots;
+}
+
+function loadInternalSpellTags(): Map<number, string> {
+    if (INTERNAL_SPELL_TAGS !== null) return INTERNAL_SPELL_TAGS;
+
+    INTERNAL_SPELL_TAGS = new Map<number, string>();
+    for (const releaseRoot of candidateReleaseRoots()) {
+        const internalIdsPath = `${releaseRoot}/modules/dh-core/addon/internal-ids.ts`;
+        const actualPath = findActualPath(internalIdsPath);
+        if (!actualPath) continue;
+
+        const lines = fs.readFileSync(actualPath, "utf-8").split("\n");
+        for (const line of lines) {
+            const match = line.match(/^\s*(\d+)\s*:\s*(["'`])((?:[^\\]|\\.)*?)\2/);
+            if (!match) continue;
+            const spellId = parseInt(match[1], 10);
+            if (!Number.isFinite(spellId)) continue;
+            const tag = match[3].replace(/\\(.)/g, "$1").split(":").slice(1).join(":");
+            if (tag) INTERNAL_SPELL_TAGS.set(spellId, tag);
+        }
+        if (INTERNAL_SPELL_TAGS.size > 0) break;
+    }
+
+    return INTERNAL_SPELL_TAGS;
+}
+
+function readInternalSpellTag(spellId: number): string | null {
+    return loadInternalSpellTags().get(spellId) ?? null;
+}
+
+function findDatascriptFileContainingTag(tag: string): string | null {
+    if (DATASCRIPT_TAG_FILE_CACHE.has(tag)) return DATASCRIPT_TAG_FILE_CACHE.get(tag) ?? null;
+
+    const roots = candidateReleaseRoots().map(root => `${root}/modules`);
+    const matches: string[] = [];
+    const visit = (dir: string): void => {
+        const actualDir = findActualPath(dir) ?? dir;
+        if (!fs.existsSync(actualDir) || !fs.statSync(actualDir).isDirectory()) return;
+        for (const entry of fs.readdirSync(actualDir, { withFileTypes: true })) {
+            const child = `${actualDir}/${entry.name}`;
+            const normalized = child.split("\\").join("/");
+            if (entry.isDirectory()) {
+                visit(child);
+                continue;
+            }
+            if (!entry.isFile() || !entry.name.endsWith(".ts")) continue;
+            if (normalized.includes("/addon/internal-ids.ts")) continue;
+            if (!normalized.includes("/datascripts/")) continue;
+            const contents = fs.readFileSync(child, "utf-8");
+            if (contents.includes(tag)) matches.push(normalized);
+        }
+    };
+
+    for (const root of roots) visit(root);
+    const found = matches.find(path => path.includes("/datascripts/classes/")) ?? matches[0] ?? null;
+    DATASCRIPT_TAG_FILE_CACHE.set(tag, found);
+    return found;
+}
+
+function findSpellStartLine(lines: string[], spellId: number, tagName: string | null): number {
+    for (let i = 0; i < lines.length; i++) {
+        const window = lines.slice(i, Math.min(lines.length, i + 8)).join(" ");
+        const lower = window.toLowerCase();
+        if (tagName && lower.includes("spells.create(") && window.includes(tagName)) return i;
+        if (lower.includes("spells.load(") && window.includes(`Spells.load(${spellId})`)) return i;
+    }
+    return -1;
+}
+
+function findSpellEndLine(lines: string[], spellStartLine: number): number {
+    for (let i = spellStartLine + 1; i < lines.length; i++) {
+        if (/^\s*(export\s+)?const\s+[a-zA-Z_$][a-zA-Z0-9_$]*\s*=/.test(lines[i])) {
+            return i;
+        }
+    }
+    return lines.length;
+}
+
+function findEffectStartLine(lines: string[], spellStartLine: number, spellEndLine: number, effectIndex: number): number | null {
+    let addModIndex = 0;
+    for (let i = spellStartLine; i < spellEndLine; i++) {
+        if (lines[i].includes(`.Effects.mod(${effectIndex}`)) return i;
+        if (lines[i].includes(".Effects.addMod(")) {
+            if (addModIndex === effectIndex) return i;
+            addModIndex += 1;
+        }
+    }
+    return null;
+}
+
+function inferBonusScalarSource(spellId: number, effectIndex: number): InferredBonusScalarSource | null {
+    const cacheKey = `${spellId}:${effectIndex}`;
+    if (INFERRED_BONUS_SOURCE_CACHE.has(cacheKey)) return INFERRED_BONUS_SOURCE_CACHE.get(cacheKey) ?? null;
+
+    const tagName = readInternalSpellTag(spellId);
+    const filePath = tagName ? findDatascriptFileContainingTag(tagName) : null;
+    if (!filePath) {
+        INFERRED_BONUS_SOURCE_CACHE.set(cacheKey, null);
+        return null;
+    }
+
+    const lines = fs.readFileSync(filePath, "utf-8").split("\n");
+    const spellStartLine = findSpellStartLine(lines, spellId, tagName);
+    if (spellStartLine === -1) {
+        INFERRED_BONUS_SOURCE_CACHE.set(cacheKey, null);
+        return null;
+    }
+
+    const spellEndLine = findSpellEndLine(lines, spellStartLine);
+    const effectStartLine = findEffectStartLine(lines, spellStartLine, spellEndLine, effectIndex);
+    const sourceLine = effectStartLine ?? spellStartLine;
+    const registration = extractSpellRegistration(filePath, sourceLine + 1);
+    const source: InferredBonusScalarSource = {
+        filePath,
+        line: sourceLine + 1,
+        column: 1,
+        moduleName: registration.moduleName ?? "",
+        tagName: registration.tagName ?? tagName ?? "",
+        constName: registration.constName ?? "",
+        scriptKind: registration.scriptKind ?? "",
+        parentedId: registration.parentedId,
+    };
+    INFERRED_BONUS_SOURCE_CACHE.set(cacheKey, source);
+    return source;
+}
 function registerBonusScalar(owner: SpellEffect, scalarKind: BonusScalarKind, scalarValue: number, scalingMode?: number): void {
     const spellId = owner.row.ID.get();
     const effectIndex = owner.index;
@@ -542,7 +694,9 @@ function makeDatabaseRegistration(row: spell_bonus_dataRow, scalarKind: BonusSca
     const spellId = row.entry.get();
     const effectIndex = row.effect.get();
     const metadata = spellRowMetadata(spellId);
-    const inferred = inferClassSpec("", metadata.familyId);
+    const source = inferBonusScalarSource(spellId, effectIndex);
+    const sourceFilePath = source ? getRelativeFilePath(source.filePath) : "";
+    const inferred = inferClassSpec(sourceFilePath, metadata.familyId);
     const timing = getSpellTiming(spellId, effectIndex);
 
     return {
@@ -557,20 +711,19 @@ function makeDatabaseRegistration(row: spell_bonus_dataRow, scalarKind: BonusSca
         specName: inferred.specName,
         ...timing,
         scalingMode: row.scaling_mode.get(),
-        filePath: "",
-        line: 0,
-        column: 0,
-        moduleName: "",
-        tagName: "",
-        constName: "",
-        scriptKind: "",
-        parentedId: null,
-        sourceExpr: "",
-        exportable: true,
+        filePath: sourceFilePath,
+        line: source?.line ?? 0,
+        column: source?.column ?? 0,
+        moduleName: source?.moduleName ?? "",
+        tagName: source?.tagName ?? "",
+        constName: source?.constName ?? "",
+        scriptKind: source?.scriptKind ?? "",
+        parentedId: source?.parentedId ?? null,
+        sourceExpr: source ? "missing BonusData setter" : "",
+        exportable: false,
         sourceKind: "inferred",
     };
 }
-
 function writeBonusScalarRegistration(registry: BonusScalarRegistration): void {
     const parentedId = registry.parentedId !== null ? registry.parentedId : "NULL";
     SQL.Databases.world_dest.write(`

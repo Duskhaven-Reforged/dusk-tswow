@@ -2,6 +2,7 @@
 #include <ClientLua.h>
 #include <Logger.h>
 #include <ClientData/SharedDefines.h>
+#include <Tooltip/TooltipDefines.h>
 
 #include <string>
 #include <unordered_map>
@@ -21,14 +22,14 @@ bool SafeParseSpellDescription(SpellRow* row, char* dest, size_t destSize) {
     dest[0] = '\0';
 #ifdef _MSC_VER
     __try {
-        SpellParser::ParseText(row, dest, static_cast<uint32_t>(destSize), 0, 0, 0, 0, 1, 0);
+        TooltipVariableExtensions::ParseText(row, dest, static_cast<uint32_t>(destSize), 0, 0, 0, 0, 1, 0);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         LOG_ERROR << "GetSpellDescription parse failed for spellId=" << row->m_ID;
         dest[0] = '\0';
         return false;
     }
 #else
-    SpellParser::ParseText(row, dest, static_cast<uint32_t>(destSize), 0, 0, 0, 0, 1, 0);
+    TooltipVariableExtensions::ParseText(row, dest, static_cast<uint32_t>(destSize), 0, 0, 0, 0, 1, 0);
 #endif
     return dest[0] != '\0';
 }

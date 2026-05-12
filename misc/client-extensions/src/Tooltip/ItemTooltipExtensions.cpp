@@ -1657,14 +1657,14 @@ namespace {
         outText[0] = '\0';
 #ifdef _MSC_VER
         __try {
-            SpellParser::ParseText(spellRow, outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
+            TooltipVariableExtensions::ParseText(spellRow, outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
             LOG_DEBUG << "ItemTooltip set-bonus parse failed for spellId=" << spellRow->m_ID;
             outText[0] = '\0';
             return false;
         }
 #else
-        SpellParser::ParseText(spellRow, outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
+        TooltipVariableExtensions::ParseText(spellRow, outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
 #endif
         return outText[0] != '\0';
     }
@@ -3079,14 +3079,14 @@ namespace {
 
 #ifdef _MSC_VER
         __try {
-            SpellParser::ParseText(const_cast<SpellRow*>(spellRow), outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
+            TooltipVariableExtensions::ParseText(const_cast<SpellRow*>(spellRow), outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
         } __except (EXCEPTION_EXECUTE_HANDLER) {
             LOG_ERROR << "ItemTooltip item-spell parse failed for spellId=" << spellRow->m_ID;
             outText[0] = '\0';
             return false;
         }
 #else
-        SpellParser::ParseText(const_cast<SpellRow*>(spellRow), outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
+        TooltipVariableExtensions::ParseText(const_cast<SpellRow*>(spellRow), outText, static_cast<uint32_t>(outTextSize), 0, 0, 0, 0, 1, 0);
 #endif
 
         if (ContainsUnresolvedSpellTokens(outText)) {
