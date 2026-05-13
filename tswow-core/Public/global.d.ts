@@ -6175,6 +6175,11 @@ declare class TSObject extends TSEntityProvider {
      * @deprecated use free function 'ToCorpse'
      */
     ToItem(): TSItem | undefined
+
+    /**
+     * @deprecated use free function 'ToVehicle'
+     */
+    ToVehicle(): TSVehicle | undefined
 }
 
 
@@ -10835,6 +10840,7 @@ declare function ToUnit(obj: TSObject | undefined): Maybe<TSUnit>
 declare function ToCreature(obj: TSObject | undefined): Maybe<TSCreature>
 declare function ToPlayer(obj: TSObject | undefined): Maybe<TSPlayer>
 declare function ToGameObject(obj: TSObject | undefined): Maybe<TSGameObject>
+declare function ToVehicle(obj: TSObject | undefined): Maybe<TSVehicle>
 declare function ToBattleground(map: TSMap | undefined): Maybe<TSBattleground>
 declare function ToInstance(map: TSMap | undefined): Maybe<TSInstance>
 

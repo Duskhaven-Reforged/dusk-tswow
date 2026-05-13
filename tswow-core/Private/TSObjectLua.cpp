@@ -36,11 +36,12 @@ void TSLua::load_object_methods(sol::state& state)
     LUA_FIELD(ts_object, TSObject, GetCoreUInt64);
     LUA_FIELD(ts_object, TSObject, ToPlayer);
     LUA_FIELD(ts_object, TSObject, ToUnit);
-    LUA_FIELD(ts_object, TSObject, ToCreature);
     LUA_FIELD(ts_object, TSObject, ToWorldObject);
+    LUA_FIELD(ts_object, TSObject, ToCreature);
     LUA_FIELD(ts_object, TSObject, ToGameObject);
     LUA_FIELD(ts_object, TSObject, ToCorpse);
     LUA_FIELD(ts_object, TSObject, ToItem);
+    LUA_FIELD(ts_object, TSObject, ToVehicle);
     LUA_FIELD(ts_object, TSObject, GetEffectiveOwner);
     LUA_FIELD(ts_object, TSObject, IsPlayer);
     LUA_FIELD(ts_object, TSObject, IsGameObject);
@@ -56,4 +57,5 @@ void TSLua::load_object_methods(sol::state& state)
     state.set_function("ToCreature", &ToCreature);
     state.set_function("ToCorpse", &ToCorpse);
     state.set_function("ToItem", &ToItem);
+    state.set_function("ToVehicle", &ToVehicle);
 }
