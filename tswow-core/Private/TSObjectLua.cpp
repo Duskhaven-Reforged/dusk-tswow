@@ -5,6 +5,7 @@
 #include "TSCreature.h"
 #include "TSUnit.h"
 #include "TSCorpse.h"
+#include "TSVehicle.h"
 #include "TSGUID.h"
 
 void TSLua::load_object_methods(sol::state& state)
