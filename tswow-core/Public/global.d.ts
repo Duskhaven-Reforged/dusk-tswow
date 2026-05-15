@@ -7009,6 +7009,7 @@ declare interface TSUnit extends TSWorldObject {
      */
     GetVehicleKit() : TSVehicle
     GetVehicle() : TSVehicle | undefined
+    ExitVehicle() : void
 
     /**
      * Returns the Critter Guid

@@ -1221,6 +1221,13 @@ TSVehicle TSUnit::GetVehicle()
     return TSVehicle(unit->GetVehicle());
 }
 
+void TSUnit::ExitVehicle()
+{
+#if defined TRINITY
+    unit->ExitVehicle();
+#endif
+}
+
 /**
  * Returns the Critter Guid
  *
