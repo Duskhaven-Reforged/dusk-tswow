@@ -370,7 +370,7 @@ export class ActionType {
      *  @param Duration to wait before SMART_EVENT_TEXT_OVER is triggered.
      *  @param 0 It will try to trigger talk of the target1 Set target as talk target (used for $vars in texts and whisper target)
      */
-    setTalk(textsOrGroupId: number|loc_constructor|loc_constructor[], Duration : number, unk : number = 0) {
+    setTalk(textsOrGroupId: number|loc_constructor|loc_constructor[], Duration : number, unk : number = 0, textType: number = 14) {
         this.row.action_type.set(1)
         this.row.action_param2.set(Duration)
         this.row.action_param3.set(unk)
@@ -392,6 +392,7 @@ export class ActionType {
                     SQL.creature_text.add(getRealEntryOrGuid(this.row),id,i,
                         {
                             Duration:Duration,
+                            Type: textType,
                             Text: value,
                             BroadcastTextId: 0,
                             Emote: 0,

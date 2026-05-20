@@ -149,6 +149,7 @@ public:
     TSArray<TSUnit> GetUnfriendlyUnitsInRange(float range);
     TSVehicle  GetVehicleKit();
     TSVehicle GetVehicle();
+    void ExitVehicle();
     TSGUID GetCritterGUID();
     TSNumber<float> GetSpeed(uint32 type);
     TSNumber<uint32> GetMovementType();

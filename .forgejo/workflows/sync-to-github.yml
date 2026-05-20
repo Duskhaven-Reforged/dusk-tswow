@@ -1,0 +1,30 @@
+name: Sync to GitHub
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  sync-to-github:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Forgejo repo
+        uses: https://data.forgejo.org/actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Push current commit to GitHub
+        shell: bash
+        env:
+          GH_PUSH_TOKEN: ${{ secrets.GH_PUSH_TOKEN }}
+        run: |
+          set -e
+
+          git remote remove github 2>/dev/null || true
+          git remote add github "https://x-access-token:${GH_PUSH_TOKEN}@github.com/Duskhaven-Reforged/dusk-tswow.git"
+
+          git push github HEAD:master

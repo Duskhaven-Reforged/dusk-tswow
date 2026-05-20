@@ -70,6 +70,7 @@ declare function GetSelectedGobPosition(): LuaMultiReturn<[number, number, numbe
 declare function GetSelectedGobRotation(): LuaMultiReturn<[number, number, number, number]>
 declare function SetGobRotationByGUID(guid: string, qx: number,qy: number,qz: number,qw: number): boolean
 declare function SetGobPositionByGUID(guid: string, x: number, y: number, z: number): boolean
+declare function SnapSelectedGobToGround(zOffset:number, sampleRadius:number): LuaMultiReturn<[boolean, number, number, number, number, number, number, number]>
 //
 declare function ConvertCoordsToScreenSpace(x: number, y: number, z: number): LuaMultiReturn<[number, number, number]>
 declare function ReloadMap(): void;

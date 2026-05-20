@@ -129,6 +129,7 @@ void TSLua::load_unit_methods(sol::state& state)
     LUA_FIELD(ts_unit, TSUnit, GetUnfriendlyUnitsInRange);
     LUA_FIELD(ts_unit, TSUnit, GetVehicleKit);
     LUA_FIELD(ts_unit, TSUnit, GetVehicle);
+    LUA_FIELD(ts_unit, TSUnit, ExitVehicle);
     LUA_FIELD(ts_unit, TSUnit, GetCritterGUID);
     LUA_FIELD(ts_unit, TSUnit, GetSpeed);
     LUA_FIELD(ts_unit, TSUnit, GetMovementType);

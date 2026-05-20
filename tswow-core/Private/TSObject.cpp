@@ -25,6 +25,7 @@
 #include "TSUnit.h"
 #include "TSCorpse.h"
 #include "TSGUID.h"
+#include "TSVehicle.h"
 
 #include "Player.h"
 #include "GameObject.h"
@@ -370,6 +371,11 @@ TSCorpse TSObject::ToCorpse()
     return ::ToCorpse(*this);
 }
 
+TSVehicle TSObject::ToVehicle()
+{
+    return ::ToVehicle(*this);
+}
+
 bool TSObject::IsPlayer()
 {
     return obj != nullptr && obj->IsPlayer();
@@ -491,4 +497,12 @@ TSItem ToItem(TSObject obj)
 TSCorpse ToCorpse(TSObject obj)
 {
     return TSCorpse(obj.obj ? obj->ToCorpse() : nullptr);
+}
+
+TSVehicle ToVehicle(TSObject obj)
+{
+    TSUnit unit = ToUnit(obj);
+    if (!unit.IsNull())
+        return unit.GetVehicleKit();
+    return TSVehicle(nullptr);
 }

@@ -44,6 +44,7 @@ class TSWorldObject;
 class TSCreature;
 class TSCorpse;
 class TSGUID;
+class TSVehicle;
 
 class TC_GAME_API TSObject: public TSEntityProvider {
 public:
@@ -88,6 +89,7 @@ public:
     TSGameObject ToGameObject();
     TSCorpse ToCorpse();
     TSItem ToItem();
+    TSVehicle ToVehicle();
     TSUnit GetEffectiveOwner();
 
     bool IsPlayer();
@@ -107,5 +109,6 @@ TC_GAME_API TSCreature ToCreature(TSObject);
 TC_GAME_API TSPlayer ToPlayer(TSObject);
 TC_GAME_API TSGameObject ToGameObject(TSObject);
 TC_GAME_API TSCorpse ToCorpse(TSObject);
+TC_GAME_API TSVehicle ToVehicle(TSObject);
 
 LUA_PTR_TYPE(TSObject)

@@ -1,4 +1,6 @@
 #include <ClientDetours.h>
+#include <ClientData/SharedDefines.h>
+#include <ClientData/VectorMath.h>
 #include <ClientLua.h>
 #include <Editor/EditorObject.h>
 #include <Editor/EditorRuntime.h>
@@ -87,6 +89,112 @@ static void PushGameObjectPosition(lua_State* L, CGGameObject_C* gameObject)
     ClientLua::PushNumber(L, gameObject->m_passenger.position.z);
 }
 
+static void PushGameObjectRotation(lua_State* L, CGGameObject_C* gameObject)
+{
+    Quat q = unpack_quat(gameObject->m_passenger.compressedRotation);
+    ClientLua::PushNumber(L, q.x);
+    ClientLua::PushNumber(L, q.y);
+    ClientLua::PushNumber(L, q.z);
+    ClientLua::PushNumber(L, q.w);
+}
+
+static bool TraceGround(C3Vector const& position, C3Vector& out)
+{
+    C3Vector start{position.x, position.y, position.z + 5.0f};
+    C3Vector end{position.x, position.y, position.z - 100.0f};
+    C3Vector hit{};
+    float distance = 1.0f;
+
+    if (!TraceLine(&start, &end, &hit, &distance, 0x10111, 0))
+        return false;
+
+    out = hit;
+    return true;
+}
+
+static Quat QuatFromBasis(C3Vector const& xAxis, C3Vector const& yAxis, C3Vector const& zAxis)
+{
+    float const m00 = xAxis.x;
+    float const m01 = yAxis.x;
+    float const m02 = zAxis.x;
+    float const m10 = xAxis.y;
+    float const m11 = yAxis.y;
+    float const m12 = zAxis.y;
+    float const m20 = xAxis.z;
+    float const m21 = yAxis.z;
+    float const m22 = zAxis.z;
+
+    float const trace = m00 + m11 + m22;
+    if (trace > 0.0f)
+    {
+        float const s = sqrtf(trace + 1.0f) * 2.0f;
+        return normalize_quat({0.25f * s, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s});
+    }
+
+    if (m00 > m11 && m00 > m22)
+    {
+        float const s = sqrtf(1.0f + m00 - m11 - m22) * 2.0f;
+        return normalize_quat({(m21 - m12) / s, 0.25f * s, (m01 + m10) / s, (m02 + m20) / s});
+    }
+
+    if (m11 > m22)
+    {
+        float const s = sqrtf(1.0f + m11 - m00 - m22) * 2.0f;
+        return normalize_quat({(m02 - m20) / s, (m01 + m10) / s, 0.25f * s, (m12 + m21) / s});
+    }
+
+    float const s = sqrtf(1.0f + m22 - m00 - m11) * 2.0f;
+    return normalize_quat({(m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, 0.25f * s});
+}
+
+static bool GroundNormal(C3Vector const& groundPosition, float sampleRadius, C3Vector& out)
+{
+    if (sampleRadius <= 0.0f)
+        return false;
+
+    C3Vector sampleX{};
+    C3Vector sampleY{};
+    if (!TraceGround({groundPosition.x + sampleRadius, groundPosition.y, groundPosition.z}, sampleX)
+        || !TraceGround({groundPosition.x, groundPosition.y + sampleRadius, groundPosition.z}, sampleY))
+        return false;
+
+    C3Vector tangentX = VectorMath::Subtract(sampleX, groundPosition);
+    C3Vector tangentY = VectorMath::Subtract(sampleY, groundPosition);
+    out = VectorMath::Normalize(VectorMath::Cross(tangentX, tangentY));
+    if (out.z < 0.0f)
+        out = VectorMath::Scale(out, -1.0f);
+
+    return VectorMath::Length(out) > 0.0f;
+}
+
+static bool FindGroundAlignedRotation(CGGameObject_C* gameObject, C3Vector const& groundPosition, float sampleRadius,
+                                      Quat& out)
+{
+    C3Vector normal{};
+    if (!GroundNormal(groundPosition, sampleRadius, normal))
+        return false;
+
+    float roll, pitch, yaw;
+    quat_to_euler(unpack_quat(gameObject->m_passenger.compressedRotation), roll, pitch, yaw);
+
+    C3Vector yawForward = {cosf(yaw), sinf(yaw), 0.0f};
+    C3Vector xAxis = VectorMath::Normalize(VectorMath::ProjectionOnPlane(yawForward, normal));
+    if (VectorMath::Length(xAxis) <= 0.0f)
+        return false;
+
+    C3Vector yAxis = VectorMath::Normalize(VectorMath::Cross(normal, xAxis));
+    C3Vector zAxis = VectorMath::Normalize(VectorMath::Cross(xAxis, yAxis));
+
+    out = QuatFromBasis(xAxis, yAxis, zAxis);
+    return true;
+}
+
+static void MoveGameObject(CGGameObject_C* gameObject, C3Vector const& position)
+{
+    gameObject->m_passenger.position = position;
+    gameObject->UpdateWorldObject(0);
+}
+
 LUA_FUNCTION(LogMouseoverGobValues, (lua_State*))
 {
     CGGameObject_C* gameObject = GameObjectByMouse();
@@ -149,21 +257,44 @@ LUA_FUNCTION(GetSelectedGobPosition, (lua_State * L))
     return 3;
 }
 
+LUA_FUNCTION(SnapSelectedGobToGround, (lua_State * L))
+{
+    CGGameObject_C* gameObject = SelectedGameObject();
+    if (!gameObject)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    float const zOffset = (float)ClientLua::GetNumber(L, 1, 0.0);
+    float const sampleRadius = (float)ClientLua::GetNumber(L, 2, 1.0);
+    C3Vector rawGroundPosition{};
+    if (!TraceGround(gameObject->m_passenger.position, rawGroundPosition))
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    Quat groundAlignedRotation{};
+    if (FindGroundAlignedRotation(gameObject, rawGroundPosition, sampleRadius, groundAlignedRotation))
+        gameObject->m_passenger.compressedRotation = pack_quat(groundAlignedRotation);
+
+    C3Vector groundPosition = {rawGroundPosition.x, rawGroundPosition.y, rawGroundPosition.z + zOffset};
+    MoveGameObject(gameObject, groundPosition);
+
+    ClientLua::PushBoolean(L, true);
+    PushGameObjectPosition(L, gameObject);
+    PushGameObjectRotation(L, gameObject);
+    return 8;
+}
+
 LUA_FUNCTION(GetSelectedGobRotation, (lua_State * L))
 {
     CGGameObject_C* gameObject = SelectedGameObject();
     if (!gameObject)
         return 0;
 
-    Quat q = unpack_quat(gameObject->m_passenger.compressedRotation);
-
-    float roll, pitch, yaw;
-    quat_to_euler(q, roll, pitch, yaw);
-
-    ClientLua::PushNumber(L, q.x);
-    ClientLua::PushNumber(L, q.y);
-    ClientLua::PushNumber(L, q.z);
-    ClientLua::PushNumber(L, q.w);
+    PushGameObjectRotation(L, gameObject);
     return 4;
 }
 
@@ -177,10 +308,9 @@ LUA_FUNCTION(SetGobPositionByGUID, (lua_State * L))
         return 1;
     }
 
-    gameObject->m_passenger.position.x = (float)ClientLua::GetNumber(L, 2);
-    gameObject->m_passenger.position.y = (float)ClientLua::GetNumber(L, 3);
-    gameObject->m_passenger.position.z = (float)ClientLua::GetNumber(L, 4);
-    gameObject->UpdateWorldObject(0);
+    MoveGameObject(gameObject,
+                   {(float)ClientLua::GetNumber(L, 2), (float)ClientLua::GetNumber(L, 3),
+                    (float)ClientLua::GetNumber(L, 4)});
 
     ClientLua::PushBoolean(L, true);
     return 1;
