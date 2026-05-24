@@ -38,6 +38,7 @@
 #include "TSOutfit.h"
 #include "Pet.h"
 #if TRINITY
+#include "Group.h"
 #include "CreatureOutfit.h"
 #include "ScriptedCreature.h"
 #endif
@@ -1086,6 +1087,63 @@ void TSCreature::Respawn()
 void TSCreature::RemoveCorpse()
 {
     creature->RemoveCorpse();
+}
+
+/**
+ * Make the [Creature] start a SmartAI quest waypoint path.
+ *
+ * Uses the `waypoints` table path used by SmartScript `setQuestWalk`, not the
+ * `waypoint_data` path used by [Creature:MoveWaypoint].
+ *
+ * @param [Player] player : the player who started the quest walk
+ * @param uint32 questId : the quest to reward/fail when the path ends/stops
+ * @param uint32 path : the `waypoints.entry` path ID
+ * @param [ReactStates] reactState = REACT_DEFENSIVE
+ * @param bool shouldRun = true
+ * @param bool canRepeat = false
+ * @param uint32 despawnTime = 1
+ * @return bool started
+ */
+bool TSCreature::StartQuestWalk(TSPlayer _player, uint32 questId, uint32 path, uint8 reactState, bool shouldRun, bool canRepeat, uint32 despawnTime)
+{
+    Player* player = _player.player;
+    if (!player)
+        return false;
+
+    SmartAI* ai = dynamic_cast<SmartAI*>(creature->AI());
+    if (!ai)
+        return false;
+
+    ObjectVector targets;
+    if (Group* group = player->GetGroup())
+    {
+        for (GroupReference* groupRef = group->GetFirstMember(); groupRef != nullptr; groupRef = groupRef->next())
+            if (Player* member = groupRef->GetSource())
+                if (member->IsInMap(player))
+                    targets.push_back(member);
+    }
+    else
+    {
+        targets.push_back(player);
+    }
+
+    creature->SetReactState(static_cast<ReactStates>(reactState));
+    ai->StartPath(shouldRun, path, canRepeat, player);
+
+    if (!ai->HasEscortState(SMART_ESCORT_ESCORTING))
+        return false;
+
+    ai->GetScript()->StoreTargetList(targets, 0);
+
+    ObjectVector invokerTargets;
+    invokerTargets.push_back(player);
+    ai->GetScript()->StoreTargetList(invokerTargets, 1);
+
+    ai->GetScript()->StoreTargetList(targets, SMART_ESCORT_TARGETS);
+    ai->SetEscortQuest(questId);
+    ai->SetDespawnTime(despawnTime);
+    creature->RemoveNpcFlag(UNIT_NPC_FLAG_QUESTGIVER);
+    return true;
 }
 
 /**
