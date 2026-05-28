@@ -12812,11 +12812,11 @@ declare namespace WoWAPI {
         SetLooping(loopType: LoopType): void;
         GetLooping(): LoopType;
         GetLoopState(): loopState;
-        CreateAnimation(frameType: "Alpha", frameName?: string, inheritFrom?: WoWAPI.UIObject): WoWAPI.Alpha;
-        CreateAnimation(frameType: "Path", frameName?: string, inheritFrom?: WoWAPI.UIObject): WoWAPI.Path;
-        CreateAnimation(frameType: "Rotation", frameName?: string, inheritFrom?: WoWAPI.UIObject): WoWAPI.Rotation;
-        CreateAnimation(frameType: "Scale", frameName?: string, inheritFrom?: WoWAPI.UIObject): WoWAPI.Scale;
-        CreateAnimation(frameType: "Translation", frameName?: string, inheritFrom?: WoWAPI.UIObject): WoWAPI.Translation;
+        CreateAnimation(frameType: "Alpha", frameName?: string | null, inheritFrom?: WoWAPI.UIObject | null): WoWAPI.Alpha;
+        CreateAnimation(frameType: "Path", frameName?: string | null, inheritFrom?: WoWAPI.UIObject | null): WoWAPI.Path;
+        CreateAnimation(frameType: "Rotation", frameName?: string | null, inheritFrom?: WoWAPI.UIObject | null): WoWAPI.Rotation;
+        CreateAnimation(frameType: "Scale", frameName?: string | null, inheritFrom?: WoWAPI.UIObject | null): WoWAPI.Scale;
+        CreateAnimation(frameType: "Translation", frameName?: string | null, inheritFrom?: WoWAPI.UIObject | null): WoWAPI.Translation;
     }
 
     interface Animation extends UIObject, AnimationHookScript, AnimationSetScript {
@@ -13102,7 +13102,7 @@ declare namespace WoWAPI {
          */
         IsVisible(): boolean;
 
-        CreateAnimationGroup(name?: string, inheritsFrom?: string): AnimationGroup;
+        CreateAnimationGroup(name?: string | null, inheritsFrom?: string | null): AnimationGroup;
 
         /**
         *this 1 probably isn't done right...idk how this 1 works.
@@ -13429,7 +13429,7 @@ declare namespace WoWAPI {
          * @param layer The layer the font should be drawn in, e.g. "ARTWORK".
          * @param inheritsFrom The name of a virtual font string, created in XML, to inherit from. if nil, the font string does not inherit any properties.
          */
-        CreateFontString(name?: string, layer?: Layer, inheritsFrom?: string): FontString;
+        CreateFontString(name?: string | null, layer?: Layer | null, inheritsFrom?: string | null): FontString;
 
         RegisterForClicks(clickType: ClickType): void;
 
@@ -13443,7 +13443,7 @@ declare namespace WoWAPI {
          * the texture does not inherit any properties.
          * @param subLayer The order in which the texture should be drawn, within the same layer.
          */
-        CreateTexture(name?: string, layer?: Layer, inheritsFrom?: string, subLayer?: number): Texture;
+        CreateTexture(name?: string | null, layer?: Layer | null, inheritsFrom?: string | null, subLayer?: number): Texture;
 
         /**
          * Allows this frame to receive keyboard input via OnKeyUp and OnKeyDown script handlers.
@@ -14340,24 +14340,24 @@ declare type ClickType = "LeftButtonUp" | "RightButtonUp" | "MiddleButtonUp" | "
  * they must be created using XML with virtual="true" in the tag.
  * @param id ID to assign to the frame. See API Frame SetID
  */
-declare function CreateFrame(frameType: WoWAPI.FrameType, frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number,): WoWAPI.UIObject;
-declare function CreateFrame(frameType: "Frame", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.Frame;
-declare function CreateFrame(frameType: "Slider", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.Slider;
-declare function CreateFrame(frameType: "EditBox", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.EditBox;
-declare function CreateFrame(frameType: "Button", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.Button;
-declare function CreateFrame(frameType: "CheckButton", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.CheckButton;
-declare function CreateFrame(frameType: "LootButton", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.LootButton;
-declare function CreateFrame(frameType: "GameTooltip", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.GameTooltip;
-declare function CreateFrame(frameType: "Model", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.Model;
-declare function CreateFrame(frameType: "PlayerModel", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.PlayerModel;
-declare function CreateFrame(frameType: "DressUpModel", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.DressUpModel;
-declare function CreateFrame(frameType: "StatusBar", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.StatusBar;
-declare function CreateFrame(frameType: "ScrollFrame", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.ScrollFrame;
-declare function CreateFrame(frameType: "ScrollingMessageFrame", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.ScrollingMessageFrame;
-declare function CreateFrame(frameType: "Minimap", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.Minimap;
-declare function CreateFrame(frameType: "MessageFrame", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.MessageFrame;
-declare function CreateFrame(frameType: "Cooldown", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.Cooldown;
-declare function CreateFrame(frameType: "ColorSelect", frameName?: string, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string, id?: number): WoWAPI.ColorSelect;
+declare function CreateFrame(frameType: WoWAPI.FrameType, frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number,): WoWAPI.UIObject;
+declare function CreateFrame(frameType: "Frame", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.Frame;
+declare function CreateFrame(frameType: "Slider", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.Slider;
+declare function CreateFrame(frameType: "EditBox", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.EditBox;
+declare function CreateFrame(frameType: "Button", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.Button;
+declare function CreateFrame(frameType: "CheckButton", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.CheckButton;
+declare function CreateFrame(frameType: "LootButton", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.LootButton;
+declare function CreateFrame(frameType: "GameTooltip", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.GameTooltip;
+declare function CreateFrame(frameType: "Model", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.Model;
+declare function CreateFrame(frameType: "PlayerModel", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.PlayerModel;
+declare function CreateFrame(frameType: "DressUpModel", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.DressUpModel;
+declare function CreateFrame(frameType: "StatusBar", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.StatusBar;
+declare function CreateFrame(frameType: "ScrollFrame", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.ScrollFrame;
+declare function CreateFrame(frameType: "ScrollingMessageFrame", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.ScrollingMessageFrame;
+declare function CreateFrame(frameType: "Minimap", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.Minimap;
+declare function CreateFrame(frameType: "MessageFrame", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.MessageFrame;
+declare function CreateFrame(frameType: "Cooldown", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.Cooldown;
+declare function CreateFrame(frameType: "ColorSelect", frameName?: string | null, parentFrame?: WoWAPI.UIObject, inheritsFrame?: string | null, id?: number): WoWAPI.ColorSelect;
 
 /**
  * Draws a line with the defined texture between two points.

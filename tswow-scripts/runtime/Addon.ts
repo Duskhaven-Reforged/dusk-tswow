@@ -44,6 +44,8 @@ const defaultTsConfig = (addon: Addon) => ({
       ],
       "experimentalDecorators":true,
       "skipLibCheck": true,
+      "noImplicitAny": false,
+      "strictNullChecks": false,
       "types": ["typescript-to-lua/language-extensions"],
     },
     "include":['./','../shared'],
