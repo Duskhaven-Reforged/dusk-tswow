@@ -33,7 +33,7 @@ const livescript_example =
 const scripts_tsconfig_json =
 {
     "compilerOptions": {
-      "target": "es5",
+      "target": "es2016",
       "module": "commonjs",
       "outDir": "./build",
       "rootDir": "../",

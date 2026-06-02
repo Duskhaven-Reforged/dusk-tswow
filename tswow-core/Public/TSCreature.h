@@ -110,6 +110,7 @@ public:
     void DespawnOrUnsummon(uint32 msTimeToDespawn);
     void Respawn();
     void RemoveCorpse();
+    bool StartQuestWalk(TSPlayer player, uint32 questId, uint32 path, uint8 reactState = 1, bool shouldRun = true, bool canRepeat = false, uint32 despawnTime = 1);
     void MoveWaypoint();
     void CallAssistance();
     void CallForHelp(float radius);

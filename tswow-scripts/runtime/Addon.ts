@@ -34,7 +34,8 @@ const defaultTsConfig = (addon: Addon) => ({
     "compilerOptions": {
       "target": "esnext",
       "lib": ["esnext", "dom"],
-      "moduleResolution": "node",
+      "module": "Node16",
+      "moduleResolution": "node16",
       "rootDir": "../",
       "outDir": `./build`,
       "typeRoots": [
@@ -45,6 +46,9 @@ const defaultTsConfig = (addon: Addon) => ({
       "experimentalDecorators":true,
       "skipLibCheck": true,
       "types": ["typescript-to-lua/language-extensions"],
+      "noImplicitAny": false,
+      "strictNullChecks": false,
+       "strictFunctionTypes": false,
     },
     "include":['./','../shared'],
     "exclude":['../scripts','../assets','../data'],

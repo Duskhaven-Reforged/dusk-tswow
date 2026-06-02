@@ -3270,6 +3270,26 @@ declare interface TSCreature extends TSUnit {
     RemoveCorpse() : void
 
     /**
+     * Make the [Creature] start a SmartAI quest waypoint path.
+     *
+     * Uses the `waypoints` table path used by SmartScript `setQuestWalk`, not
+     * the `waypoint_data` path used by [Creature:MoveWaypoint].
+     *
+     * The `player` and that player's party are stored for escort quest
+     * completion/failure when the path ends or stops.
+     *
+     * @param [Player] player : the player who started the quest walk
+     * @param uint32 questId : the quest to reward/fail when the path ends/stops
+     * @param uint32 path : the `waypoints.entry` path ID
+     * @param [ReactStates] reactState = REACT_DEFENSIVE
+     * @param bool shouldRun = true
+     * @param bool canRepeat = false
+     * @param uint32 despawnTime = 1
+     * @return bool started
+     */
+    StartQuestWalk(player : TSPlayer, questId : uint32, path : uint32, reactState?: ReactStates, shouldRun?: bool, canRepeat?: bool, despawnTime?: uint32) : bool
+
+    /**
      * Make the [Creature] start following its waypoint path.
      */
     MoveWaypoint() : void
