@@ -62,9 +62,8 @@ namespace
     constexpr uint32_t STREAMED_SPELL_ATTR_EX_D_HIDE_FROM_SPELLBOOK = 0x8000;
     constexpr uint32_t SPELL_EFFECT_SKILL = 26;
     constexpr int32_t ITEM_CLASS_WEAPON = 2;
-    constexpr uint32_t SPELL_CACHE_REQUEST_START_DELAY_MS = 1500;
-    constexpr uint32_t SPELL_CACHE_REQUEST_INTERVAL_MS = 50;
-    constexpr uint32_t SPELL_CACHE_REQUESTS_PER_PUMP = 2;
+    constexpr uint32_t SPELL_CACHE_REQUEST_INTERVAL_MS = 250;
+    constexpr uint32_t SPELL_CACHE_REQUESTS_PER_PUMP = 10;
     constexpr uint32_t SPELL_CACHE_REQUEST_TIMEOUT_MS = 3000;
     constexpr uint32_t SPELL_CACHE_MAX_REASONABLE_SPELL_ID = 1000000;
     constexpr uint32_t KNOWN_SPELL_UI_WORK_PER_PUMP = 16;
@@ -1240,10 +1239,10 @@ namespace
 
     void ProcessReadyKnownSpellUiWork();
 
-    void SendSpellCacheQuery(uint32_t spellId)
+    void SendSpellCacheQuery(uint32_t spellId, uint32_t requestedHash)
     {
         PendingSpellRequests[spellId] = GetTickCount();
-        LOG_INFO << "Sending spell cache query for" << spellId;
+        LOG_INFO << "Sending spell cache query for" << spellId << "hash" << requestedHash;
         ClientNetwork::SendCustomPacket(SPELL_CACHE_QUERY_OPCODE, sizeof(uint32_t), [spellId](CustomPacketWrite& packet)
         {
             packet.Write<uint32_t>(spellId);
@@ -1254,11 +1253,14 @@ namespace
     {
         ProcessReadyKnownSpellUiWork();
 
-        uint32_t const nowMs = GetTickCount();
-        if (NextSpellCacheRequestMs == 0)
-            NextSpellCacheRequestMs = nowMs + SPELL_CACHE_REQUEST_START_DELAY_MS;
+        if (QueuedSpellRequests.empty())
+        {
+            NextSpellCacheRequestMs = 0;
+            return;
+        }
 
-        if (nowMs < NextSpellCacheRequestMs)
+        uint32_t const nowMs = GetTickCount();
+        if (NextSpellCacheRequestMs && nowMs < NextSpellCacheRequestMs)
             return;
 
         uint32_t sent = 0;
@@ -1290,11 +1292,13 @@ namespace
                 PendingSpellRequests.erase(pending);
             }
 
-            SendSpellCacheQuery(spellId);
+            SendSpellCacheQuery(spellId, requestedHash);
             ++sent;
         }
 
-        NextSpellCacheRequestMs = nowMs + SPELL_CACHE_REQUEST_INTERVAL_MS;
+        NextSpellCacheRequestMs = QueuedSpellRequests.empty()
+            ? 0
+            : nowMs + SPELL_CACHE_REQUEST_INTERVAL_MS;
     }
 
     uint32_t* WeaponSkillSpellRows()
@@ -4691,15 +4695,12 @@ void SpellCacheStreaming::RequestSpell(uint32_t spellId, uint32_t spellDataHash)
     PumpSpellCacheRequests();
 }
 
-#if 0
-DISABLED_DETOUR(FrameScript_FireOnUpdate_SpellCache, 0x00495810, __cdecl, int, (int a1, int a2, int a3, int a4))
+CLIENT_DETOUR(FrameScript_FireOnUpdate_SpellCache, 0x00495810, __cdecl, int, (int a1, int a2, int a3, int a4))
 {
     PumpSpellCacheRequests();
-    PumpNativeActionBarRefresh();
 
     return FrameScript_FireOnUpdate_SpellCache(a1, a2, a3, a4);
 }
-#endif
 
 LUA_FUNCTION(RequestSpellCache, (lua_State* L))
 {

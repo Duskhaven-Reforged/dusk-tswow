@@ -323,6 +323,7 @@ namespace
 
 void SpellCachePacketExtensions::Apply()
 {
+    LOG_INFO << "Spell cache packet intercepts enabled";
 }
 
 void SpellCachePacketExtensions::HandleSpellCastPacket(uint32_t opcode, void* packet)
