@@ -3,6 +3,8 @@
 #include <CDBCMgr/CDBCDefs/ItemDifficultyText.h>
 #include <CDBCMgr/CDBCDefs/SpellAdditionalAttributes.h>
 #include <CDBCMgr/CDBCDefs/SpellAdditionalCostData.h>
+#include <CDBCMgr/CDBCDefs/Spell.h>
+#include <CDBCMgr/CDBCDefs/SpellEffect.h>
 #include <CDBCMgr/CDBCDefs/SpellEffectScalars.h>
 #include <CDBCMgr/CDBCDefs/ScriptedMissileMotion.h>
 #include <CDBCMgr/CDBCDefs/DangerZoneVisualProfile.h>
@@ -15,6 +17,8 @@ std::unordered_map<std::string, std::function<int(lua_State*,int)>> cdbcLuaHandl
 void CDBCMgr::Load() {
     LFGRoles().LoadDB();
     ItemDifficultyText().LoadDB();
+    SpellCache().LoadDB();
+    SpellEffectCache().LoadDB();
     SpellAdditionalAttributes().LoadDB();
     SpellAdditionalCostData().LoadDB();
     ZoneLight().LoadDB();

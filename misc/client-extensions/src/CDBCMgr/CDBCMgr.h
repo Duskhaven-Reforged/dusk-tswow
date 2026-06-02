@@ -46,7 +46,7 @@ public:
         if (it != cdbcIndexRanges.end()) {
             it->second = { minIndex, maxIndex };
         }else{
-            it->second = { 0, 0 };
+            cdbcIndexRanges[cdbcName] = { minIndex, maxIndex };
         }
     }
 };

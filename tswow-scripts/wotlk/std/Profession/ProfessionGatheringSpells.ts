@@ -20,8 +20,8 @@ export class ProfessionGatheringSpells extends MultiRowSystem<Spell,Profession> 
 
     addGet(mod: string, id: string, lockType: number, autoLearnAt: number = 0) {
         let spl = SpellRegistry.create(mod,id)
-        .Attributes.IS_HIDDEN_IN_SPELLBOOK.set(true)
-        .Attributes.IS_HIDDEN_FROM_LOG.set(true)
+        .Attributes.DoNotDisplay.set(true)
+        .Attributes.DoNotLog.set(true)
         .Attributes.UNK41.set(true)
         .SkillLines.addMod(this.owner.ID,undefined,undefined)
         .Effects.addMod((eff)=>{

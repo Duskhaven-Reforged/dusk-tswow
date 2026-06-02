@@ -5,6 +5,7 @@
 #include <ClientDetours.h>
 #include <Logger.h>
 #include <ClientData/SharedDefines.h>
+#include <Spells/SpellCache/Packets/SpellStart.h>
 
 #include <Windows.h>
 
@@ -67,7 +68,6 @@ namespace DangerZoneVisualsInternal
 
     constexpr uintptr_t WORLD_SCENE_M2_SCENE = 0x00CD754C;
     constexpr uintptr_t SPELL_DB = 0x00AD49D0;
-
     struct ClientPacket {
         uint32_t m_padding;
         uint8_t* m_buffer;
@@ -869,6 +869,7 @@ namespace DangerZoneVisualsInternal
 
 CLIENT_DETOUR(DangerZoneSpellCastPacket, 0x80FEE0, __cdecl, int, (void* param, uint32_t opcode, int timestamp, DangerZoneVisualsInternal::ClientPacket* packet))
 {
+    SpellCachePacketExtensions::HandleSpellCastPacket(opcode, packet);
     DangerZoneVisualsInternal::HandleSpellPacket(opcode, packet);
     return DangerZoneSpellCastPacket(param, opcode, timestamp, packet);
 }

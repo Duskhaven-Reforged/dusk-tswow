@@ -27,11 +27,6 @@ CDBC* CDBC::LoadDB(const char* name) {
     if (!SFile::ReadFile(FileBlock, &this->numRows, 4, 0, 0, 0))
         SErr::PrepareAppFatal(0x85100079, "Unable to read record count from %s", filePath);
 
-    if (!this->numRows) {
-        SFile::CloseFile(FileBlock);
-        return this;
-    }
-
     if (!SFile::ReadFile(FileBlock, &v26, 4, 0, 0, 0))
         SErr::PrepareAppFatal(0x85100079, "Unable to read column count from %s", filePath);
 
@@ -46,6 +41,16 @@ CDBC* CDBC::LoadDB(const char* name) {
 
     if (!SFile::ReadFile(FileBlock, &len, 4, 0, 0, 0))
         SErr::PrepareAppFatal(0x85100079, "Unable to read string size from %s", filePath);
+
+    if (!this->numRows) {
+        this->stringTable = SMem::Alloc(len, filePath, -2, 0);
+        if (len && !SFile::ReadFile(FileBlock, this->stringTable, len, 0, 0, 0))
+            SErr::PrepareAppFatal(0x85100086, "%s: Cannot read string table", filePath);
+
+        this->isLoaded = true;
+        SFile::CloseFile(FileBlock);
+        return this;
+    }
 
     this->rows = SMem::Alloc(this->numRows * this->rowSize, filePath, -2, 0);
 

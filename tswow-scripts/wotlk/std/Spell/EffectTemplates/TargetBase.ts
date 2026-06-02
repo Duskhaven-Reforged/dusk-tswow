@@ -8,21 +8,21 @@ export class TargetBase extends EffectTemplate {
      * Generic Target type.
      */
     get ImplicitTargetA() {
-        return makeEnumCell(SpellImplicitTarget, this, this.wrapIndex(this.owner.row.ImplicitTargetA,this.index));
+        return makeEnumCell(SpellImplicitTarget, this, this.wrap(this.owner.ImplicitTargetARaw));
     }
 
     /**
      * Generic Target type. Value depends on TargetA
      */
      get ImplicitTargetB() {
-        return makeEnumCell(SpellImplicitTarget, this, this.wrapIndex(this.owner.row.ImplicitTargetB,this.index));
+        return makeEnumCell(SpellImplicitTarget, this, this.wrap(this.owner.ImplicitTargetBRaw));
     }
 
     /**
      * Generic radius. Value depends on TargetA/TargetB
      */
     get Radius() {
-        return SpellRadiusRegistry.ref(this, this.w(this.row.EffectRadiusIndex));
+        return SpellRadiusRegistry.ref(this, this.wrap(this.owner.Radius));
     }
 
     /**

@@ -5,6 +5,8 @@
 #include <ClientNetwork.h>
 #include <Spells/DangerZoneVisuals.h>
 #include <Spells/ScriptedMissileVisuals.h>
+#include <Spells/SpellCache/Packets/SpellStart.h>
+#include <Spells/SpellCache/SpellCacheStreaming.h>
 
 using namespace ClientData;
 
@@ -21,6 +23,8 @@ void Spells::Apply() {
     g_spell_min_clip_distance_percentage_cvar = CVar_C::Register("spellMinClipDistancePercentage", "Sets the minimum distance the clipping needs to be to activate", 1, "0.0", SpellMinClipDistancePercentage_CVarCallback, 5, 0, 0, 0);
     DangerZoneVisuals::Apply();
     ScriptedMissileVisuals::Apply();
+    SpellCacheStreaming::Apply();
+    SpellCachePacketExtensions::Apply();
 }
 
 char Spells::SpellMinClipDistancePercentage_CVarCallback(CVar* cvar, const char*, const char* value, const char*)

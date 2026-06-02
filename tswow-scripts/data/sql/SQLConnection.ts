@@ -23,6 +23,9 @@ import { SqlTable } from './SQLTable';
 import { translate } from './SQLTranslate';
 import deasync = require('deasync');
 
+const FAST_RAW_SQL_BATCH_APPLY = true;
+const FAST_RAW_SQL_QUERY_BATCH_BYTES = 1024 * 1024;
+
 export class PreparedStatement {
     private asyncStatement: any;
 
@@ -150,25 +153,58 @@ export class Connection {
         this.late.push(query);
     }
 
+    private queryAsync(query: string, errorContext: string) {
+        return new Promise<void>((res,rej)=>{
+            if(this.async===undefined) {
+                return rej(`Tried to apply while async adapter was disconnected`);
+            }
+
+            this.async.query(query,(err)=>{
+                    if(err){
+                        err.message = `(For SQL "${errorContext}")\n`+err.message;
+                        return rej(err);
+                } else {
+                    return res();
+            }})
+        })
+    }
+
+    private batchedQueries(queries: string[]) {
+        const maxBytes = Math.max(1, FAST_RAW_SQL_QUERY_BATCH_BYTES);
+        let batches: string[] = [];
+        let current: string[] = [];
+        let currentBytes = 0;
+
+        queries.forEach(rawQuery => {
+            const query = rawQuery.trimEnd().endsWith(';') ? rawQuery : `${rawQuery};`;
+            const queryBytes = Buffer.byteLength(query, 'utf-8') + 1;
+            if(current.length > 0 && currentBytes + queryBytes > maxBytes) {
+                batches.push(current.join('\n'));
+                current = [];
+                currentBytes = 0;
+            }
+            current.push(query);
+            currentBytes += queryBytes;
+        });
+
+        if(current.length > 0) {
+            batches.push(current.join('\n'));
+        }
+
+        return batches;
+    }
+
     async apply() {
         const doPriority = async (name: string) => {
             let priority: string[] = this[name]
 
-            let promises = priority.map((x)=>new Promise<void>((res,rej)=>{
-                if(this.async===undefined) {
-                    return rej(`Tried to apply while async adapter was disconnected`);
-                }
+            priority.forEach(x=>SqlConnection.log(this.settings.database,x));
 
-                SqlConnection.log(this.settings.database,x);
-
-                this.async.query(x,(err)=>{
-                        if(err){
-                            err.message = `(For SQL "${x}")\n`+err.message;
-                            return rej(err);
-                    } else {
-                        return res();
-                }})
-            }))
+            let promises = FAST_RAW_SQL_BATCH_APPLY
+                ? this.batchedQueries(priority)
+                    .map((x)=>this.queryAsync(x, x.substring(0, 400)))
+                : priority
+                    .map((x)=>this.queryAsync(x, x));
 
             this.statements.forEach(x=>{
                 (x[name] as any[][]).forEach(y=>{

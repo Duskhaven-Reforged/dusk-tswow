@@ -135,6 +135,213 @@ export enum SpellProcFlags {
     CRITICAL_HEALING_TAKEN          = 0x20000000,    // 27 Damage blocked
 }
 
+export type DoneProcEvent =
+    | 'MeleeAutoAttack'
+    | 'SpellMeleeDamage'
+    | 'RangedAutoAttack'
+    | 'SpellRangedDamage'
+    | 'SpellNonePositive'
+    | 'SpellNoneNegative'
+    | 'SpellMagicPositive'
+    | 'SpellMagicNegative'
+    | 'Periodic'
+    | 'TrapActivation'
+    | 'MainhandAttack'
+    | 'OffhandAttack'
+    | 'CriticalDamage'
+    | 'CriticalHealing';
+
+export type TakenProcEvent =
+    | 'MeleeAutoAttack'
+    | 'SpellMeleeDamage'
+    | 'RangedAutoAttack'
+    | 'SpellRangedDamage'
+    | 'SpellNonePositive'
+    | 'SpellNoneNegative'
+    | 'SpellMagicPositive'
+    | 'SpellMagicNegative'
+    | 'Periodic'
+    | 'Damage'
+    | 'CriticalDamage'
+    | 'CriticalHealing';
+
+export type ProcEvent =
+    | 'Killed'
+    | 'Kill'
+    | 'Death'
+    | 'DamageBlocked';
+
+export type ProcPhase = 'Cast' | 'Hit' | 'Finish';
+export type ProcType = 'Damage' | 'Heal' | 'Other';
+export type ProcHit =
+    | 'Normal'
+    | 'Critical'
+    | 'Miss'
+    | 'FullResist'
+    | 'Dodge'
+    | 'Parry'
+    | 'Block'
+    | 'Evade'
+    | 'Immune'
+    | 'Deflect'
+    | 'Absorb'
+    | 'Reflect'
+    | 'Interrupt'
+    | 'FullBlock';
+
+export type ProcAttribute =
+    | 'RequireXPOrHonor'
+    | 'CanProcOnTriggered'
+    | 'RequireManaCost'
+    | 'TakesMana'
+    | 'RequireSpellMod'
+    | 'UseStacksForCharges'
+    | 'ReduceProcAbove60'
+    | 'CantProcFromItemCast';
+
+export type ProcDisableEffect = 'Effect0' | 'Effect1' | 'Effect2';
+export type ProcSchool = 'Physical' | 'Holy' | 'Fire' | 'Nature' | 'Frost' | 'Shadow' | 'Arcane';
+
+export type ProcFamily =
+    | 'Generic'
+    | 'Mage'
+    | 'Warrior'
+    | 'Warlock'
+    | 'Priest'
+    | 'Druid'
+    | 'Rogue'
+    | 'Hunter'
+    | 'Paladin'
+    | 'Shaman'
+    | 'Potion'
+    | 'DeathKnight'
+    | 'Tinker'
+    | number;
+
+export type ProcSpellOptions = {
+    include?: [number, number, number][]
+    exclude?: [number, number, number][]
+};
+
+const DONE_PROC_EVENTS: Record<DoneProcEvent, SpellProcFlags> = {
+    MeleeAutoAttack: SpellProcFlags.DONE_MELEE_AUTO_ATTACK,
+    SpellMeleeDamage: SpellProcFlags.DONE_SPELL_MELEE_DMG_CLASS,
+    RangedAutoAttack: SpellProcFlags.DONE_RANGED_AUTO_ATTACK,
+    SpellRangedDamage: SpellProcFlags.DONE_SPELL_RANGED_DAMAGE_CLASS,
+    SpellNonePositive: SpellProcFlags.DONE_SPELL_NONE_DAMAGE_CLASS_POSITIVE,
+    SpellNoneNegative: SpellProcFlags.DONE_SPELL_NONE_DAMAGE_CLASS_NEGATIVE,
+    SpellMagicPositive: SpellProcFlags.DONE_SPELL_MAGIC_DAMAGE_CLASS_POSITIVE,
+    SpellMagicNegative: SpellProcFlags.DONE_SPELL_MAGIC_DAMAGE_CLASS_NEGATIVE,
+    Periodic: SpellProcFlags.DONE_PERIODIC,
+    TrapActivation: SpellProcFlags.DONE_TRAP_ACTIVATION,
+    MainhandAttack: SpellProcFlags.DONE_MAINHAND_ATTACK,
+    OffhandAttack: SpellProcFlags.DONE_OFFHAND_ATTACK,
+    CriticalDamage: SpellProcFlags.CRITICAL_DAMAGE_DONE,
+    CriticalHealing: SpellProcFlags.CRITICAL_HEALING_DONE,
+};
+
+const TAKEN_PROC_EVENTS: Record<TakenProcEvent, SpellProcFlags> = {
+    MeleeAutoAttack: SpellProcFlags.TAKEN_MELEE_AUTO_ATTACK,
+    SpellMeleeDamage: SpellProcFlags.TAKEN_SPELL_MELEE_DMG_CLASS,
+    RangedAutoAttack: SpellProcFlags.TAKEN_RANGED_AUTO_ATTACK,
+    SpellRangedDamage: SpellProcFlags.TAKEN_SPELL_RANGED_DAMAGE_CLASS,
+    SpellNonePositive: SpellProcFlags.TAKEN_SPELL_NONE_DAMAGE_CLASS_POSITIVE,
+    SpellNoneNegative: SpellProcFlags.TAKEN_SPELL_NONE_DAMAGE_CLASS_NEGATIVE,
+    SpellMagicPositive: SpellProcFlags.TAKEN_SPELL_MAGIC_DAMAGE_CLASS_POSITIVE,
+    SpellMagicNegative: SpellProcFlags.TAKEN_SPELL_MAGIC_DAMAGE_CLASS_NEGATIVE,
+    Periodic: SpellProcFlags.TAKEN_PERIODIC,
+    Damage: SpellProcFlags.TAKEN_DAMAGE,
+    CriticalDamage: SpellProcFlags.CRITICAL_DAMAGE_TAKEN,
+    CriticalHealing: SpellProcFlags.CRITICAL_HEALING_TAKEN,
+};
+
+const PROC_EVENTS: Record<ProcEvent, SpellProcFlags> = {
+    Killed: SpellProcFlags.KILLED,
+    Kill: SpellProcFlags.KILL,
+    Death: SpellProcFlags.DEATH,
+    DamageBlocked: SpellProcFlags.DAMAGE_BLOCKED,
+};
+
+const PROC_PHASES: Record<ProcPhase, SpellPhaseMask> = {
+    Cast: SpellPhaseMask.CAST,
+    Hit: SpellPhaseMask.HIT,
+    Finish: SpellPhaseMask.FINISH,
+};
+
+const PROC_TYPES: Record<ProcType, SpellTypeMask> = {
+    Damage: SpellTypeMask.DAMAGE,
+    Heal: SpellTypeMask.HEAL,
+    Other: SpellTypeMask.OTHER,
+};
+
+const PROC_HITS: Record<ProcHit, SpellHitMask> = {
+    Normal: SpellHitMask.NORMAL,
+    Critical: SpellHitMask.CRITICAL,
+    Miss: SpellHitMask.MISS,
+    FullResist: SpellHitMask.FULL_RESIST,
+    Dodge: SpellHitMask.DODGE,
+    Parry: SpellHitMask.PARRY,
+    Block: SpellHitMask.BLOCK,
+    Evade: SpellHitMask.EVADE,
+    Immune: SpellHitMask.IMMUNE,
+    Deflect: SpellHitMask.DEFLECT,
+    Absorb: SpellHitMask.ABSORB,
+    Reflect: SpellHitMask.REFLECT,
+    Interrupt: SpellHitMask.INTERRUPT,
+    FullBlock: SpellHitMask.FULL_BLOCK,
+};
+
+const PROC_ATTRIBUTES: Record<ProcAttribute, SpellAttributesMask> = {
+    RequireXPOrHonor: SpellAttributesMask.REQUIRE_EXP_OR_HONOR,
+    CanProcOnTriggered: SpellAttributesMask.CAN_PROC_ON_TRIGGERED,
+    RequireManaCost: SpellAttributesMask.REQUIRE_MANA_COST,
+    TakesMana: SpellAttributesMask.REQUIRE_MANA_COST,
+    RequireSpellMod: SpellAttributesMask.REQUIRE_SPELL_MOD,
+    UseStacksForCharges: SpellAttributesMask.USE_STACKS_FOR_CHARGES,
+    ReduceProcAbove60: SpellAttributesMask.REDUCE_PROC60,
+    CantProcFromItemCast: SpellAttributesMask.CANT_PROC_FROM_ITEM_CAST,
+};
+
+const PROC_DISABLE_EFFECTS: Record<ProcDisableEffect, DisableEffectsMask> = {
+    Effect0: DisableEffectsMask.EFFECT0,
+    Effect1: DisableEffectsMask.EFFECT1,
+    Effect2: DisableEffectsMask.EFFECT2,
+};
+
+const PROC_SCHOOLS: Record<ProcSchool, SchoolMask> = {
+    Physical: SchoolMask.PHYSICAL,
+    Holy: SchoolMask.HOLY,
+    Fire: SchoolMask.FIRE,
+    Nature: SchoolMask.NATURE,
+    Frost: SchoolMask.FROST,
+    Shadow: SchoolMask.SHADOW,
+    Arcane: SchoolMask.ARCANE,
+};
+
+const PROC_FAMILIES: Record<string, SpellFamilyName | number> = {
+    Generic: SpellFamilyName.GENERIC,
+    Mage: SpellFamilyName.MAGE,
+    Warrior: SpellFamilyName.WARRIOR,
+    Warlock: SpellFamilyName.WARLOCK,
+    Priest: SpellFamilyName.PRIEST,
+    Druid: SpellFamilyName.DRUID,
+    Rogue: SpellFamilyName.ROGUE,
+    Hunter: SpellFamilyName.HUNTER,
+    Paladin: SpellFamilyName.PALADIN,
+    Shaman: SpellFamilyName.SHAMAN,
+    Potion: SpellFamilyName.POTION,
+    DeathKnight: SpellFamilyName.DEATH_KNIGHT,
+    Tinker: 19,
+};
+
+function maskFrom<T extends string>(values: readonly T[], table: Record<T, number>) {
+    return values.reduce((mask, value) => mask | table[value], 0);
+}
+
+function familyValue(family: ProcFamily) {
+    return typeof family === 'number' ? family : PROC_FAMILIES[family];
+}
+
 export class SimpleClassMask<T> extends CellSystem<T>
 {
     protected a: Cell<number,any>;
@@ -194,6 +401,8 @@ export class SQLMaybeWriteCell<T> extends Cell<number,T>{
 
 export class SpellProc<T> extends MaybeSQLEntity<T, spell_procRow> {
     private realOwner: Spell;
+    private fluentEventsStarted = false;
+
     constructor(owner: T, realOwner: Spell)
     {
         super(owner);
@@ -233,7 +442,12 @@ export class SpellProc<T> extends MaybeSQLEntity<T, spell_procRow> {
     }
 
     get TriggerMask() {
-        return makeMaskCell32(SpellProcFlags,this, this.realOwner.row.ProcTypeMask);
+        return makeMaskCell32(SpellProcFlags,this, new SQLMaybeWriteCell(
+              this
+            , this
+            , this.realOwner.row.ProcTypeMask
+            , sql=>sql.ProcFlags
+        ));
     }
 
     get Chance() {
@@ -321,6 +535,149 @@ export class SpellProc<T> extends MaybeSQLEntity<T, spell_procRow> {
 
     get Cooldown() {
         return this.wrapSQL(0,sql=>sql.Cooldown);
+    }
+
+    private beginFluentEvents() {
+        if(!this.fluentEventsStarted) {
+            this.TriggerMask.set(0);
+            this.fluentEventsStarted = true;
+        }
+    }
+
+    private addEventMask(mask: number) {
+        this.beginFluentEvents();
+        this.TriggerMask.set(this.TriggerMask.get() | mask);
+        return this;
+    }
+
+    private removeEventMask(mask: number) {
+        this.TriggerMask.set(this.TriggerMask.get() & ~mask);
+        return this;
+    }
+
+    /**
+     * Adds "done by aura owner" proc events. First fluent event call clears
+     * existing event flags, then done/taken/event calls compose one flat mask.
+     */
+    done(...events: DoneProcEvent[]) {
+        return this.addEventMask(maskFrom(events, DONE_PROC_EVENTS));
+    }
+
+    /**
+     * Adds "taken by aura owner" proc events. First fluent event call clears
+     * existing event flags, then done/taken/event calls compose one flat mask.
+     */
+    taken(...events: TakenProcEvent[]) {
+        return this.addEventMask(maskFrom(events, TAKEN_PROC_EVENTS));
+    }
+
+    /**
+     * Adds proc events that are not naturally done/taken.
+     */
+    event(...events: ProcEvent[]) {
+        return this.addEventMask(maskFrom(events, PROC_EVENTS));
+    }
+
+    withoutDone(...events: DoneProcEvent[]) {
+        return this.removeEventMask(maskFrom(events, DONE_PROC_EVENTS));
+    }
+
+    withoutTaken(...events: TakenProcEvent[]) {
+        return this.removeEventMask(maskFrom(events, TAKEN_PROC_EVENTS));
+    }
+
+    withoutEvent(...events: ProcEvent[]) {
+        return this.removeEventMask(maskFrom(events, PROC_EVENTS));
+    }
+
+    /**
+     * Sets one flat spell family/class-mask filter from a spell list.
+     * This feeds SpellFamilyMask0/1/2; it cannot express mixed families.
+     */
+    spells(family: ProcFamily, spells: Spell[] = [], options: ProcSpellOptions = {}) {
+        const combined: [number, number, number] = [0, 0, 0];
+        spells.forEach((spell) => {
+            const [a, b, c] = spell.ClassMask.get2();
+            combined[0] |= a;
+            combined[1] |= b;
+            combined[2] |= c;
+        });
+        options.include?.forEach(([a, b, c]) => {
+            combined[0] |= a;
+            combined[1] |= b;
+            combined[2] |= c;
+        });
+        options.exclude?.forEach(([a, b, c]) => {
+            combined[0] &= ~a;
+            combined[1] &= ~b;
+            combined[2] &= ~c;
+        });
+
+        this.SpellFamily.set(familyValue(family));
+        if(spells.length > 0 || options.include || options.exclude) {
+            this.ClassMask.setSimple(combined);
+        }
+        return this;
+    }
+
+    phase(...phases: ProcPhase[]) {
+        this.PhaseMask.set(maskFrom(phases, PROC_PHASES));
+        return this;
+    }
+
+    type(...types: ProcType[]) {
+        this.TypeMask.set(maskFrom(types, PROC_TYPES));
+        return this;
+    }
+
+    hit(...hits: ProcHit[]) {
+        this.HitMask.set(maskFrom(hits, PROC_HITS));
+        return this;
+    }
+
+    attributes(...attributes: ProcAttribute[]) {
+        this.AttributesMask.set(maskFrom(attributes, PROC_ATTRIBUTES));
+        return this;
+    }
+
+    withoutAttributes(...attributes: ProcAttribute[]) {
+        this.AttributesMask.set(this.AttributesMask.get() & ~maskFrom(attributes, PROC_ATTRIBUTES));
+        return this;
+    }
+
+    disableEffects(...effects: ProcDisableEffect[]) {
+        this.DisableEffectsMask.set(maskFrom(effects, PROC_DISABLE_EFFECTS));
+        return this;
+    }
+
+    school(...schools: ProcSchool[]) {
+        this.SchoolMask.set(maskFrom(schools, PROC_SCHOOLS));
+        return this;
+    }
+
+    chance(value: number) {
+        this.Chance.set(value);
+        return this;
+    }
+
+    ppm(value: number) {
+        this.ProcsPerMinute.set(value);
+        return this;
+    }
+
+    cooldown(ms: number) {
+        this.Cooldown.set(ms);
+        return this;
+    }
+
+    charges(count: number) {
+        this.Charges.set(count);
+        return this;
+    }
+
+    raw(callback: (proc: this)=>void) {
+        callback(this);
+        return this;
     }
 
     mod(callback: (proc: SpellProcCB)=>void)

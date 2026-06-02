@@ -16,7 +16,6 @@
  */
 import { CellWrapper } from "../../../data/cell/cells/Cell";
 import { Bit, MaskCell, MaskCell32 } from "../../../data/cell/cells/MaskCell";
-import { DBCUIntArrayCell } from "../../../data/dbc/DBCCell";
 import { CellBasic } from "../GameObject/ElevatorKeyframes";
 import { Spell } from "./Spell";
 import { SpellEffect } from "./SpellEffect";
@@ -130,23 +129,13 @@ export class BaseClassSet extends ClassSet<Spell> {
 export class EffectClassSet<T> extends ClassSet<T> {
     protected effect: SpellEffect;
     protected makeCell(index: number) {
-        let cell: DBCUIntArrayCell<any>;
-        switch(this.effect.index) {
-            case 0:
-                cell = this.effect.row.EffectSpellClassMaskA;
-                break;
-            case 1:
-                cell = this.effect.row.EffectSpellClassMaskB;
-                break
-            case 2:
-                cell = this.effect.row.EffectSpellClassMaskC;
-                break
-        }
-        return new MaskCell32(this.owner, new CellBasic(
-              this.owner
-            , ()=>cell.getIndex(index)
-            , (val)=>cell.setIndex(index,val)
-        ))
+        const row = this.effect.dynamicRow();
+        const dynamicCell = index === 0
+            ? row.EffectSpellClassMaskA
+            : index === 1
+                ? row.EffectSpellClassMaskB
+                : row.EffectSpellClassMaskC;
+        return new MaskCell32(this.owner, dynamicCell);
     }
 
     constructor(owner: T, effect: SpellEffect) {

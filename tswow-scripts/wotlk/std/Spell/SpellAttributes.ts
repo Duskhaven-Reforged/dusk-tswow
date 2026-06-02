@@ -127,14 +127,14 @@ export class SpellAttributes<T> extends MaskCell<T> {
     get IS_PASSIVE() { return this.bit(6); }
 
     /**
-     * No comment (yet!)
+     * Hide from log, spellbook, aurabar
      */
-    get IS_HIDDEN_IN_SPELLBOOK() { return this.bit(7); }
+    get DoNotDisplay() { return this.bit(7); }
 
     /**
      * No comment (yet!)
      */
-    get IS_HIDDEN_FROM_LOG() { return this.bit(8); }
+    get DoNotLog() { return this.bit(8); }
 
     /**
      * No comment (yet!)
@@ -394,7 +394,7 @@ export class SpellAttributes<T> extends MaskCell<T> {
     /**
      * No comment (yet!)
      */
-    get HIDE_FROM_AURA_BAR() { return this.bit(60); }
+    get NoAuraBar() { return this.bit(60); }
 
     /**
      * No comment (yet!)

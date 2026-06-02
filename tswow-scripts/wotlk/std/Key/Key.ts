@@ -80,7 +80,7 @@ export const KeyRegistry = {
     create(mod: string, id: string, type: 'GAMEOBJECT') {
         const KEY_SPELL = SpellRegistry
             .create(mod,`${id}-spell`)
-            .Attributes.IS_HIDDEN_FROM_LOG.set(true)
+            .Attributes.DoNotLog.set(true)
             .Attributes.NOT_SHAPESHIFTED.set(true)
             .TargetType.GAME_OBJECT_ITEM.set(true)
             .Range.set(12)

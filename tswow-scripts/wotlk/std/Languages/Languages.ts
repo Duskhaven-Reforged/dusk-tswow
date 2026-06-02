@@ -203,7 +203,7 @@ export class LanguageRegistryClass extends RegistryStaticNoClone<WoWLanguage,Lan
         const spell = SpellRegistry
             .create(mod,id+'-spell')
             .Attributes.IS_PASSIVE.set(true)
-            .Attributes.IS_HIDDEN_IN_SPELLBOOK.set(true)
+            .Attributes.DoNotDisplay.set(true)
             .Proc.Chance.set(100,'[0-100]')
             .DefenseType.set(1)
             .PreventionType.set(1)

@@ -14,14 +14,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-import { CPrim } from "../../../data/cell/cells/Cell";
+import { Cell, CPrim } from "../../../data/cell/cells/Cell";
 import { CellArray } from "../../../data/cell/cells/CellArray";
 import { EnumCellTransform, EnumValueTransform, makeEnumCell } from "../../../data/cell/cells/EnumCell";
 import { Objectified, ObjectifyOptions, Objects } from "../../../data/cell/serialization/ObjectIteration";
 import { Transient } from "../../../data/cell/serialization/Transient";
 import { ArrayEntry, ArraySystem } from "../../../data/cell/systems/ArraySystem";
-import { DBC } from "../../DBCFiles";
-import { Ids } from "../Misc/Ids";
+import { SQL } from "../../SQLFiles";
+import { spell_effectsRow } from "../../sql/spell_effects";
 import { ShiftedNumberCell } from "../Misc/ShiftedNumberCell";
 import { AuraType } from "./AuraType";
 import { Spell } from "./Spell";
@@ -36,7 +36,13 @@ import { SpellBonusData } from "./SpellBonusData";
 
 export class SpellEffects extends ArraySystem<SpellEffect,Spell> {
     get length() {
-        return 3;
+        const effectRows = SQL.spell_effects.queryAll({ SpellID: this.owner.ID })
+            .filter(row => !row.isDeleted());
+        if (effectRows.length === 0) {
+            return 3;
+        }
+
+        return Math.max(3, Math.max(...effectRows.map(row => row.EffectIndex.get())) + 1);
     }
 
     objectifyPlain() {
@@ -114,6 +120,18 @@ export class SpellEffects extends ArraySystem<SpellEffect,Spell> {
         return this.owner;
     }
 
+    addGet(): SpellEffect {
+        for (let i = 0; i < 3; ++i) {
+            const cur = this.get(i);
+            if (cur.isClear()) {
+                cur.clear();
+                return cur;
+            }
+        }
+
+        return this.get(this.length);
+    }
+
     addGetTriggerSpell(mod: string, id: string, parent = 0) {
         let spell = SpellRegistry.create(mod,id,parent);
         this.addGet().Type
@@ -167,50 +185,14 @@ export class SpellEffects extends ArraySystem<SpellEffect,Spell> {
      *       instead.
      */
     addFreeEffect(callback: (effect: SpellEffect)=>void) {
-        const SPELL_CHAIN_TOKEN = '__tswow_spell_chain';
-        function getNextSpell(spell: Spell) {
-            for(let i=0;i<3;++i) {
-                if(!spell.Effects.get(i).Type.TRIGGER_SPELL.is()) {
-                    continue;
-                }
-                let nex = SpellRegistry.load(spell.Effects.get(i).TriggerSpell.get());
-                if(nex.Icon.getPath() === SPELL_CHAIN_TOKEN) {
-                    return nex;
-                }
-            }
-            return undefined;
-        }
+        callback(this.addGet());
+        return this.owner;
+    }
 
-        function getOrCreateNextSpell(spell: Spell) {
-            let nex = getNextSpell(spell);
-            if(nex!==undefined) {
-                return nex;
-            }
-            nex = new Spell(DBC.Spell.add(Ids.Spell.dynamicId()));
-            SpellRegistry.Clear(nex);
-            nex.Icon.setFullPath(SPELL_CHAIN_TOKEN);
-            spell.Effects.addMod((eff)=>{
-                eff.Type.TRIGGER_SPELL.set()
-                   .TriggerSpell.set((nex as Spell).ID);
-            })
-            return nex;
-        }
-
-        let curSpell = getOrCreateNextSpell(this.owner);
-        while(true) {
-            let free = getNextSpell(curSpell)!==undefined;
-            for(let i=0;i<3;++i ){
-                if(curSpell.Effects.get(i).Type.get()===0) {
-                    if(!free) {
-                        free = true;
-                    } else {
-                        callback(curSpell.Effects.get(i));
-                        return this.owner;
-                    }
-                }
-            }
-            curSpell = getOrCreateNextSpell(curSpell);
-        }
+    clearDynamic() {
+        SQL.spell_effects.queryAll({ SpellID: this.owner.ID })
+            .forEach(row => row.delete());
+        return this.owner;
     }
 }
 
@@ -240,19 +222,62 @@ export class SpellEffect extends ArrayEntry<Spell> {
         return this;
     }
 
-    private w<T extends CPrim>(arr: CellArray<T,any>) {
-        return this.wrapIndex(arr, this.index);
+    dynamicRow(): spell_effectsRow {
+        let row = SQL.spell_effects.findBySpellEffect(this.row.ID.get(), this.index);
+        if (!row) {
+            row = SQL.spell_effects.add(this.row.ID.get(), this.index, this.legacyEffectValues());
+        }
+        return row;
+    }
+
+    private legacyEffectValues() {
+        if (this.index >= 3) {
+            return { EffectChainAmplitude: 1 };
+        }
+
+        return {
+            Effect: this.row.Effect.getIndex(this.index),
+            EffectDieSides: this.row.EffectDieSides.getIndex(this.index),
+            EffectRealPointsPerLevel: this.row.EffectRealPointsPerLevel.getIndex(this.index),
+            EffectBasePoints: this.row.EffectBasePoints.getIndex(this.index),
+            EffectMechanic: this.row.EffectMechanic.getIndex(this.index),
+            EffectImplicitTargetA: this.row.ImplicitTargetA.getIndex(this.index),
+            EffectImplicitTargetB: this.row.ImplicitTargetB.getIndex(this.index),
+            EffectRadiusIndex: this.row.EffectRadiusIndex.getIndex(this.index),
+            EffectApplyAuraName: this.row.EffectAura.getIndex(this.index),
+            EffectAmplitude: this.row.EffectAuraPeriod.getIndex(this.index),
+            EffectMultipleValue: this.row.EffectMultipleValue.getIndex(this.index),
+            EffectChainTargets: this.row.EffectChainTargets.getIndex(this.index),
+            EffectItemType: this.row.EffectItemType.getIndex(this.index),
+            EffectMiscValue: this.row.EffectMiscValue.getIndex(this.index),
+            EffectMiscValueB: this.row.EffectMiscValueB.getIndex(this.index),
+            EffectTriggerSpell: this.row.EffectTriggerSpell.getIndex(this.index),
+            EffectPointsPerCombo: this.row.EffectPointsPerCombo.getIndex(this.index),
+            EffectSpellClassMaskA: this.row.EffectSpellClassMaskA.getIndex(this.index),
+            EffectSpellClassMaskB: this.row.EffectSpellClassMaskB.getIndex(this.index),
+            EffectSpellClassMaskC: this.row.EffectSpellClassMaskC.getIndex(this.index),
+            EffectChainAmplitude: this.row.EffectChainAmplitude.getIndex(this.index),
+            EffectBonusMultiplier: this.row.EffectBonusMultiplier.getIndex(this.index),
+        };
+    }
+
+    effectCell<T extends CPrim>(_legacy: CellArray<T,any>, dynamic: (row: spell_effectsRow) => Cell<T, any>) {
+        return this.wrap(dynamic(this.dynamicRow()));
     }
 
     @Transient
     get row() { return this.container.row; }
 
-    get Radius() { return SpellRadiusRegistry.ref(this, this.w(this.row.EffectRadiusIndex)); }
-    get ItemType() { return this.w(this.row.EffectItemType); }
+    get Radius() { return SpellRadiusRegistry.ref(this, this.effectCell(this.row.EffectRadiusIndex, row => row.EffectRadiusIndex)); }
+    get ItemType() { return this.effectCell(this.row.EffectItemType, row => row.EffectItemType); }
     get Aura(): AuraType { return new AuraType(this, this.index); }
     get Type(): SpellEffectType { return new SpellEffectType(this, this.index); }
+    get MechanicRaw() { return this.effectCell(this.row.EffectMechanic, row => row.EffectMechanic); }
+    get ImplicitTargetARaw() { return this.effectCell(this.row.ImplicitTargetA, row => row.EffectImplicitTargetA); }
+    get ImplicitTargetBRaw() { return this.effectCell(this.row.ImplicitTargetB, row => row.EffectImplicitTargetB); }
+
     get Mechanic() {
-        return makeEnumCell(SpellEffectMechanic, this, this.w(this.row.EffectMechanic));
+        return makeEnumCell(SpellEffectMechanic, this, this.MechanicRaw);
     }
 
     get PointsBase() {
@@ -261,26 +286,26 @@ export class SpellEffect extends ArrayEntry<Spell> {
           , ()=>this.PointsDieSides.get() > 0
                 ? 'STORED_AS_MINUS_ONE'
                 : 'NO_CHANGE'
-          , this.w(this.row.EffectBasePoints)
+          , this.effectCell(this.row.EffectBasePoints, row => row.EffectBasePoints)
         )
     };
-    get PointsDieSides() { return this.w(this.row.EffectDieSides); }
-    get PointsPerLevel() { return this.w(this.row.EffectRealPointsPerLevel); }
-    get PointsPerCombo() { return this.w(this.row.EffectPointsPerCombo); }
+    get PointsDieSides() { return this.effectCell(this.row.EffectDieSides, row => row.EffectDieSides); }
+    get PointsPerLevel() { return this.effectCell(this.row.EffectRealPointsPerLevel, row => row.EffectRealPointsPerLevel); }
+    get PointsPerCombo() { return this.effectCell(this.row.EffectPointsPerCombo, row => row.EffectPointsPerCombo); }
     get ImplicitTargetA() {
-        return makeEnumCell(SpellImplicitTarget, this, this.wrapIndex(this.row.ImplicitTargetA,this.index));
+        return makeEnumCell(SpellImplicitTarget, this, this.ImplicitTargetARaw);
     }
     get ImplicitTargetB() {
-        return makeEnumCell(SpellImplicitTarget, this, this.wrapIndex(this.row.ImplicitTargetB,this.index));
+        return makeEnumCell(SpellImplicitTarget, this, this.ImplicitTargetBRaw);
     }
-    get AuraPeriod() { return this.w(this.row.EffectAuraPeriod); }
-    get MultipleValue() { return this.w(this.row.EffectMultipleValue); }
-    get ChainTarget() { return this.w(this.row.EffectChainTargets); }
-    get MiscValueA() { return this.w(this.row.EffectMiscValue); }
-    get MiscValueB() { return this.w(this.row.EffectMiscValueB); }
-    get TriggerSpell() { return this.w(this.row.EffectTriggerSpell); }
-    get ChainAmplitude() { return this.w(this.row.EffectChainAmplitude); }
-    get BonusMultiplier() { return this.w(this.row.EffectBonusMultiplier); }
+    get AuraPeriod() { return this.effectCell(this.row.EffectAuraPeriod, row => row.EffectAmplitude); }
+    get MultipleValue() { return this.effectCell(this.row.EffectMultipleValue, row => row.EffectMultipleValue); }
+    get ChainTarget() { return this.effectCell(this.row.EffectChainTargets, row => row.EffectChainTargets); }
+    get MiscValueA() { return this.effectCell(this.row.EffectMiscValue, row => row.EffectMiscValue); }
+    get MiscValueB() { return this.effectCell(this.row.EffectMiscValueB, row => row.EffectMiscValueB); }
+    get TriggerSpell() { return this.effectCell(this.row.EffectTriggerSpell, row => row.EffectTriggerSpell); }
+    get ChainAmplitude() { return this.effectCell(this.row.EffectChainAmplitude, row => row.EffectChainAmplitude); }
+    get BonusMultiplier() { return this.effectCell(this.row.EffectBonusMultiplier, row => row.EffectBonusMultiplier); }
     get ClassMask(): EffectClassSet<this> { return new EffectClassSet(this, this); }
     get TargetPosition() {
         return new SpellTargetPosition(this, this.row.ID.get(), this.index);

@@ -155,7 +155,7 @@ export class CompanionRegistryClass
         SpellRegistry.Clear(r.AsSpell.get())
         r.AsSpell.get()
             .Attributes.IS_ABILITY.set(true)
-            .Attributes.IS_HIDDEN_FROM_LOG.set(true)
+            .Attributes.DoNotLog.set(true)
             .Attributes.SHEATHE_UNCHANGED.set(true)
             .Attributes.IGNORE_BONUSES.set(true)
             .Duration.set(21)

@@ -30,6 +30,11 @@ const EAGER_PRELOAD_TABLES = new Set<string>([
     `spell_dbc`,
     `map_dbc`
 ]);
+const FAST_APPLY_TABLES = new Set<string>([
+    'spell_dbc',
+    'dbc_spellduration',
+    'dbc_spellcasttimes',
+]);
 const AUTO_EAGER_PRELOAD_QUERY_THRESHOLD = 32;
 const AUTO_EAGER_PRELOAD_TIME_THRESHOLD_MS = 250;
 const MYSQL_MAX_PREPARED_PLACEHOLDERS = 65535;
@@ -136,6 +141,10 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
     }
 
     private maybeEagerPreload() {
+        if(FAST_APPLY_TABLES.has(this.name)) {
+            this.eagerPreload('fast-apply-tables');
+            return;
+        }
         if(!EAGER_PRELOAD_TABLES.has(this.name)) {
             return;
         }
@@ -229,13 +238,16 @@ export class SqlTable<C, Q, R extends SqlRow<C, Q>> extends Table<C, Q, R> {
 
         const insertValueCount = Math.max(1, SqlRow.getPreparedStatementValueCount(dummyRow));
         const deleteValueCount = Math.max(1, SqlRow.getPreparedDeleteValueCount(dummyRow));
+        const requestedChunkSize = FAST_APPLY_TABLES.has(table.name)
+            ? Number.MAX_SAFE_INTEGER
+            : table.chunk_size;
         const insertChunkSize = Math.max(
             1,
-            Math.min(table.chunk_size, Math.floor(MYSQL_MAX_PREPARED_PLACEHOLDERS / insertValueCount))
+            Math.min(requestedChunkSize, Math.floor(MYSQL_MAX_PREPARED_PLACEHOLDERS / insertValueCount))
         );
         const deleteChunkSize = Math.max(
             1,
-            Math.min(table.chunk_size, Math.floor(MYSQL_MAX_PREPARED_PLACEHOLDERS / deleteValueCount))
+            Math.min(requestedChunkSize, Math.floor(MYSQL_MAX_PREPARED_PLACEHOLDERS / deleteValueCount))
         );
     
         /** Chunking */

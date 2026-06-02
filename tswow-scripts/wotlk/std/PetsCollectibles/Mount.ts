@@ -195,7 +195,7 @@ export class MountRegistryClass
 
     create(mod: string, id: string, speed = 59, flightSpeed = 0, createItem = true, createCreature = true) {
         let spell = SpellRegistry.create(mod,id)
-            .Attributes.IS_HIDDEN_FROM_LOG.set(true)
+            .Attributes.DoNotLog.set(true)
             .Attributes.IS_ABILITY.set(true)
             .Attributes.OUTDOORS_ONLY.set(true)
             .Attributes.NOT_SHAPESHIFTED.set(true)

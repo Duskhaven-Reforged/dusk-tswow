@@ -31,11 +31,11 @@ export class Profession extends MainEntity<SkillLineRow> {
         this.Ranks.forEach(rank=>{
             let spell = rank.ProfessionSpell();
             if(value) {
-                spell.Attributes.IS_HIDDEN_IN_SPELLBOOK.set(false);
+                spell.Attributes.DoNotDisplay.set(false);
                 spell.Attributes.UNK41.set(false);
             } else {
                 spell.Attributes.UNK41.set(true);
-                spell.Attributes.IS_HIDDEN_IN_SPELLBOOK.set(true);
+                spell.Attributes.DoNotDisplay.set(true);
             }
         })
         return this;
@@ -479,7 +479,7 @@ export class ProfessionRanks extends CellSystem<Profession> {
         let learnSpell = SpellRegistry.create(modid,`${id}-learn`)
             .Name.set(this.owner.AsSkillLine.get().Name.objectify())
             .Subtext.set(subtext)
-            .Attributes.IS_HIDDEN_FROM_LOG.set(true)
+            .Attributes.DoNotLog.set(true)
             .Attributes.SHEATHE_UNCHANGED.set(true)
             .TargetType.UNIT_ALLY.set(true)
             .SchoolMask.PHYSICAL.set(true)

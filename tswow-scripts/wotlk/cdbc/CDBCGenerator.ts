@@ -2,14 +2,15 @@ import * as fs from 'fs';
 
 export class CDBCGenerator {
     private magic = 0x43424457; // "WDBC" in ASCII
-    private recordCount = 1; // Single base row
+    private recordCount: number;
     private fieldCount: number;
     private recordSize: number;
     private stringBlockSize = 1; 
     private stringTable: Map<string, number> = new Map();
     private stringBuffer: Buffer = Buffer.alloc(1, 0); // Start with null byte
     
-    constructor(private values: (number | string)[]) {
+    constructor(private values: (number | string)[], recordCount = 1) {
+        this.recordCount = recordCount;
         this.fieldCount = values.length;
         this.recordSize = this.fieldCount * 4; // Each field is 4 bytes
     }
@@ -54,7 +55,7 @@ export class CDBCGenerator {
         header.writeUInt32LE(this.recordCount, 4);
         header.writeUInt32LE(this.fieldCount, 8);
         header.writeUInt32LE(this.recordSize, 12);
-        let record = this.createRecord()
+        let record = this.recordCount === 0 ? Buffer.alloc(0) : this.createRecord()
         header.writeUInt32LE(this.stringBlockSize, 16);
         let output = Buffer.concat([header, record, this.stringBuffer]);
 

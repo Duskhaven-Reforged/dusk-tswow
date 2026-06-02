@@ -35,6 +35,7 @@ import { SpellAttributes } from "./SpellAttributes";
 import { AuraStateType } from "./SpellAuraState";
 import { SpellAutoLearns } from "./SpellAutoLearn";
 import { SpellCastTimeRegistry } from "./SpellCastTime";
+import { SpellChargeDefinition } from "./SpellChargeDefinition";
 import { BaseClassSet } from "./SpellClassSet";
 import { SpellCustomAttr } from "./SpellCustomAttr";
 import { SpellDescriptionVariableRegistry } from "./SpellDescriptionVariable";
@@ -157,6 +158,7 @@ export class Spell extends MainEntityID<SpellRow> {
     get Proc() { return new SpellProc(this,this); }
     get Priority() { return this.wrap(this.row.SpellPriority); }
     get Cooldown() { return new SpellRecovery(this, this); }
+    get SpellCharges() { return new SpellChargeDefinition(this); }
     get MaxTargetLevel() { return this.wrap(this.row.MaxTargetLevel); }
     get MaxTargets() { return this.wrap(this.row.MaxTargets); }
     /**
@@ -335,6 +337,7 @@ export class Spell extends MainEntityID<SpellRow> {
             .TargetCreatureType.set(0)
             .Targets.set(0)
             .Totem.set([0,0])
+        this.Effects.clearDynamic();
         return this;
     }
 

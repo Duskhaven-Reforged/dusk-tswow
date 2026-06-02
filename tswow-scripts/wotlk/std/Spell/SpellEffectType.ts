@@ -14,14 +14,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-import { CellIndexWrapper } from "../../../data/cell/cells/CellArray";
 import { EnumCellTransform } from "../../../data/cell/cells/EnumCell";
 import { ActivateObject, ActivateRune, AddComboPoints, AddFarsight, AddHonor, ApplyGlyph, BindHome, CanTitanGrip, CastButtons, Charge, ChargeDest, ClearQuest, CommandTotemCreature, CompleteQuest, CreateItem, CreateManaGem, CreateRandomItem, CreateScriptedMissile, DestroyAllTotems, Dispel, DispelMechanic, DurabilityDamage, DurabilityDamagePercent, EnchantHeldItem, EnchantItem, EnchantItemTemp, EnchantPrismaticItem, Energize, EnergizePercent, EnvironmentalDamage, ExtraAttacks, FailQuest, ForceCast, ForceCastWithValue, GameObjectDamage, GameObjectRepair, Heal, HealMaxHealth, HealMechanical, HealPercent, HealthLeech, InterruptCast, Jump, JumpDest, KillCredit, Knockback, KnockbackDest, Language, Leap, LeapBack, LearnPetSpell, LearnSpell, MakeDrunk, ModifyThreatPercent, OpenLock, Pickpocket, PlayMusic, PlaySound, PowerBurn, PowerDrain, PullTowards, PullTowardsDest, RedirectThreat, RemoveAura, Reputation, Resurrect, ResurrectSelf, Sanctuary, SchoolDamage, ScriptEffect, SendEvent, SendTaxi, SetGameObjectDestructibleState, Skill, SkillStep, StartQuest, StealBeneficialBuff, Summon, SummonObjectSlot1, SummonObjectSlot2, SummonObjectSlot3, SummonObjectSlot4, SummonObjectWild, SummonPet, TeleportUnitFaceCaster, TeleportUnits, Threat, TradeSkill, TransDoor, TriggerMissile, TriggerMissileWithValue, TriggerSpell, TriggerSpellWithValue, Weapon, WeaponDamage, WeaponDamageNoSchool, WeaponPercentDamage } from "./EffectTemplates/EffectTemplates";
 import { SpellEffect } from "./SpellEffect";
 
 export class SpellEffectType extends EnumCellTransform<SpellEffect> {
     constructor(owner: SpellEffect, index: number) {
-        super(owner, new CellIndexWrapper(undefined, owner.row.Effect, index));
+        super(owner, owner.effectCell(owner.row.Effect, row => row.Effect));
     }
 
     /** Enum Value:                                         0 */
@@ -351,7 +350,7 @@ export class SpellEffectType extends EnumCellTransform<SpellEffect> {
     /** Enum Value:                                         162 */
     get TALENT_SPEC_SELECT()            { return this.value(162, x=>x) }
     /** Enum Value:                                         163 */
-    get UNUSED()                        { return this.value(163, x=>x) }
+    get ModifySpellChargeCooldown()     { return this.value(163, x=>x) }
     /** Enum Value:                                         164 */
     get REMOVE_AURA()                   { return this.value(164, x=>new RemoveAura(x)) }
     /** Enum Value:                                         165 */
@@ -360,10 +359,11 @@ export class SpellEffectType extends EnumCellTransform<SpellEffect> {
     get CreateScriptedMissile()           { return this.value(166, x=>new CreateScriptedMissile(x)) }
     /** Enum Value:                                         167 */
     get JUMP_CHARGE()                     { return this.value(167, x=>x) }
-    /** Enum Value:                                         168 */
     get MODIFY_CURRENT_SPELL_COOLDOWN()   { return this.value(168, x=>x) }
     /** Enum Value:                                         169 */
     get REMOVE_CURRENT_SPELL_COOLDOWN()   { return this.value(169, x=>x) }
+    /** Enum Value:                                         170 */
+    get RestoreSpellCharge()            { return this.value(170, x=>x) }
     /** Enum Value:                                         170 */
     get RESTORE_SPELL_CHARGE()            { return this.value(170, x=>x) }
     /** Enum Value:                                         171 */

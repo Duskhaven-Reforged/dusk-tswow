@@ -328,7 +328,7 @@ export class FarSight extends TargetBase {}
 // 77
 export class MechanicImmunity extends TargetBase {
     get Mechanic() {
-        return makeEnumCell(SpellEffectMechanic,this, this.wrapIndex(this.row.EffectMechanic,this.index));
+        return makeEnumCell(SpellEffectMechanic,this, this.wrap(this.owner.MechanicRaw));
     }
 }
 // 78
@@ -503,7 +503,7 @@ export class ModRegenDuringCombat extends HealBase {}
 // 117
 export class ModMechanicResistance extends PercentBase {
     get Mechanic() {
-        return makeEnumCell(SpellEffectMechanic,this, this.wrapIndex(this.row.EffectMechanic,this.index));
+        return makeEnumCell(SpellEffectMechanic,this, this.wrap(this.owner.MechanicRaw));
     }
 }
 // 118
@@ -1138,3 +1138,18 @@ export class PreventResurrection extends TargetBase {}
 // 315
 export class UnderwaterWalking extends TargetBase {}
 // 316
+
+export enum SpellChargeDefModMode {
+    Maximum = 0,
+    CooldownFlat = 1,
+    CooldownPct = 2,
+}
+
+// 322
+export class ModSpellChargeDef extends PointsBase {
+    get Mode() {
+        return makeEnumCell(SpellChargeDefModMode,this, this.owner.MiscValueA);
+    }
+
+    get TargetSpell() { return this.wrap(this.owner.TriggerSpell); }
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <CDBCMgr/CDBC.h>
 #include <CDBCMgr/CDBCDefs/SpellAdditionalAttributes.h>
 
@@ -79,9 +80,7 @@ namespace ClientData
         uint32_t m_effectMiscValueB[3];
         uint32_t m_effectTriggerSpell[3];
         float m_effectPointsPerCombo[3];
-        uint32_t m_effectSpellClassMaskA[3];
-        uint32_t m_effectSpellClassMaskB[3];
-        uint32_t m_effectSpellClassMaskC[3];
+        uint32_t m_effectSpellClassMask[3][3];
         uint32_t m_spellVisualID[2];
         uint32_t m_spellIconID;
         uint32_t m_activeIconID;
@@ -126,6 +125,21 @@ namespace ClientData
         int32_t duration;
         int32_t endTime;
     };
+
+    static_assert(sizeof(SpellRow) == 0x2A8, "SpellRow must match localized 3.3.5 SpellRec size");
+    static_assert(offsetof(SpellRow, m_powerType) == 0xA4, "SpellRow power type offset mismatch");
+    static_assert(offsetof(SpellRow, m_manaCost) == 0xA8, "SpellRow mana cost offset mismatch");
+    static_assert(offsetof(SpellRow, m_rangeIndex) == 0xB8, "SpellRow range offset mismatch");
+    static_assert(offsetof(SpellRow, m_effect) == 0x11C, "SpellRow effects offset mismatch");
+    static_assert(offsetof(SpellRow, m_effectMiscValue) == 0x1B8, "SpellRow effect misc offset mismatch");
+    static_assert(offsetof(SpellRow, m_effectSpellClassMask) == 0x1E8, "SpellRow effect class mask offset mismatch");
+    static_assert(offsetof(SpellRow, m_spellVisualID) == 0x20C, "SpellRow visuals offset mismatch");
+    static_assert(offsetof(SpellRow, m_name_lang) == 0x220, "SpellRow string pointer offset mismatch");
+    static_assert(offsetof(SpellRow, m_manaCostPct) == 0x230, "SpellRow mana percent offset mismatch");
+    static_assert(offsetof(SpellRow, m_effectChainAmplitude) == 0x260, "SpellRow chain amplitude offset mismatch");
+    static_assert(offsetof(SpellRow, m_powerDisplayID) == 0x290, "SpellRow power display offset mismatch");
+    static_assert(offsetof(SpellRow, m_effectBonusCoefficient) == 0x294, "SpellRow bonus coefficient offset mismatch");
+    static_assert(offsetof(SpellRow, m_difficulty) == 0x2A4, "SpellRow difficulty offset mismatch");
 
     struct PendingSpellCastData
     {
