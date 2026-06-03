@@ -8,3 +8,4 @@ build/
 /misc/install-config/addons/*
 /misc/HelperLib/*
 /.vs/*
+/tmp/
