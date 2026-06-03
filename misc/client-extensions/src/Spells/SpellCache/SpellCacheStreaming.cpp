@@ -216,6 +216,7 @@ namespace
     bool StreamedActionBarCursorActive = false;
     bool NativeSpellDbLoadPatched = false;
     bool PendingSpellCastSpellRecLookupPatched = false;
+    bool KnownSpellMaxIdGatePatched = false;
     bool NativeActionBarRefreshPending = false;
     int32_t ActionBarUpdateCooldownEventId = -2;
     int32_t ActionBarUpdateStateEventId = -2;
@@ -1093,6 +1094,27 @@ namespace
 
         PendingSpellCastSpellRecLookupPatched = true;
         LOG_INFO << "Patched PendingSpellCast streamed SpellRec lookup bridge";
+    }
+
+    void PatchKnownSpellMaxIdGate()
+    {
+        if (KnownSpellMaxIdGatePatched)
+            return;
+
+        auto* const branch = reinterpret_cast<uint8_t*>(ADD_KNOWN_SPELL_MAX_ID_GATE_ADDRESS);
+        uint8_t const expected[] = { 0x7E, 0x1A };
+        if (std::memcmp(branch, expected, sizeof(expected)) != 0)
+        {
+            LOG_ERROR << "AddKnownSpell max-id gate patch signature mismatch"
+                << "byte0" << static_cast<uint32_t>(branch[0])
+                << "byte1" << static_cast<uint32_t>(branch[1]);
+            return;
+        }
+
+        uint8_t patch[] = { 0xEB, 0x1A };
+        Util::OverwriteBytesAtAddress(static_cast<uint32_t>(ADD_KNOWN_SPELL_MAX_ID_GATE_ADDRESS), patch, sizeof(patch));
+        KnownSpellMaxIdGatePatched = true;
+        LOG_INFO << "Patched AddKnownSpell max-id gate for streamed spellbook rows";
     }
 
     void PlayStreamedLocalCastKit(uint32_t spellId)
@@ -3032,6 +3054,8 @@ namespace
         LOG_INFO << "Cached streamed spell" << spellId << "hash" << spell.spellDataHash << "effects" << effectCount;
         NotifySpellCached(spellId);
         ApplyCachedStreamedActionBarSpellToNative(spellId);
+        ApplyDeferredKnownSpellAdds(spellId);
+        SignalStreamedSpellbookRefresh();
     }
 }
 
@@ -4022,6 +4046,7 @@ DISABLED_DETOUR(Script_GetSpellTabInfo_SpellCache, 0x0053BE70, __cdecl, int, (lu
 
     return Script_GetSpellTabInfo_SpellCache(L);
 }
+
 DISABLED_DETOUR(Script_GetSpellInfo_SpellCache, 0x00540A30, __cdecl, int, (lua_State* L))
 {
     if (PlayerSpellSlotMapSize() > 0 && ClientLua::GetTop(L) > 1)
@@ -4872,6 +4897,60 @@ DISABLED_LUA_FN(StreamedSpellCache_DebugVisualPipeline, (lua_State* L))
     return 10;
 }
 #endif
+
+CLIENT_DETOUR_THISCALL(CGPlayer_C__AddKnownSpell_SpellbookFoundation, 0x006E7B00, void, (int32_t spellId, int32_t spellCategory, int32_t learned, int32_t addToSpellbook))
+{
+    static uint32_t logCount = 0;
+    void* const returnAddress = _ReturnAddress();
+    uint64_t const activePlayerGuid = ClntObjMgr::GetActivePlayer();
+    SyncKnownSpellRowsPlayer(activePlayerGuid);
+
+    if (spellId <= 0 || !HasReasonableSpellId(static_cast<uint32_t>(spellId)))
+    {
+        if (logCount < 80)
+        {
+            LOG_ERROR << "Blocked invalid native AddKnownSpell"
+                << "spell" << spellId
+                << "category" << spellCategory
+                << "learned" << learned
+                << "addToSpellbook" << addToSpellbook
+                << "caller" << returnAddress;
+            ++logCount;
+        }
+
+        return;
+    }
+
+    uint32_t const knownSpellId = static_cast<uint32_t>(spellId);
+    bool const insertedKnownSpell = AddKnownSpellRow(knownSpellId);
+    MarkKnownSpellBit(knownSpellId);
+    ForcedStreamedSpellRows.insert(knownSpellId);
+
+    if (!SpellCacheStreaming::HasSpell(knownSpellId))
+    {
+        TrackPendingKnownSpellAdd(self, knownSpellId, spellCategory, learned, addToSpellbook);
+        SpellCacheStreaming::RequestSpell(knownSpellId);
+    }
+    else
+    {
+        ScheduleKnownSpellUiWork({ self, knownSpellId, spellCategory, learned, addToSpellbook }, "native-add-cache-hit");
+    }
+
+    if ((insertedKnownSpell || logCount < 40) && logCount < 160)
+    {
+        LOG_INFO << "Native AddKnownSpell streamed foundation"
+            << "spell" << knownSpellId
+            << "cached" << SpellCacheStreaming::HasSpell(knownSpellId)
+            << "knownCount" << static_cast<uint32_t>(KnownSpellRows.size())
+            << "category" << spellCategory
+            << "learned" << learned
+            << "addToSpellbook" << addToSpellbook
+            << "caller" << returnAddress;
+        ++logCount;
+    }
+
+    CGPlayer_C__AddKnownSpell_SpellbookFoundation(self, spellId, spellCategory, learned, addToSpellbook);
+}
 
     void LogLocalizedRowDecision(char const* kind, uint32_t spellId, void* rowBuffer, void* caller)
     {
@@ -5934,6 +6013,8 @@ LUA_FUNCTION(CastStreamedSpellActionBarSlot, (lua_State* L))
 
 void SpellCacheStreaming::Apply()
 {
+    PatchKnownSpellMaxIdGate();
+
     ClientNetwork::OnCustomPacket(SPELL_CACHE_RESPONSE_OPCODE, [](CustomPacketRead* packet)
     {
         HandleSpellCacheResponse(packet);
