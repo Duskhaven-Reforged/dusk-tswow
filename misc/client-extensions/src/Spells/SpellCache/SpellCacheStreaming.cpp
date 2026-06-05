@@ -2,6 +2,7 @@
 
 #include <ClientDetours.h>
 #include <ClientData/GameEnums.h>
+#include <ClientData/ObjectFields.h>
 #include <ClientData/SharedDefines.h>
 #include <ClientData/Spell.h>
 #include <ClientData/System.h>
@@ -26,6 +27,7 @@
 #include <deque>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -72,6 +74,7 @@ namespace
     constexpr uint32_t SPELL_CACHE_REQUESTS_PER_PUMP = 10;
     constexpr uint32_t SPELL_CACHE_REQUEST_TIMEOUT_MS = 3000;
     constexpr uint32_t ACTIONBAR_STREAMED_ROW_SCAN_INTERVAL_MS = 1000;
+    constexpr bool SPELL_CACHE_ENABLE_UI_INTEGRATION = false;
     constexpr uint32_t SPELL_CACHE_MAX_REASONABLE_SPELL_ID = 1000000;
     constexpr uint32_t SKILL_LINE_ABILITY_MAX_REASONABLE_ROWS = 200000;
     constexpr uint32_t KNOWN_SPELL_UI_WORK_PER_PUMP = 1;
@@ -121,6 +124,10 @@ namespace
     constexpr size_t UNIT_AURA_STRIDE = 24;
     constexpr size_t UNIT_AURA_SPELL_ID_OFFSET = 8;
     constexpr size_t UNIT_AURA_FLAGS_OFFSET = 12;
+    constexpr size_t UNIT_PENDING_SHAPESHIFT_RESET_OFFSET = 2548;
+    constexpr size_t UNIT_MOVEMENT_FLAGS_OFFSET = 0x0A30;
+    constexpr size_t UNIT_FIELD_BYTES_2_SHAPESHIFT_FORM_BYTE_OFFSET = 467;
+    constexpr uint32_t UNIT_MOVEMENT_FLAG_SWIMMING_OR_UNDERWATER = 0x00200000;
     constexpr uint32_t STREAMED_TYPEMASK_PLAYER = 0x10;
 
     std::unordered_map<uint32_t, uint32_t> PendingSpellRequests;
@@ -233,10 +240,6 @@ namespace
     uint32_t KnownSpellNativeFallthroughDebugLogCount = 0;
     uint32_t PendingKnownSpellDebugLogCount = 0;
     uint32_t SkillLineAbilityIndexDebugLogCount = 0;
-    uint32_t PendingShapeshiftSwapSpellId = 0;
-    uint32_t PendingShapeshiftSwapCancelSpellId = 0;
-    uint32_t PendingShapeshiftSwapQueuedMs = 0;
-    uint32_t PendingShapeshiftSwapNextPumpMs = 0;
 
     struct PendingKnownSpellAdd
     {
@@ -720,6 +723,122 @@ namespace
         return *critterGuid;
     }
 
+    bool ReadUnitFieldU32(void* unit, uint32_t fieldIndex, uint32_t& out)
+    {
+        out = 0;
+        if (!unit)
+            return false;
+
+        auto const* fieldsPtr = reinterpret_cast<uintptr_t const*>(
+            reinterpret_cast<uint8_t const*>(unit) + UNIT_FIELDS_POINTER_OFFSET);
+        if (!IsReadableMemory(fieldsPtr, sizeof(*fieldsPtr)) || !*fieldsPtr)
+            return false;
+
+        auto const* value = reinterpret_cast<uint32_t const*>(
+            reinterpret_cast<uint8_t const*>(*fieldsPtr) + fieldIndex * sizeof(uint32_t));
+        if (!IsReadableMemory(value, sizeof(*value)))
+            return false;
+
+        out = *value;
+        return true;
+    }
+
+    uint32_t GetUnitCurrentShapeshiftFormSafe(void* unit)
+    {
+        if (!unit)
+            return 0;
+
+        auto const* pendingReset = reinterpret_cast<uint8_t const*>(
+            reinterpret_cast<uint8_t const*>(unit) + UNIT_PENDING_SHAPESHIFT_RESET_OFFSET);
+        if (IsReadableMemory(pendingReset, sizeof(*pendingReset)) && *pendingReset)
+            return 0;
+
+        auto const* fieldsPtr = reinterpret_cast<uintptr_t const*>(
+            reinterpret_cast<uint8_t const*>(unit) + UNIT_FIELDS_POINTER_OFFSET);
+        if (!IsReadableMemory(fieldsPtr, sizeof(*fieldsPtr)) || !*fieldsPtr)
+            return 0;
+
+        auto const* formByte = reinterpret_cast<uint8_t const*>(
+            reinterpret_cast<uint8_t const*>(*fieldsPtr) + UNIT_FIELD_BYTES_2_SHAPESHIFT_FORM_BYTE_OFFSET);
+        if (!IsReadableMemory(formByte, sizeof(*formByte)))
+            return 0;
+
+        return *formByte;
+    }
+
+    bool UnitIsUnderwaterOrSwimmingSafe(void* unit)
+    {
+        if (!unit)
+            return false;
+
+        auto const* movementFlags = reinterpret_cast<uint32_t const*>(
+            reinterpret_cast<uint8_t const*>(unit) + UNIT_MOVEMENT_FLAGS_OFFSET);
+        return IsReadableMemory(movementFlags, sizeof(*movementFlags))
+            && ((*movementFlags & UNIT_MOVEMENT_FLAG_SWIMMING_OR_UNDERWATER) != 0);
+    }
+
+    bool SpellMaskHasForm(uint32_t const* mask, uint32_t formId)
+    {
+        if (!formId || !mask)
+            return false;
+
+        uint32_t const formIndex = formId - 1;
+        uint32_t const word = formIndex / 32;
+        if (word >= 2)
+            return false;
+
+        return (mask[word] & (1u << (formIndex & 31))) != 0;
+    }
+
+    bool SpellMaskAny(uint32_t const* mask)
+    {
+        return mask && (mask[0] || mask[1]);
+    }
+
+    uint32_t GetStreamedSpellPowerCost(ClientData::SpellRow const& row, void* unit)
+    {
+        uint32_t cost = row.m_manaCost;
+        if (row.m_manaCostPct)
+        {
+            uint32_t maxPower = 0;
+            int32_t const powerType = static_cast<int32_t>(row.m_powerType);
+            uint32_t const field = powerType == -2
+                ? static_cast<uint32_t>(ClientData::UNIT_FIELD_MAXHEALTH)
+                : static_cast<uint32_t>(ClientData::UNIT_FIELD_MAXPOWER1) + static_cast<uint32_t>((std::max)(powerType, 0));
+            if (ReadUnitFieldU32(unit, field, maxPower))
+                cost += (maxPower * row.m_manaCostPct) / 100u;
+        }
+
+        return cost;
+    }
+
+    bool GetUnitPowerForSpellSafe(void* unit, ClientData::SpellRow const& row, uint32_t& out)
+    {
+        out = 0;
+        int32_t const powerType = static_cast<int32_t>(row.m_powerType);
+        if (powerType < 0)
+        {
+            if (powerType == -2)
+                return ReadUnitFieldU32(unit, static_cast<uint32_t>(ClientData::UNIT_FIELD_HEALTH), out);
+            out = UINT32_MAX;
+            return true;
+        }
+
+        if (powerType == ClientData::POWER_RUNES)
+        {
+            out = UINT32_MAX;
+            return true;
+        }
+
+        if (powerType > ClientData::POWER_RUNIC_POWER)
+            return false;
+
+        return ReadUnitFieldU32(
+            unit,
+            static_cast<uint32_t>(ClientData::UNIT_FIELD_POWER1) + static_cast<uint32_t>(powerType),
+            out);
+    }
+
     bool StreamedSpellHasEffectAtIndex(uint32_t spellId, uint32_t effectIndex, uint32_t effectId)
     {
         const SpellEffectCacheRow* effect = nullptr;
@@ -769,8 +888,7 @@ namespace
 
             if (effect.effectApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
             {
-                uint32_t const currentFormId = static_cast<uint32_t>(
-                    CGUnit_C__GetShapeshiftFormId(reinterpret_cast<CGUnit*>(unit)));
+                uint32_t const currentFormId = GetUnitCurrentShapeshiftFormSafe(unit);
                 if (currentFormId && static_cast<uint32_t>(effect.effectMiscValue) == currentFormId)
                 {
                     active = true;
@@ -825,6 +943,80 @@ namespace
         });
 
         return active;
+    }
+
+    bool GetStreamedSpellUsableState(ClientData::SpellRow const& row, void* unit, bool& usable, bool& lacksPower)
+    {
+        usable = false;
+        lacksPower = false;
+        if (!unit || !SpellCacheStreaming::HasSpell(row.m_ID))
+            return false;
+
+        if ((row.m_attributes & STREAMED_SPELL_ATTR0_PASSIVE) != 0)
+            return true;
+
+        if (StreamedSpellCurrentOnUnit(&row, unit))
+        {
+            usable = true;
+            return true;
+        }
+
+        uint32_t const currentForm = GetUnitCurrentShapeshiftFormSafe(unit);
+        if (SpellMaskHasForm(row.m_shapeshiftExclude, currentForm))
+            return true;
+        if (SpellMaskAny(row.m_shapeshiftMask) && !SpellMaskHasForm(row.m_shapeshiftMask, currentForm))
+            return true;
+
+        bool const underwater = UnitIsUnderwaterOrSwimmingSafe(unit);
+        if ((row.m_auraInterruptFlags & 0x100u) != 0 && !underwater)
+            return true;
+        if ((row.m_auraInterruptFlags & 0x80u) != 0 && underwater)
+            return true;
+
+        uint32_t availablePower = 0;
+        if (GetUnitPowerForSpellSafe(unit, row, availablePower))
+        {
+            uint32_t const cost = GetStreamedSpellPowerCost(row, unit);
+            if (cost > availablePower)
+            {
+                lacksPower = true;
+                return true;
+            }
+        }
+
+        usable = true;
+        return true;
+    }
+
+    bool GetStreamedSpellUsableState(uint32_t spellId, bool& usable, bool& lacksPower)
+    {
+        usable = false;
+        lacksPower = false;
+
+        ClientData::SpellRow row{};
+        if (!SpellCacheStreaming::TryBuildSpellRow(spellId, row))
+            return false;
+
+        void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
+            ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
+            STREAMED_TYPEMASK_PLAYER);
+        return GetStreamedSpellUsableState(row, localPlayer, usable, lacksPower);
+    }
+
+    bool GetStreamedSpellStaticBarUsableState(uint32_t spellId, bool& usable, bool& lacksPower)
+    {
+        usable = false;
+        lacksPower = false;
+
+        ClientData::SpellRow row{};
+        if (!SpellCacheStreaming::TryBuildSpellRow(spellId, row))
+            return false;
+
+        if ((row.m_attributes & STREAMED_SPELL_ATTR0_PASSIVE) != 0)
+            return true;
+
+        usable = true;
+        return true;
     }
 
     bool StreamedSpellCanToggleOrCancel(uint32_t spellId)
@@ -1527,6 +1719,9 @@ namespace
 
     bool SetStreamedActionBarEntry(uint32_t zeroBasedSlot, uint32_t spellId, bool requestOnMiss)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return false;
+
         if (!IsValidActionBarSlot(zeroBasedSlot) || !HasReasonableSpellId(spellId))
             return false;
 
@@ -1571,6 +1766,9 @@ namespace
 
     void ApplyCachedStreamedActionBarSpellToNative(uint32_t spellId)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         if (!HasReasonableSpellId(spellId) || !SpellCacheStreaming::HasSpell(spellId))
             return;
 
@@ -1606,6 +1804,9 @@ namespace
 
     bool ClearStreamedActionBarEntry(uint32_t zeroBasedSlot)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return false;
+
         if (!IsValidActionBarSlot(zeroBasedSlot))
             return false;
 
@@ -1631,6 +1832,9 @@ namespace
 
     void ClearAllStreamedActionBarEntries()
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         if (StreamedActionBarEntries.empty())
             return;
 
@@ -2099,6 +2303,9 @@ namespace
 
     void QueueNativeActionBarRefresh(uint32_t spellId, char const* reason)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         NativeActionBarRefreshPending = true;
 
         static uint32_t logCount = 0;
@@ -2113,6 +2320,9 @@ namespace
 
     void PumpNativeActionBarRefresh()
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         if (!NativeActionBarRefreshPending)
             return;
 
@@ -2359,6 +2569,40 @@ namespace
     bool HasKnownSpellRow(uint32_t spellId)
     {
         return KnownSpellRows.find(spellId) != KnownSpellRows.end();
+    }
+
+    bool RemoveKnownSpellRow(uint32_t spellId)
+    {
+        bool removed = KnownSpellRows.erase(spellId) != 0;
+        ReadyKnownSpellUiRows.erase(spellId);
+        ReadyKnownSpellUiRecords.erase(spellId);
+        ForcedStreamedSpellRows.erase(spellId);
+        KnownSpellbookEntries.erase(spellId);
+
+        auto removeQueuedSpell = [spellId](auto& queue)
+        {
+            queue.erase(
+                std::remove_if(queue.begin(), queue.end(), [spellId](auto const& value)
+                {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, uint32_t>)
+                        return value == spellId;
+                    else
+                        return value.spellId == spellId;
+                }),
+                queue.end());
+        };
+
+        removeQueuedSpell(ReadyKnownSpellUiQueue);
+        removeQueuedSpell(PendingKnownSpellAdds);
+        removeQueuedSpell(NativeKnownSpellReplayQueue);
+
+        if (KnownSpellBitsetCanLookup(spellId))
+            KnownSpellBitset()[spellId >> 5] &= ~(1u << (spellId & 0x1F));
+
+        if (removed)
+            MarkKnownSpellbookModelDirty();
+
+        return removed;
     }
 
     void RebuildKnownSpellbookOrder();
@@ -2868,6 +3112,9 @@ namespace
 
     void SignalStreamedSpellbookRefresh()
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         FrameScript::SignalEvent(242, nullptr);
         FrameScript::SignalEvent(448, const_cast<char*>("%d"), 1);
         if (ClientLua::State())
@@ -2881,6 +3128,9 @@ namespace
 
     void ScheduleKnownSpellUiWork(PendingKnownSpellAdd const& pending, char const* reason)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         if (!HasReasonableSpellId(pending.spellId))
             return;
 
@@ -3326,8 +3576,24 @@ namespace
         return true;
     }
 
+    bool GetNativeStreamedShapeshiftCastable(uint32_t oneBasedIndex, bool active)
+    {
+        if (!oneBasedIndex)
+            return active;
+
+        uint32_t const index = oneBasedIndex - 1;
+        NativeShapeshiftEntry* rows = ShapeshiftRows();
+        if (!rows || index >= ShapeshiftCount() || index >= ShapeshiftCapacity())
+            return active;
+
+        return active || (rows[index].usable && !rows[index].lacksPower);
+    }
+
     void ApplyStreamedShapeshiftState(bool signalRefresh)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         std::vector<KnownSpellbookEntry> stances = GetSortedStreamedStances();
         uint32_t const stanceCount = (std::min)(static_cast<uint32_t>(stances.size()), SPELLBOOK_MAX_STANCES);
         if (!EnsureNativeShapeshiftStorage(stanceCount))
@@ -3352,9 +3618,12 @@ namespace
 
         for (uint32_t i = 0; i < stanceCount; ++i)
         {
+            bool usable = false;
+            bool lacksPower = false;
+            GetStreamedSpellStaticBarUsableState(stances[i].spellId, usable, lacksPower);
             rows[i].spellId = stances[i].spellId;
-            rows[i].usable = 1;
-            rows[i].lacksPower = 0;
+            rows[i].usable = usable ? 1 : 0;
+            rows[i].lacksPower = lacksPower ? 1 : 0;
         }
 
         ShapeshiftCount() = stanceCount;
@@ -3610,6 +3879,9 @@ namespace
 
     void ApplyDeferredKnownSpellAdds(uint32_t spellId)
     {
+        if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+            return;
+
         if (!HasReasonableSpellId(spellId))
             return;
 
@@ -3861,10 +4133,6 @@ namespace
 
         LOG_INFO << "Cached streamed spell" << spellId << "hash" << spell.spellDataHash << "skillLine" << skillLineId << "effects" << effectCount;
         NotifySpellCached(spellId);
-        QueueNativeActionBarRefresh(spellId, "spell-cache-response");
-        ApplyDeferredKnownSpellAdds(spellId);
-        if (HasKnownSpellRow(spellId))
-            ScheduleKnownSpellUiWork({ nullptr, spellId, 0, 0, 1 }, "known-spell-metadata-refresh");
     }
 }
 
@@ -4734,6 +5002,9 @@ DISABLED_DETOUR_THISCALL(CGUnit_C__GetPredictedPower_SpellCache, 0x0071C2E0, uin
 
 CLIENT_DETOUR_THISCALL(CGUnit_C__IsSpellKnown_SpellCache, 0x007260E0, bool, (uint32_t spellId))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return CGUnit_C__IsSpellKnown_SpellCache(self, spellId);
+
     PumpSpellCacheRequests();
 
     uint64_t const activePlayerGuid = ClntObjMgr::GetActivePlayer();
@@ -5725,6 +5996,9 @@ CLIENT_DETOUR(Spell_C_CancelSpell_StreamingFoundation, 0x00806200, __cdecl, void
 
 CLIENT_DETOUR_THISCALL(CGUnit_C__IsSpellKnown_StreamingFoundation, 0x007260E0, bool, (uint32_t spellId))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return CGUnit_C__IsSpellKnown_StreamingFoundation(self, spellId);
+
     PumpSpellCacheRequests();
 
     uint64_t const activePlayerGuid = ClntObjMgr::GetActivePlayer();
@@ -5762,8 +6036,75 @@ CLIENT_DETOUR_THISCALL(CGUnit_C__IsSpellKnown_StreamingFoundation, 0x007260E0, b
     return false;
 }
 
+CLIENT_DETOUR_THISCALL(CGPlayer_C__RemoveKnownSpell_SpellbookFoundation, 0x006E71D0, void, (int32_t spellId, int32_t silent))
+{
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        CGPlayer_C__RemoveKnownSpell_SpellbookFoundation(self, spellId, silent);
+        return;
+    }
+
+    static uint32_t logCount = 0;
+    void* const returnAddress = _ReturnAddress();
+    uint64_t const activePlayerGuid = ClntObjMgr::GetActivePlayer();
+
+    if (UnitGuid(self) != activePlayerGuid)
+    {
+        CGPlayer_C__RemoveKnownSpell_SpellbookFoundation(self, spellId, silent);
+        return;
+    }
+
+    SyncKnownSpellRowsPlayer(activePlayerGuid);
+
+    if (spellId <= 0 || !HasReasonableSpellId(static_cast<uint32_t>(spellId)))
+    {
+        if (logCount < 80)
+        {
+            LOG_ERROR << "Blocked invalid native RemoveKnownSpell"
+                << "spell" << spellId
+                << "silent" << silent
+                << "caller" << returnAddress;
+            ++logCount;
+        }
+        return;
+    }
+
+    uint32_t const knownSpellId = static_cast<uint32_t>(spellId);
+    bool const removed = RemoveKnownSpellRow(knownSpellId);
+
+    RebuildKnownSpellbookOrder();
+    PublishedKnownSpellbookRevision = KnownSpellbookRevision;
+    SignalStreamedSpellbookRefresh();
+    if (ClientLua::State())
+    {
+        ClientLua::DoString(
+            "if DHStreamedShapeshiftRefresh then DHStreamedShapeshiftRefresh() end",
+            ClientLua::State());
+    }
+
+    if (removed || logCount < 160)
+    {
+        LOG_INFO << "Coopted native RemoveKnownSpell; skipped native spellbook delete side effects"
+            << "spell" << knownSpellId
+            << "removed" << removed
+            << "knownCount" << static_cast<uint32_t>(KnownSpellRows.size())
+            << "model" << static_cast<uint32_t>(KnownSpellbookEntries.size())
+            << "visible" << static_cast<uint32_t>(KnownSpellbookOrder.size())
+            << "tabs" << static_cast<uint32_t>(KnownSpellbookTabs.size())
+            << "silent" << silent
+            << "caller" << returnAddress;
+        ++logCount;
+    }
+}
+
 CLIENT_DETOUR_THISCALL(CGPlayer_C__AddKnownSpell_SpellbookFoundation, 0x006E7B00, void, (int32_t spellId, int32_t spellCategory, int32_t learned, int32_t addToSpellbook))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        CGPlayer_C__AddKnownSpell_SpellbookFoundation(self, spellId, spellCategory, learned, addToSpellbook);
+        return;
+    }
+
     static uint32_t logCount = 0;
     void* const returnAddress = _ReturnAddress();
     uint64_t const activePlayerGuid = ClntObjMgr::GetActivePlayer();
@@ -6019,6 +6360,9 @@ CLIENT_DETOUR(Script_GetSpellTabInfo_SpellbookFoundation, 0x0053BE70, __cdecl, i
 
 CLIENT_DETOUR_THISCALL(ClientDb_GetLocalizedRow_ActionbarFoundation, 0x004CFD20, int, (uint32_t rowId, void* rowBuffer))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return ClientDb_GetLocalizedRow_ActionbarFoundation(self, rowId, rowBuffer);
+
     if (self != reinterpret_cast<void*>(SPELL_DB_ADDRESS))
         return ClientDb_GetLocalizedRow_ActionbarFoundation(self, rowId, rowBuffer);
 
@@ -6046,6 +6390,9 @@ CLIENT_DETOUR_THISCALL(ClientDb_GetLocalizedRow_ActionbarFoundation, 0x004CFD20,
 
 CLIENT_DETOUR(Script_GetSpellInfo_ActionbarFoundation, 0x00540A30, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetSpellInfo_ActionbarFoundation(L);
+
     ClientData::SpellRow row{};
     uint32_t spellId = 0;
     if (!TryGetStreamedSpellLuaRow(L, spellId, row))
@@ -6070,6 +6417,9 @@ CLIENT_DETOUR(Script_GetSpellInfo_ActionbarFoundation, 0x00540A30, __cdecl, int,
 
 CLIENT_DETOUR(Script_GetSpellName_ActionbarFoundation, 0x005407F0, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetSpellName_ActionbarFoundation(L);
+
     ClientData::SpellRow row{};
     uint32_t spellId = 0;
     if (!TryGetStreamedSpellLuaRow(L, spellId, row))
@@ -6086,6 +6436,9 @@ CLIENT_DETOUR(Script_GetSpellName_ActionbarFoundation, 0x005407F0, __cdecl, int,
 
 CLIENT_DETOUR(Script_GetSpellLink_ActionbarFoundation, 0x005408E0, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetSpellLink_ActionbarFoundation(L);
+
     ClientData::SpellRow row{};
     uint32_t spellId = 0;
     if (!TryGetStreamedSpellLuaRow(L, spellId, row))
@@ -6108,6 +6461,9 @@ CLIENT_DETOUR(Script_GetSpellLink_ActionbarFoundation, 0x005408E0, __cdecl, int,
 
 CLIENT_DETOUR(Script_GetSpellTexture_ActionbarFoundation, 0x00540D70, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetSpellTexture_ActionbarFoundation(L);
+
     uint32_t spellId = 0;
     if (!TryResolveSpellLuaArg(L, spellId))
     {
@@ -6132,6 +6488,9 @@ CLIENT_DETOUR(Script_GetSpellTexture_ActionbarFoundation, 0x00540D70, __cdecl, i
 
 CLIENT_DETOUR(Script_GetSpellCooldown_ActionbarFoundation, 0x00540E80, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetSpellCooldown_ActionbarFoundation(L);
+
     uint32_t spellId = 0;
     if (!TryResolveSpellLuaArg(L, spellId) || !SpellCacheStreaming::HasSpell(spellId))
     {
@@ -6153,6 +6512,9 @@ CLIENT_DETOUR(Script_GetSpellCooldown_ActionbarFoundation, 0x00540E80, __cdecl, 
 
 CLIENT_DETOUR(Script_IsPassiveSpell_ActionbarFoundation, 0x00541340, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_IsPassiveSpell_ActionbarFoundation(L);
+
     ClientData::SpellRow row{};
     uint32_t spellId = 0;
     if (!TryGetStreamedSpellLuaRow(L, spellId, row))
@@ -6171,6 +6533,9 @@ CLIENT_DETOUR(Script_IsPassiveSpell_ActionbarFoundation, 0x00541340, __cdecl, in
 
 CLIENT_DETOUR(Script_IsUsableSpell_ActionbarFoundation, 0x00541680, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_IsUsableSpell_ActionbarFoundation(L);
+
     uint32_t spellId = 0;
     if (!TryResolveSpellLuaArg(L, spellId) || !SpellCacheStreaming::HasSpell(spellId))
     {
@@ -6178,13 +6543,6 @@ CLIENT_DETOUR(Script_IsUsableSpell_ActionbarFoundation, 0x00541680, __cdecl, int
             return PushTwoNils(L);
         return Script_IsUsableSpell_ActionbarFoundation(L);
     }
-
-    bool lacksPower = false;
-    uint32_t isPet = 0;
-    uint32_t slotSpell = 0;
-    if (ClientLua::IsNumber(L, 1) && ClientLua::GetTop(L) > 1)
-        slotSpell = CGActionBar__GetSpell_SpellCache(static_cast<uint32_t>(ClientLua::GetNumber(L, 1, 0)), &isPet);
-    (void)slotSpell;
 
     ClientData::SpellRow row{};
     if (!SpellCacheStreaming::TryBuildSpellRow(spellId, row))
@@ -6194,7 +6552,17 @@ CLIENT_DETOUR(Script_IsUsableSpell_ActionbarFoundation, 0x00541680, __cdecl, int
         return Script_IsUsableSpell_ActionbarFoundation(L);
     }
 
-    ClientLua::PushNumber(L, 1.0);
+    void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
+        ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
+        STREAMED_TYPEMASK_PLAYER);
+    bool usable = false;
+    bool lacksPower = false;
+    GetStreamedSpellUsableState(row, localPlayer, usable, lacksPower);
+
+    if (usable)
+        ClientLua::PushNumber(L, 1.0);
+    else
+        ClientLua::PushNil(L);
     if (lacksPower)
         ClientLua::PushNumber(L, 1.0);
     else
@@ -6204,6 +6572,9 @@ CLIENT_DETOUR(Script_IsUsableSpell_ActionbarFoundation, 0x00541680, __cdecl, int
 
 CLIENT_DETOUR(Script_SpellHasRange_ActionbarFoundation, 0x00541AF0, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_SpellHasRange_ActionbarFoundation(L);
+
     ClientData::SpellRow row{};
     uint32_t spellId = 0;
     if (!TryGetStreamedSpellLuaRow(L, spellId, row))
@@ -6222,6 +6593,9 @@ CLIENT_DETOUR(Script_SpellHasRange_ActionbarFoundation, 0x00541AF0, __cdecl, int
 
 CLIENT_DETOUR(Script_IsSpellInRange_ActionbarFoundation, 0x00541C60, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_IsSpellInRange_ActionbarFoundation(L);
+
     ClientData::SpellRow row{};
     uint32_t spellId = 0;
     if (!TryGetStreamedSpellLuaRow(L, spellId, row))
@@ -6240,6 +6614,9 @@ CLIENT_DETOUR(Script_IsSpellInRange_ActionbarFoundation, 0x00541C60, __cdecl, in
 
 CLIENT_DETOUR(Script_GetActionInfo_ActionbarFoundation, 0x005A8F10, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetActionInfo_ActionbarFoundation(L);
+
     if (!ClientLua::IsNumber(L, 1))
         return Script_GetActionInfo_ActionbarFoundation(L);
 
@@ -6296,6 +6673,9 @@ CLIENT_DETOUR(Script_GetActionInfo_ActionbarFoundation, 0x005A8F10, __cdecl, int
 
 CLIENT_DETOUR(CGActionBar__GetTexture_ActionbarFoundation, 0x005A97F0, __cdecl, char*, (uint32_t slot))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return CGActionBar__GetTexture_ActionbarFoundation(slot);
+
     uint32_t spellId = 0;
     uint32_t isPet = 0;
     if (TryGetActionBarStreamedSpell(slot, spellId, isPet))
@@ -6310,6 +6690,9 @@ CLIENT_DETOUR(CGActionBar__GetTexture_ActionbarFoundation, 0x005A97F0, __cdecl, 
 
 CLIENT_DETOUR(Script_GetActionTexture_ActionbarFoundation, 0x005A9B30, __cdecl, int, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return Script_GetActionTexture_ActionbarFoundation(L);
+
     if (ClientLua::IsNumber(L, 1))
     {
         uint32_t const oneBasedSlot = static_cast<uint32_t>(ClientLua::GetNumber(L, 1, 0));
@@ -6336,6 +6719,12 @@ CLIENT_DETOUR(Script_GetActionTexture_ActionbarFoundation, 0x005A9B30, __cdecl, 
 
 CLIENT_DETOUR(CGActionBar__GetCooldown_ActionbarFoundation, 0x005A8E40, __cdecl, void, (uint32_t slot, uint32_t* start, uint32_t* duration, uint32_t* enable))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        CGActionBar__GetCooldown_ActionbarFoundation(slot, start, duration, enable);
+        return;
+    }
+
     CGActionBar__GetCooldown_ActionbarFoundation(slot, start, duration, enable);
     if ((duration && *duration) || (start && *start))
         return;
@@ -6359,6 +6748,9 @@ CLIENT_DETOUR(CGActionBar__GetCooldown_ActionbarFoundation, 0x005A8E40, __cdecl,
 
 CLIENT_DETOUR(CGActionBar__ActionHasRange_ActionbarFoundation, 0x005A95E0, __cdecl, int, (uint32_t slot))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return CGActionBar__ActionHasRange_ActionbarFoundation(slot);
+
     int const nativeResult = CGActionBar__ActionHasRange_ActionbarFoundation(slot);
     if (nativeResult)
         return nativeResult;
@@ -6374,27 +6766,41 @@ CLIENT_DETOUR(CGActionBar__ActionHasRange_ActionbarFoundation, 0x005A95E0, __cde
 
 CLIENT_DETOUR(CGActionBar__UpdateUsableAction_ActionbarFoundation, 0x005A9E20, __cdecl, int, (uint32_t slot, bool* notEnoughMana))
 {
-    int const nativeResult = CGActionBar__UpdateUsableAction_ActionbarFoundation(slot, notEnoughMana);
-    if (nativeResult)
-        return nativeResult;
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return CGActionBar__UpdateUsableAction_ActionbarFoundation(slot, notEnoughMana);
 
     uint32_t spellId = 0;
     uint32_t isPet = 0;
     if (!TryGetActionBarStreamedSpell(slot, spellId, isPet))
-        return nativeResult;
+        return CGActionBar__UpdateUsableAction_ActionbarFoundation(slot, notEnoughMana);
 
+    bool usable = false;
+    bool lacksPower = false;
+    GetStreamedSpellUsableState(spellId, usable, lacksPower);
     if (notEnoughMana)
-        *notEnoughMana = false;
-    return 1;
+        *notEnoughMana = lacksPower;
+    return usable ? 1 : 0;
 }
 
 CLIENT_DETOUR(CGActionBar__UpdateUsablePower_ActionbarFoundation, 0x005A8D30, __cdecl, void, ())
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        CGActionBar__UpdateUsablePower_ActionbarFoundation();
+        return;
+    }
+
     CGActionBar__UpdateUsablePower_ActionbarFoundation();
 }
 
 CLIENT_DETOUR(CGActionBar__UseAction_ActionbarFoundation, 0x005ABBC0, __cdecl, void, (uint32_t slot, uint64_t* targetGuid))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        CGActionBar__UseAction_ActionbarFoundation(slot, targetGuid);
+        return;
+    }
+
     if (IsValidActionBarSlot(slot))
     {
         uint64_t const guid = targetGuid ? *targetGuid : 0;
@@ -6417,15 +6823,55 @@ CLIENT_DETOUR(CGActionBar__UseAction_ActionbarFoundation, 0x005ABBC0, __cdecl, v
 bool SpellCacheStreaming::HasSpell(uint32_t spellId)
 {
     SpellCacheRow* spell = GlobalCDBCMap.getRow<SpellCacheRow>("Spell", int(spellId));
-    return spell
+    bool const result = spell
         && spell->cacheVersion == SPELL_CACHE_STREAM_VERSION
         && (spell->spellDataHash != 0 || StreamedSpellRows.find(spellId) != StreamedSpellRows.end());
+
+    static uint32_t logCount = 0;
+    if (logCount < 500 && HasReasonableSpellId(spellId))
+    {
+        LOG_INFO << "Spell cache has check"
+            << "spell" << spellId
+            << "hashMode" << "any"
+            << "requestedHash" << 0
+            << "result" << result
+            << "row" << (spell ? 1 : 0)
+            << "rowVersion" << (spell ? spell->cacheVersion : 0)
+            << "rowHash" << (spell ? spell->spellDataHash : 0)
+            << "streamed" << (StreamedSpellRows.find(spellId) != StreamedSpellRows.end())
+            << "missing" << (MissingSpellRows.find(spellId) != MissingSpellRows.end())
+            << "queued" << (QueuedSpellRequestIds.find(spellId) != QueuedSpellRequestIds.end())
+            << "pending" << (PendingSpellRequests.find(spellId) != PendingSpellRequests.end());
+        ++logCount;
+    }
+
+    return result;
 }
 
 bool SpellCacheStreaming::HasSpell(uint32_t spellId, uint32_t spellDataHash)
 {
     SpellCacheRow* spell = GlobalCDBCMap.getRow<SpellCacheRow>("Spell", int(spellId));
-    return spell && spell->cacheVersion == SPELL_CACHE_STREAM_VERSION && spell->spellDataHash == spellDataHash;
+    bool const result = spell && spell->cacheVersion == SPELL_CACHE_STREAM_VERSION && spell->spellDataHash == spellDataHash;
+
+    static uint32_t logCount = 0;
+    if (logCount < 500 && HasReasonableSpellId(spellId))
+    {
+        LOG_INFO << "Spell cache has check"
+            << "spell" << spellId
+            << "hashMode" << "exact"
+            << "requestedHash" << spellDataHash
+            << "result" << result
+            << "row" << (spell ? 1 : 0)
+            << "rowVersion" << (spell ? spell->cacheVersion : 0)
+            << "rowHash" << (spell ? spell->spellDataHash : 0)
+            << "streamed" << (StreamedSpellRows.find(spellId) != StreamedSpellRows.end())
+            << "missing" << (MissingSpellRows.find(spellId) != MissingSpellRows.end())
+            << "queued" << (QueuedSpellRequestIds.find(spellId) != QueuedSpellRequestIds.end())
+            << "pending" << (PendingSpellRequests.find(spellId) != PendingSpellRequests.end());
+        ++logCount;
+    }
+
+    return result;
 }
 
 bool SpellCacheStreaming::IsRequestPending(uint32_t spellId)
@@ -6872,6 +7318,12 @@ LUA_FUNCTION(IsSpellCacheForceStreamed, (lua_State* L))
 
 LUA_FUNCTION(SetStreamedSpellActionBarSlot, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
     uint32_t const spellId = uint32_t(ClientLua::GetNumber(L, 1, 0));
     uint32_t const oneBasedSlot = uint32_t(ClientLua::GetNumber(L, 2, 0));
     if (!oneBasedSlot || oneBasedSlot > 144 || !HasReasonableSpellId(spellId))
@@ -6888,6 +7340,12 @@ LUA_FUNCTION(SetStreamedSpellActionBarSlot, (lua_State* L))
 
 LUA_FUNCTION(GetStreamedSpellActionBarSlot, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushNil(L);
+        return 1;
+    }
+
     uint32_t const oneBasedSlot = uint32_t(ClientLua::GetNumber(L, 1, 0));
     uint32_t spellId = 0;
     if (!oneBasedSlot || oneBasedSlot > 144)
@@ -6915,6 +7373,12 @@ LUA_FUNCTION(GetStreamedSpellActionBarSlot, (lua_State* L))
 
 LUA_FUNCTION(ClearStreamedSpellActionBarSlot, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
     uint32_t const oneBasedSlot = uint32_t(ClientLua::GetNumber(L, 1, 0));
     if (!oneBasedSlot || oneBasedSlot > 144)
     {
@@ -6928,12 +7392,21 @@ LUA_FUNCTION(ClearStreamedSpellActionBarSlot, (lua_State* L))
 
 LUA_FUNCTION(ClearStreamedSpellActionBarSlots, (lua_State*))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return 0;
+
     ClearAllStreamedActionBarEntries();
     return 0;
 }
 
 LUA_FUNCTION(CastStreamedSpellActionBarSlot, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
     uint32_t const oneBasedSlot = uint32_t(ClientLua::GetNumber(L, 1, 0));
     uint32_t spellId = 0;
     if (!oneBasedSlot || oneBasedSlot > 144 || !TryGetStreamedActionBarEntryRaw(oneBasedSlot - 1, spellId))
@@ -6965,6 +7438,12 @@ LUA_FUNCTION(CastStreamedSpellActionBarSlot, (lua_State* L))
 
 LUA_FUNCTION(GetStreamedSpellBookSpellId, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushNil(L);
+        return 1;
+    }
+
     uint32_t const oneBasedSlot = static_cast<uint32_t>(ClientLua::GetNumber(L, 1, 0));
     uint32_t spellId = 0;
     if (!TryGetKnownSpellbookSpellBySlot(oneBasedSlot, spellId))
@@ -6979,6 +7458,12 @@ LUA_FUNCTION(GetStreamedSpellBookSpellId, (lua_State* L))
 
 LUA_FUNCTION(GetStreamedSpellBookNumTabs, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushNumber(L, 0.0);
+        return 1;
+    }
+
     if (!ReadyKnownSpellUiQueue.empty())
     {
         ClientLua::PushNumber(L, 0.0);
@@ -6992,6 +7477,12 @@ LUA_FUNCTION(GetStreamedSpellBookNumTabs, (lua_State* L))
 
 LUA_FUNCTION(GetStreamedSpellBookRevision, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushNumber(L, 0.0);
+        return 1;
+    }
+
     if (ReadyKnownSpellUiQueue.empty())
     {
         RebuildKnownSpellbookOrder();
@@ -7004,6 +7495,9 @@ LUA_FUNCTION(GetStreamedSpellBookRevision, (lua_State* L))
 
 LUA_FUNCTION(GetStreamedSpellBookTabInfo, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+        return 0;
+
     if (!ReadyKnownSpellUiQueue.empty())
         return 0;
 
@@ -7024,6 +7518,12 @@ LUA_FUNCTION(GetStreamedSpellBookTabInfo, (lua_State* L))
 
 LUA_FUNCTION(PickupStreamedSpellBookSpell, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
     uint32_t const oneBasedSlot = static_cast<uint32_t>(ClientLua::GetNumber(L, 1, 0));
     uint32_t spellId = 0;
     if (!TryGetKnownSpellbookSpellBySlot(oneBasedSlot, spellId))
@@ -7055,6 +7555,12 @@ LUA_FUNCTION(PickupStreamedSpellBookSpell, (lua_State* L))
 
 LUA_FUNCTION(PlaceStreamedSpellActionBarCursor, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
     uint32_t const oneBasedSlot = static_cast<uint32_t>(ClientLua::GetNumber(L, 1, 0));
     if (!oneBasedSlot || !IsValidActionBarSlot(oneBasedSlot - 1))
     {
@@ -7068,6 +7574,14 @@ LUA_FUNCTION(PlaceStreamedSpellActionBarCursor, (lua_State* L))
 
 LUA_FUNCTION(DumpStreamedSpellBook, (lua_State* L))
 {
+    if (!SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        ClientLua::PushNumber(L, 0.0);
+        ClientLua::PushNumber(L, 0.0);
+        ClientLua::PushNumber(L, 0.0);
+        return 3;
+    }
+
     LOG_INFO << "Streamed spellbook dump requested";
     RebuildKnownSpellbookOrder();
 
@@ -7177,6 +7691,8 @@ int LiveStreamedShapeshift_GetFormInfo(lua_State* L)
         ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
         STREAMED_TYPEMASK_PLAYER);
     bool const active = StreamedSpellCurrentOnUnit(&row, localPlayer);
+    uint32_t const oneBasedIndex = static_cast<uint32_t>(ClientLua::GetNumber(L, 1, 0));
+    bool const castable = GetNativeStreamedShapeshiftCastable(oneBasedIndex, active);
 
     char const* texture = nullptr;
     if (active && row.m_activeIconID)
@@ -7187,7 +7703,7 @@ int LiveStreamedShapeshift_GetFormInfo(lua_State* L)
     ClientLua::PushString(L, texture ? texture : "");
     ClientLua::PushString(L, (row.m_name_lang && *row.m_name_lang) ? row.m_name_lang : "");
     ClientLua::PushBoolean(L, active ? 1 : 0);
-    ClientLua::PushBoolean(L, true);
+    ClientLua::PushBoolean(L, castable ? 1 : 0);
     return 4;
 }
 
@@ -7262,105 +7778,35 @@ int LiveStreamedShapeshift_CastForm(lua_State* L)
 
     if (activeSpellId)
     {
-        LOG_INFO << "Sending streamed shapeshift cancel aura"
-            << "activeSpell" << activeSpellId
-            << "clickedSpell" << stance.spellId;
-        SendStreamedCancelAuraPacket(activeSpellId);
         if (activeSpellId == stance.spellId)
         {
-            PendingShapeshiftSwapSpellId = 0;
-            PendingShapeshiftSwapCancelSpellId = 0;
-            PendingShapeshiftSwapQueuedMs = 0;
-            PendingShapeshiftSwapNextPumpMs = 0;
+            LOG_INFO << "Sending streamed shapeshift cancel aura"
+                << "activeSpell" << activeSpellId
+                << "clickedSpell" << stance.spellId;
+            SendStreamedCancelAuraPacket(activeSpellId);
             ClientLua::PushBoolean(L, true);
             return 1;
         }
+    }
 
-        PendingShapeshiftSwapSpellId = stance.spellId;
-        PendingShapeshiftSwapCancelSpellId = activeSpellId;
-        PendingShapeshiftSwapQueuedMs = GetTickCount();
-        PendingShapeshiftSwapNextPumpMs = PendingShapeshiftSwapQueuedMs + 100;
-        LOG_INFO << "Queued streamed shapeshift swap"
+    bool usable = false;
+    bool lacksPower = false;
+    GetStreamedSpellUsableState(row, localPlayer, usable, lacksPower);
+    if (!usable || lacksPower)
+    {
+        LOG_INFO << "Blocked streamed shapeshift cast; native usability failed"
+            << "spell" << stance.spellId
             << "activeSpell" << activeSpellId
-            << "nextSpell" << PendingShapeshiftSwapSpellId;
-        ClientLua::PushBoolean(L, true);
+            << "usable" << usable
+            << "lacksPower" << lacksPower;
+        ClientLua::PushBoolean(L, false);
         return 1;
     }
 
     LOG_INFO << "Sending streamed shapeshift cast packet"
         << "spell" << stance.spellId
-        << "afterCancel" << activeSpellId;
+        << "activeSpell" << activeSpellId;
     SendStreamedCastSpellPacket(stance.spellId);
-    ClientLua::PushBoolean(L, true);
-    return 1;
-}
-
-int LiveStreamedShapeshift_PumpPendingCast(lua_State* L)
-{
-    uint32_t const pendingSpellId = PendingShapeshiftSwapSpellId;
-    if (!pendingSpellId)
-    {
-        ClientLua::PushBoolean(L, false);
-        return 1;
-    }
-
-    uint32_t const now = GetTickCount();
-    if (now < PendingShapeshiftSwapNextPumpMs)
-    {
-        ClientLua::PushBoolean(L, false);
-        return 1;
-    }
-
-    PendingShapeshiftSwapNextPumpMs = now + 50;
-    if (PendingShapeshiftSwapQueuedMs && now - PendingShapeshiftSwapQueuedMs > 2500)
-    {
-        LOG_ERROR << "Expired queued streamed shapeshift swap"
-            << "cancelSpell" << PendingShapeshiftSwapCancelSpellId
-            << "nextSpell" << pendingSpellId;
-        PendingShapeshiftSwapSpellId = 0;
-        PendingShapeshiftSwapCancelSpellId = 0;
-        PendingShapeshiftSwapQueuedMs = 0;
-        PendingShapeshiftSwapNextPumpMs = 0;
-        ClientLua::PushBoolean(L, false);
-        return 1;
-    }
-
-    void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
-        ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
-        STREAMED_TYPEMASK_PLAYER);
-    if (!localPlayer)
-    {
-        ClientLua::PushBoolean(L, false);
-        return 1;
-    }
-
-    bool anyActive = false;
-    auto const& stances = GetCachedStreamedStances();
-    for (KnownSpellbookEntry const& candidate : stances)
-    {
-        ClientData::SpellRow candidateRow{};
-        if (SpellCacheStreaming::TryGetSpellRow(candidate.spellId, candidateRow)
-            && StreamedSpellCurrentOnUnit(&candidateRow, localPlayer))
-        {
-            anyActive = true;
-            break;
-        }
-    }
-
-    if (anyActive)
-    {
-        ClientLua::PushBoolean(L, false);
-        return 1;
-    }
-
-    LOG_INFO << "Pumped queued streamed shapeshift cast"
-        << "spell" << pendingSpellId
-        << "afterCancel" << PendingShapeshiftSwapCancelSpellId;
-    PendingShapeshiftSwapSpellId = 0;
-    PendingShapeshiftSwapCancelSpellId = 0;
-    PendingShapeshiftSwapQueuedMs = 0;
-    PendingShapeshiftSwapNextPumpMs = 0;
-    SendStreamedCastSpellPacket(pendingSpellId);
     ClientLua::PushBoolean(L, true);
     return 1;
 }
@@ -7374,23 +7820,23 @@ int LiveStreamedShapeshift_SyncNativeState(lua_State* L)
 
 void SpellCacheStreaming::Apply()
 {
-    PatchKnownSpellMaxIdGate();
-    ClientLua::AddFunction("StreamedShapeshift_GetNumForms", LiveStreamedShapeshift_GetNumForms, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_GetForm", LiveStreamedShapeshift_GetForm, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_GetSpellId", LiveStreamedShapeshift_GetSpellId, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_GetFormInfo", LiveStreamedShapeshift_GetFormInfo, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_GetFormCooldown", LiveStreamedShapeshift_GetFormCooldown, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_CastForm", LiveStreamedShapeshift_CastForm, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_PumpPendingCast", LiveStreamedShapeshift_PumpPendingCast, __FILE__, __LINE__);
-    ClientLua::AddFunction("StreamedShapeshift_SyncNativeState", LiveStreamedShapeshift_SyncNativeState, __FILE__, __LINE__);
-    ClientLua::RegisterLua(R"lua(
+    if (SPELL_CACHE_ENABLE_UI_INTEGRATION)
+    {
+        PatchKnownSpellMaxIdGate();
+        ClientLua::AddFunction("StreamedShapeshift_GetNumForms", LiveStreamedShapeshift_GetNumForms, __FILE__, __LINE__);
+        ClientLua::AddFunction("StreamedShapeshift_GetForm", LiveStreamedShapeshift_GetForm, __FILE__, __LINE__);
+        ClientLua::AddFunction("StreamedShapeshift_GetSpellId", LiveStreamedShapeshift_GetSpellId, __FILE__, __LINE__);
+        ClientLua::AddFunction("StreamedShapeshift_GetFormInfo", LiveStreamedShapeshift_GetFormInfo, __FILE__, __LINE__);
+        ClientLua::AddFunction("StreamedShapeshift_GetFormCooldown", LiveStreamedShapeshift_GetFormCooldown, __FILE__, __LINE__);
+        ClientLua::AddFunction("StreamedShapeshift_CastForm", LiveStreamedShapeshift_CastForm, __FILE__, __LINE__);
+        ClientLua::AddFunction("StreamedShapeshift_SyncNativeState", LiveStreamedShapeshift_SyncNativeState, __FILE__, __LINE__);
+        ClientLua::RegisterLua(R"lua(
 local Native_CastShapeshiftForm = CastShapeshiftForm
 local Native_ShapeshiftBar_Update
 local Native_ShapeshiftBar_UpdateState
 local DHStreamedShapeshiftRefreshFrame
 local DHStreamedShapeshiftUpdateGuardInstalled
 local DHStreamedShapeshiftUpdateStateGuardInstalled
-local DHStreamedShapeshiftPumpElapsed = 0
 
 GetNumShapeshiftForms = function()
     return StreamedShapeshift_GetNumForms()
@@ -7458,13 +7904,53 @@ function DHStreamedShapeshiftRefresh()
     end
 end
 
+local function DHStreamedShapeshiftPaintStateOnly()
+    if StreamedShapeshift_SyncNativeState then
+        StreamedShapeshift_SyncNativeState()
+    end
+    if not _G then
+        return
+    end
+
+    local numForms = GetNumShapeshiftForms and GetNumShapeshiftForms() or 0
+    local maxSlots = NUM_SHAPESHIFT_SLOTS or 10
+    for i = 1, maxSlots do
+        local button = _G["ShapeshiftButton" .. i]
+        local icon = _G["ShapeshiftButton" .. i .. "Icon"]
+        if button and icon and i <= numForms then
+            local texture, name, isActive, isCastable = GetShapeshiftFormInfo(i)
+            icon:SetTexture(texture)
+
+            local cooldown = _G["ShapeshiftButton" .. i .. "Cooldown"]
+            if cooldown then
+                local start, duration, enable = GetShapeshiftFormCooldown(i)
+                CooldownFrame_SetTimer(cooldown, start, duration, enable)
+            end
+
+            if isActive then
+                ShapeshiftBarFrame.lastSelected = button:GetID()
+                button:SetChecked(1)
+            else
+                button:SetChecked(0)
+            end
+
+            if isCastable then
+                icon:SetVertexColor(1.0, 1.0, 1.0)
+            else
+                icon:SetVertexColor(0.4, 0.4, 0.4)
+            end
+        end
+    end
+end
+
 function DHStreamedShapeshiftRefreshState()
     if DHStreamedShapeshiftInCombat() then
-        local f = DHStreamedShapeshiftEnsureFrame()
-        if f then
-            f:RegisterEvent("PLAYER_REGEN_ENABLED")
-        end
+        DHStreamedShapeshiftPaintStateOnly()
         return
+    end
+
+    if StreamedShapeshift_SyncNativeState then
+        StreamedShapeshift_SyncNativeState()
     end
 
     if Native_ShapeshiftBar_UpdateState then
@@ -7494,11 +7980,11 @@ local function InstallStreamedShapeshiftBarGuards()
         Native_ShapeshiftBar_UpdateState = ShapeshiftBar_UpdateState
         ShapeshiftBar_UpdateState = function(...)
             if DHStreamedShapeshiftInCombat() then
-                local f = DHStreamedShapeshiftEnsureFrame()
-                if f then
-                    f:RegisterEvent("PLAYER_REGEN_ENABLED")
-                end
+                DHStreamedShapeshiftPaintStateOnly()
                 return
+            end
+            if StreamedShapeshift_SyncNativeState then
+                StreamedShapeshift_SyncNativeState()
             end
             return Native_ShapeshiftBar_UpdateState(...)
         end
@@ -7544,30 +8030,22 @@ if StreamedShapeshiftInstaller then
                 return
             end
         end
-        if StreamedShapeshift_PumpPendingCast and StreamedShapeshift_PumpPendingCast() then
-            DHStreamedShapeshiftPumpElapsed = 0
-        end
         if DHStreamedShapeshiftRefreshState then
             DHStreamedShapeshiftRefreshState()
         end
     end)
-    StreamedShapeshiftInstaller:SetScript("OnUpdate", function(self, elapsed)
+    StreamedShapeshiftInstaller:SetScript("OnUpdate", function(self)
         if not (GameTooltip and GameTooltip.StreamedShapeshiftTooltipInstalled and Native_ShapeshiftBar_Update and Native_ShapeshiftBar_UpdateState) then
             InstallStreamedShapeshiftBarGuards()
             InstallStreamedShapeshiftTooltip()
         end
-        DHStreamedShapeshiftPumpElapsed = DHStreamedShapeshiftPumpElapsed + (elapsed or 0)
-        if DHStreamedShapeshiftPumpElapsed >= 0.05 then
-            DHStreamedShapeshiftPumpElapsed = 0
-            if StreamedShapeshift_PumpPendingCast and StreamedShapeshift_PumpPendingCast() then
-                if DHStreamedShapeshiftRefreshState then
-                    DHStreamedShapeshiftRefreshState()
-                end
-            end
+        if GameTooltip and GameTooltip.StreamedShapeshiftTooltipInstalled and Native_ShapeshiftBar_Update and Native_ShapeshiftBar_UpdateState then
+            self:SetScript("OnUpdate", nil)
         end
     end)
 end
 )lua", "SpellCacheStreamingShapeshift.lua", __LINE__);
+    }
 
     ClientNetwork::OnCustomPacket(SPELL_CACHE_RESPONSE_OPCODE, [](CustomPacketRead* packet)
     {
