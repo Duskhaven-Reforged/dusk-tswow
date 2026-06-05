@@ -26,5 +26,6 @@ namespace SpellCacheStreaming
     bool TryFindSpellEffectByAura(uint32_t spellId, uint32_t auraId, const SpellEffectCacheRow*& out);
     bool TryBuildSpellRow(uint32_t spellId, ClientData::SpellRow& out);
     bool TryGetSpellRow(uint32_t spellId, ClientData::SpellRow& out, bool requestOnMiss = true);
+    bool TryResolveKnownSpellbookSlot(uint32_t oneBasedSlot, uint32_t& spellId);
     void RequestSpell(uint32_t spellId, uint32_t spellDataHash = 0);
 }

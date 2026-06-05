@@ -49,4 +49,5 @@ export const BuildArgs = new class BuildArgsClass {
         .substring('--clientPatch='.length))
     LOG_SQL = Args.hasFlag('log-sql',process.argv)
     NO_LUAXML = Args.hasFlag('no-luaxml',process.argv)
+    PRUNE_UNUSED_IDS = Args.hasFlag('prune-unused-ids',process.argv)
 }();

@@ -3,6 +3,7 @@
 #include <CDBCMgr/CDBCDefs/SpellEffectScalars.h>
 #include <Character/CharacterExtensions.h>
 #include <Tooltip/SpellTooltipExtensions.h>
+#include <Spells/SpellCache/SpellCacheStreaming.h>
 #include <Logger.h>
 
 #include <Windows.h>
@@ -460,6 +461,29 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
     // Early out if we do not have a tooltip object.
     if (!tooltip)
         return 0;
+
+    uint32_t resolvedSpellId = 0;
+    if (spellId > 0
+        && spellId <= 1024
+        && !SpellCacheStreaming::HasSpell(static_cast<uint32_t>(spellId))
+        && SpellCacheStreaming::TryResolveKnownSpellbookSlot(static_cast<uint32_t>(spellId), resolvedSpellId))
+    {
+        static uint32_t logCount = 0;
+        if (logCount < 80)
+        {
+            LOG_INFO << "Resolved streamed spellbook tooltip slot"
+                << "slot" << spellId
+                << "spell" << resolvedSpellId
+                << "a3" << a3
+                << "a4" << a4
+                << "a5" << a5
+                << "a6" << a6
+                << "a11" << a11;
+            ++logCount;
+        }
+
+        spellId = static_cast<int>(resolvedSpellId);
+    }
 
     // Clear tooltip if this is not an update call.
     if (!a11) {
