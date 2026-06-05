@@ -102,6 +102,23 @@ export class IdPrivate {
         fs.writeFileSync(filename, str);
     }
 
+    protected static pruneUntouched() {
+        let removed = 0;
+        for (const tableName of Object.keys(mappings)) {
+            const table = mappings[tableName];
+            for (const entryName of Object.keys(table.entries)) {
+                if (!table.entries[entryName].touched) {
+                    delete table.entries[entryName];
+                    ++removed;
+                }
+            }
+            if (Object.keys(table.entries).length === 0) {
+                delete mappings[tableName];
+            }
+        }
+        return removed;
+    }
+
     protected static readFile(filename: string) {
         this.flushMemory();
         if (!fs.existsSync(filename)) { return; }

@@ -241,6 +241,7 @@ export class Datascripts {
             + '--(client|server|inline)-only'
             + ' --readonly'
             + ' --rebuild'
+            + ' --prune-unused-ids'
             + ' --no-shutdown(-server|-client|)'
             + ' --no-restart(-server|-client|)'
             , 'Builds datascripts for the selected dataset'

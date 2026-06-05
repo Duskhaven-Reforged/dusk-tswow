@@ -24,6 +24,7 @@ const file = './testids.txt';
 class IdPublic extends IdPrivate {
     static flushMemory = IdPrivate.flushMemory;
     static getMappings = IdPrivate.getMappings;
+    static pruneUntouched = IdPrivate.pruneUntouched;
     static readFile = () => IdPrivate.readFile(file);
     static writeFile = () => IdPrivate.writeFile(file);
 }
@@ -174,6 +175,21 @@ describe('Ids', function() {
             assert.strictEqual(a.low, 0);
             assert.strictEqual(b.low, 1);
             assert.strictEqual(c.low, 2);
+        });
+
+        it('can prune untouched ids from disk mappings', async function() {
+            SimpleRange('keep', 1, 0);
+            SimpleRange('remove', 1, 0);
+            await write();
+            await read();
+
+            SimpleRange('keep', 1, 0);
+            assert.strictEqual(IdPublic.pruneUntouched(), 1);
+            await write();
+            await read();
+
+            assert.strictEqual(SimpleRange('keep', 1, 0).low, 0);
+            assert.strictEqual(SimpleRange('new', 1, 0).low, 1);
         });
     });
 });

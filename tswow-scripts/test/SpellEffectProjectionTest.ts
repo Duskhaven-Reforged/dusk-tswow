@@ -52,7 +52,7 @@ function firstSpellWithLegacyEffects() {
 }
 
 describe('Spell effect sidecar projection', function() {
-    it('keeps legacy Spell.dbc effect columns unchanged when projecting through spell_effects', function() {
+    it('projects legacy Spell.dbc effects into spell_effects sidecar rows', function() {
         const parent = firstSpellWithLegacyEffects();
         assert(parent, 'test fixture error: no Spell.dbc row with legacy effects found');
 
@@ -63,14 +63,21 @@ describe('Spell effect sidecar projection', function() {
         );
         const sqlRow = SQL.spell_dbc.query({ Id: clone.ID });
         assert(sqlRow, `spell_dbc row was not projected for spell ${clone.ID}`);
+        assert.strictEqual((sqlRow as any).Effect1, undefined, 'spell_dbc must not expose legacy effect columns');
 
         EFFECT_ARRAYS.forEach(([dbcField, sqlFields]) => {
             const cell = parent[dbcField] as any;
             sqlFields.forEach((sqlField, effectIndex) => {
+                const effectRow = SQL.spell_effects.findBySpellEffect(clone.ID, effectIndex);
+                assert(effectRow, `spell_effects row ${effectIndex} was not projected for spell ${clone.ID}`);
+                const sidecarField = sqlField
+                    .replace(/^(DmgMultiplier)([1-3])$/, 'EffectBonusMultiplier')
+                    .replace(/^(Effect)([1-3])$/, 'Effect')
+                    .replace(/[1-3]$/, '');
                 assert.strictEqual(
-                    (sqlRow as any)[sqlField].get(),
+                    (effectRow as any)[sidecarField].get(),
                     cell.getIndex(effectIndex),
-                    `${sqlField} did not preserve ${String(dbcField)}[${effectIndex}]`
+                    `${sidecarField} did not preserve ${String(dbcField)}[${effectIndex}]`
                 );
             });
         });

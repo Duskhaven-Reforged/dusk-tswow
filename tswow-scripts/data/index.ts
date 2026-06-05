@@ -46,6 +46,7 @@ export function GetStage() {
 class IdPublic extends IdPrivate {
     static readFile = () => IdPrivate.readFile(dataset.ids_txt.get());
     static writeFile = () => IdPrivate.writeFile(dataset.ids_txt.get());
+    static pruneUntouched = () => IdPrivate.pruneUntouched();
 }
 
 function profileScripts() {
@@ -213,6 +214,12 @@ async function main() {
     SqlConnection.allDbs().filter(x=>x!==undefined).map(x=>Connection.end(x));
 
     if(!BuildArgs.READ_ONLY) {
+        if(BuildArgs.PRUNE_UNUSED_IDS) {
+            const removedIds = IdPublic.pruneUntouched();
+            if(removedIds > 0) {
+                console.log(`[ids] Pruned ${removedIds} unused id mapping${removedIds === 1 ? '' : 's'}`);
+            }
+        }
         IdPublic.writeFile();
     }
 

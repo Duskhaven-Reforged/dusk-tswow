@@ -77,63 +77,6 @@ export class spell_dbcRow extends SqlRow<spell_dbcCreator,spell_dbcQuery> {
     get EquippedItemClass() {return new SQLCell<int, this>(this, 'EquippedItemClass')}
     get EquippedItemSubClassMask() {return new SQLCell<int, this>(this, 'EquippedItemSubClassMask')}
     get EquippedItemInventoryTypeMask() {return new SQLCell<int, this>(this, 'EquippedItemInventoryTypeMask')}
-    get Effect1() {return new SQLCell<int, this>(this, 'Effect1')}
-    get Effect2() {return new SQLCell<int, this>(this, 'Effect2')}
-    get Effect3() {return new SQLCell<int, this>(this, 'Effect3')}
-    get EffectDieSides1() {return new SQLCell<int, this>(this, 'EffectDieSides1')}
-    get EffectDieSides2() {return new SQLCell<int, this>(this, 'EffectDieSides2')}
-    get EffectDieSides3() {return new SQLCell<int, this>(this, 'EffectDieSides3')}
-    get EffectRealPointsPerLevel1() {return new SQLCell<float, this>(this, 'EffectRealPointsPerLevel1')}
-    get EffectRealPointsPerLevel2() {return new SQLCell<float, this>(this, 'EffectRealPointsPerLevel2')}
-    get EffectRealPointsPerLevel3() {return new SQLCell<float, this>(this, 'EffectRealPointsPerLevel3')}
-    get EffectBasePoints1() {return new SQLCell<int, this>(this, 'EffectBasePoints1')}
-    get EffectBasePoints2() {return new SQLCell<int, this>(this, 'EffectBasePoints2')}
-    get EffectBasePoints3() {return new SQLCell<int, this>(this, 'EffectBasePoints3')}
-    get EffectMechanic1() {return new SQLCell<int, this>(this, 'EffectMechanic1')}
-    get EffectMechanic2() {return new SQLCell<int, this>(this, 'EffectMechanic2')}
-    get EffectMechanic3() {return new SQLCell<int, this>(this, 'EffectMechanic3')}
-    get EffectImplicitTargetA1() {return new SQLCell<int, this>(this, 'EffectImplicitTargetA1')}
-    get EffectImplicitTargetA2() {return new SQLCell<int, this>(this, 'EffectImplicitTargetA2')}
-    get EffectImplicitTargetA3() {return new SQLCell<int, this>(this, 'EffectImplicitTargetA3')}
-    get EffectImplicitTargetB1() {return new SQLCell<int, this>(this, 'EffectImplicitTargetB1')}
-    get EffectImplicitTargetB2() {return new SQLCell<int, this>(this, 'EffectImplicitTargetB2')}
-    get EffectImplicitTargetB3() {return new SQLCell<int, this>(this, 'EffectImplicitTargetB3')}
-    get EffectRadiusIndex1() {return new SQLCell<int, this>(this, 'EffectRadiusIndex1')}
-    get EffectRadiusIndex2() {return new SQLCell<int, this>(this, 'EffectRadiusIndex2')}
-    get EffectRadiusIndex3() {return new SQLCell<int, this>(this, 'EffectRadiusIndex3')}
-    get EffectApplyAuraName1() {return new SQLCell<int, this>(this, 'EffectApplyAuraName1')}
-    get EffectApplyAuraName2() {return new SQLCell<int, this>(this, 'EffectApplyAuraName2')}
-    get EffectApplyAuraName3() {return new SQLCell<int, this>(this, 'EffectApplyAuraName3')}
-    get EffectAmplitude1() {return new SQLCell<int, this>(this, 'EffectAmplitude1')}
-    get EffectAmplitude2() {return new SQLCell<int, this>(this, 'EffectAmplitude2')}
-    get EffectAmplitude3() {return new SQLCell<int, this>(this, 'EffectAmplitude3')}
-    get EffectMultipleValue1() {return new SQLCell<float, this>(this, 'EffectMultipleValue1')}
-    get EffectMultipleValue2() {return new SQLCell<float, this>(this, 'EffectMultipleValue2')}
-    get EffectMultipleValue3() {return new SQLCell<float, this>(this, 'EffectMultipleValue3')}
-    get EffectItemType1() {return new SQLCell<int, this>(this, 'EffectItemType1')}
-    get EffectItemType2() {return new SQLCell<int, this>(this, 'EffectItemType2')}
-    get EffectItemType3() {return new SQLCell<int, this>(this, 'EffectItemType3')}
-    get EffectMiscValue1() {return new SQLCell<int, this>(this, 'EffectMiscValue1')}
-    get EffectMiscValue2() {return new SQLCell<int, this>(this, 'EffectMiscValue2')}
-    get EffectMiscValue3() {return new SQLCell<int, this>(this, 'EffectMiscValue3')}
-    get EffectMiscValueB1() {return new SQLCell<int, this>(this, 'EffectMiscValueB1')}
-    get EffectMiscValueB2() {return new SQLCell<int, this>(this, 'EffectMiscValueB2')}
-    get EffectMiscValueB3() {return new SQLCell<int, this>(this, 'EffectMiscValueB3')}
-    get EffectTriggerSpell1() {return new SQLCell<int, this>(this, 'EffectTriggerSpell1')}
-    get EffectTriggerSpell2() {return new SQLCell<int, this>(this, 'EffectTriggerSpell2')}
-    get EffectTriggerSpell3() {return new SQLCell<int, this>(this, 'EffectTriggerSpell3')}
-    get EffectSpellClassMaskA1() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskA1')}
-    get EffectSpellClassMaskA2() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskA2')}
-    get EffectSpellClassMaskA3() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskA3')}
-    get EffectSpellClassMaskB1() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskB1')}
-    get EffectSpellClassMaskB2() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskB2')}
-    get EffectSpellClassMaskB3() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskB3')}
-    get EffectSpellClassMaskC1() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskC1')}
-    get EffectSpellClassMaskC2() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskC2')}
-    get EffectSpellClassMaskC3() {return new SQLCell<int, this>(this, 'EffectSpellClassMaskC3')}
-    get DmgMultiplier1() {return new SQLCell<float, this>(this, 'DmgMultiplier1')}
-    get DmgMultiplier2() {return new SQLCell<float, this>(this, 'DmgMultiplier2')}
-    get DmgMultiplier3() {return new SQLCell<float, this>(this, 'DmgMultiplier3')}
     get SpellVisualID1() {return new SQLCell<int, this>(this, 'SpellVisualID1')}
     get SpellVisualID2() {return new SQLCell<int, this>(this, 'SpellVisualID2')}
     get SpellIconID() {return new SQLCell<int, this>(this, 'SpellIconID')}
@@ -243,63 +186,6 @@ export type spell_dbcCreator = {
     EquippedItemClass? : int,
     EquippedItemSubClassMask? : int,
     EquippedItemInventoryTypeMask? : int,
-    Effect1? : int,
-    Effect2? : int,
-    Effect3? : int,
-    EffectDieSides1? : int,
-    EffectDieSides2? : int,
-    EffectDieSides3? : int,
-    EffectRealPointsPerLevel1? : float,
-    EffectRealPointsPerLevel2? : float,
-    EffectRealPointsPerLevel3? : float,
-    EffectBasePoints1? : int,
-    EffectBasePoints2? : int,
-    EffectBasePoints3? : int,
-    EffectMechanic1? : int,
-    EffectMechanic2? : int,
-    EffectMechanic3? : int,
-    EffectImplicitTargetA1? : int,
-    EffectImplicitTargetA2? : int,
-    EffectImplicitTargetA3? : int,
-    EffectImplicitTargetB1? : int,
-    EffectImplicitTargetB2? : int,
-    EffectImplicitTargetB3? : int,
-    EffectRadiusIndex1? : int,
-    EffectRadiusIndex2? : int,
-    EffectRadiusIndex3? : int,
-    EffectApplyAuraName1? : int,
-    EffectApplyAuraName2? : int,
-    EffectApplyAuraName3? : int,
-    EffectAmplitude1? : int,
-    EffectAmplitude2? : int,
-    EffectAmplitude3? : int,
-    EffectMultipleValue1? : float,
-    EffectMultipleValue2? : float,
-    EffectMultipleValue3? : float,
-    EffectItemType1? : int,
-    EffectItemType2? : int,
-    EffectItemType3? : int,
-    EffectMiscValue1? : int,
-    EffectMiscValue2? : int,
-    EffectMiscValue3? : int,
-    EffectMiscValueB1? : int,
-    EffectMiscValueB2? : int,
-    EffectMiscValueB3? : int,
-    EffectTriggerSpell1? : int,
-    EffectTriggerSpell2? : int,
-    EffectTriggerSpell3? : int,
-    EffectSpellClassMaskA1? : int,
-    EffectSpellClassMaskA2? : int,
-    EffectSpellClassMaskA3? : int,
-    EffectSpellClassMaskB1? : int,
-    EffectSpellClassMaskB2? : int,
-    EffectSpellClassMaskB3? : int,
-    EffectSpellClassMaskC1? : int,
-    EffectSpellClassMaskC2? : int,
-    EffectSpellClassMaskC3? : int,
-    DmgMultiplier1? : float,
-    DmgMultiplier2? : float,
-    DmgMultiplier3? : float,
     SpellVisualID1? : int,
     SpellVisualID2? : int,
     SpellIconID? : int,
@@ -406,63 +292,6 @@ export type spell_dbcQuery = {
     EquippedItemClass? : Relation<int>,
     EquippedItemSubClassMask? : Relation<int>,
     EquippedItemInventoryTypeMask? : Relation<int>,
-    Effect1? : Relation<int>,
-    Effect2? : Relation<int>,
-    Effect3? : Relation<int>,
-    EffectDieSides1? : Relation<int>,
-    EffectDieSides2? : Relation<int>,
-    EffectDieSides3? : Relation<int>,
-    EffectRealPointsPerLevel1? : Relation<float>,
-    EffectRealPointsPerLevel2? : Relation<float>,
-    EffectRealPointsPerLevel3? : Relation<float>,
-    EffectBasePoints1? : Relation<int>,
-    EffectBasePoints2? : Relation<int>,
-    EffectBasePoints3? : Relation<int>,
-    EffectMechanic1? : Relation<int>,
-    EffectMechanic2? : Relation<int>,
-    EffectMechanic3? : Relation<int>,
-    EffectImplicitTargetA1? : Relation<int>,
-    EffectImplicitTargetA2? : Relation<int>,
-    EffectImplicitTargetA3? : Relation<int>,
-    EffectImplicitTargetB1? : Relation<int>,
-    EffectImplicitTargetB2? : Relation<int>,
-    EffectImplicitTargetB3? : Relation<int>,
-    EffectRadiusIndex1? : Relation<int>,
-    EffectRadiusIndex2? : Relation<int>,
-    EffectRadiusIndex3? : Relation<int>,
-    EffectApplyAuraName1? : Relation<int>,
-    EffectApplyAuraName2? : Relation<int>,
-    EffectApplyAuraName3? : Relation<int>,
-    EffectAmplitude1? : Relation<int>,
-    EffectAmplitude2? : Relation<int>,
-    EffectAmplitude3? : Relation<int>,
-    EffectMultipleValue1? : Relation<float>,
-    EffectMultipleValue2? : Relation<float>,
-    EffectMultipleValue3? : Relation<float>,
-    EffectItemType1? : Relation<int>,
-    EffectItemType2? : Relation<int>,
-    EffectItemType3? : Relation<int>,
-    EffectMiscValue1? : Relation<int>,
-    EffectMiscValue2? : Relation<int>,
-    EffectMiscValue3? : Relation<int>,
-    EffectMiscValueB1? : Relation<int>,
-    EffectMiscValueB2? : Relation<int>,
-    EffectMiscValueB3? : Relation<int>,
-    EffectTriggerSpell1? : Relation<int>,
-    EffectTriggerSpell2? : Relation<int>,
-    EffectTriggerSpell3? : Relation<int>,
-    EffectSpellClassMaskA1? : Relation<int>,
-    EffectSpellClassMaskA2? : Relation<int>,
-    EffectSpellClassMaskA3? : Relation<int>,
-    EffectSpellClassMaskB1? : Relation<int>,
-    EffectSpellClassMaskB2? : Relation<int>,
-    EffectSpellClassMaskB3? : Relation<int>,
-    EffectSpellClassMaskC1? : Relation<int>,
-    EffectSpellClassMaskC2? : Relation<int>,
-    EffectSpellClassMaskC3? : Relation<int>,
-    DmgMultiplier1? : Relation<float>,
-    DmgMultiplier2? : Relation<float>,
-    DmgMultiplier3? : Relation<float>,
     SpellVisualID1? : Relation<int>,
     SpellVisualID2? : Relation<int>,
     SpellIconID? : Relation<int>,

@@ -81,4 +81,6 @@ LUA_FUNCTION(_LUA_LOG, (lua_State* L)) {
     }
     return 0;
 #endif
+    (void)L;
+    return 0;
 }
