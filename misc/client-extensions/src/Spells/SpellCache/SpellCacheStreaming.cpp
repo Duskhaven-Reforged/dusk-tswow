@@ -233,6 +233,10 @@ namespace
     uint32_t KnownSpellNativeFallthroughDebugLogCount = 0;
     uint32_t PendingKnownSpellDebugLogCount = 0;
     uint32_t SkillLineAbilityIndexDebugLogCount = 0;
+    uint32_t PendingShapeshiftSwapSpellId = 0;
+    uint32_t PendingShapeshiftSwapCancelSpellId = 0;
+    uint32_t PendingShapeshiftSwapQueuedMs = 0;
+    uint32_t PendingShapeshiftSwapNextPumpMs = 0;
 
     struct PendingKnownSpellAdd
     {
@@ -724,6 +728,26 @@ namespace
             && effect->effect == effectId;
     }
 
+    bool StreamedShapeshiftAuraMatches(uint32_t stanceSpellId, int32_t stanceForm, uint32_t auraSpellId)
+    {
+        if (auraSpellId == stanceSpellId)
+            return true;
+
+        bool matched = false;
+        SpellCacheStreaming::ForEachSpellEffect(auraSpellId, [&](const SpellEffectCacheRow& auraEffect) {
+            if (auraEffect.effectApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT
+                && auraEffect.effectMiscValue == stanceForm)
+            {
+                matched = true;
+                return false;
+            }
+
+            return true;
+        });
+
+        return matched;
+    }
+
     bool StreamedSpellCurrentOnUnit(ClientData::SpellRow const* spell, void* unit)
     {
         if (!spell || !unit || !SpellCacheStreaming::HasSpell(spell->m_ID))
@@ -745,13 +769,21 @@ namespace
 
             if (effect.effectApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT)
             {
+                uint32_t const currentFormId = static_cast<uint32_t>(
+                    CGUnit_C__GetShapeshiftFormId(reinterpret_cast<CGUnit*>(unit)));
+                if (currentFormId && static_cast<uint32_t>(effect.effectMiscValue) == currentFormId)
+                {
+                    active = true;
+                    return false;
+                }
+
                 uint32_t const auraCount = GetUnitAuraCountSafe(unit);
                 for (uint32_t i = 0; i < auraCount; ++i)
                 {
                     uint32_t auraSpellId = 0;
                     uint32_t auraFlags = 0;
                     if (TryGetUnitAuraEntry(unit, i, auraSpellId, auraFlags)
-                        && auraSpellId == spell->m_ID
+                        && StreamedShapeshiftAuraMatches(spell->m_ID, effect.effectMiscValue, auraSpellId)
                         && (auraFlags & 0x10u) != 0)
                     {
                         active = true;
@@ -2330,6 +2362,7 @@ namespace
     }
 
     void RebuildKnownSpellbookOrder();
+    char const* GetSpellIconTextureById(uint32_t iconId);
 
     char const* GetSpellIconTexture(uint32_t spellId)
     {
@@ -2337,8 +2370,13 @@ namespace
         if (!SpellCacheStreaming::TryBuildSpellRow(spellId, row))
             return nullptr;
 
+        return GetSpellIconTextureById(row.m_spellIconID);
+    }
+
+    char const* GetSpellIconTextureById(uint32_t iconId)
+    {
         SpellIconRow* iconRow = reinterpret_cast<SpellIconRow*>(
-            ClientDB::GetRow(reinterpret_cast<void*>(SPELL_ICON_DB_RECORDS_ADDRESS), row.m_spellIconID));
+            ClientDB::GetRow(reinterpret_cast<void*>(SPELL_ICON_DB_RECORDS_ADDRESS), iconId));
         if (!iconRow || !iconRow->m_textureFilename || !*iconRow->m_textureFilename)
             return nullptr;
 
@@ -3214,6 +3252,24 @@ namespace
         writeU32(spellId);
         writeU8(0); // cast flags
         writeU32(0); // target mask: none/self-resolved by server spell info
+
+        RawClientPacket_SpellCache* packet = new RawClientPacket_SpellCache{};
+        InitializeRawClientPacket_SpellCache(packet);
+        packet->buffer = bytes;
+        packet->size = fullSize;
+        packet->alloc = fullSize;
+        FinalizeRawClientPacket_SpellCache(packet);
+        SendRawClientPacket_SpellCache(packet);
+    }
+
+    void SendStreamedCancelAuraPacket(uint32_t spellId)
+    {
+        constexpr uint32_t CMSG_CANCEL_AURA_OPCODE = 0x136;
+        constexpr uint32_t fullSize = sizeof(uint32_t) + sizeof(uint32_t);
+
+        uint8_t* bytes = new uint8_t[fullSize];
+        std::memcpy(bytes, &CMSG_CANCEL_AURA_OPCODE, sizeof(CMSG_CANCEL_AURA_OPCODE));
+        std::memcpy(bytes + sizeof(uint32_t), &spellId, sizeof(spellId));
 
         RawClientPacket_SpellCache* packet = new RawClientPacket_SpellCache{};
         InitializeRawClientPacket_SpellCache(packet);
@@ -7084,6 +7140,29 @@ int LiveStreamedShapeshift_GetSpellId(lua_State* L)
     return 1;
 }
 
+int LiveStreamedShapeshift_GetForm(lua_State* L)
+{
+    RebuildKnownSpellbookOrder();
+    void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
+        ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
+        STREAMED_TYPEMASK_PLAYER);
+
+    auto const& stances = GetCachedStreamedStances();
+    for (uint32_t i = 0; i < stances.size(); ++i)
+    {
+        ClientData::SpellRow row{};
+        if (SpellCacheStreaming::TryGetSpellRow(stances[i].spellId, row)
+            && StreamedSpellCurrentOnUnit(&row, localPlayer))
+        {
+            ClientLua::PushNumber(L, static_cast<double>(i + 1));
+            return 1;
+        }
+    }
+
+    ClientLua::PushNumber(L, 0.0);
+    return 1;
+}
+
 int LiveStreamedShapeshift_GetFormInfo(lua_State* L)
 {
     KnownSpellbookEntry stance{};
@@ -7094,13 +7173,20 @@ int LiveStreamedShapeshift_GetFormInfo(lua_State* L)
     if (!SpellCacheStreaming::TryGetSpellRow(stance.spellId, row))
         return 0;
 
-    char const* texture = GetSpellIconTexture(stance.spellId);
-    ClientLua::PushString(L, texture ? texture : "");
-    ClientLua::PushString(L, (row.m_name_lang && *row.m_name_lang) ? row.m_name_lang : "");
     void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
         ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
         STREAMED_TYPEMASK_PLAYER);
-    ClientLua::PushBoolean(L, StreamedSpellCurrentOnUnit(&row, localPlayer) ? 1 : 0);
+    bool const active = StreamedSpellCurrentOnUnit(&row, localPlayer);
+
+    char const* texture = nullptr;
+    if (active && row.m_activeIconID)
+        texture = GetSpellIconTextureById(row.m_activeIconID);
+    if (!texture)
+        texture = GetSpellIconTextureById(row.m_spellIconID);
+
+    ClientLua::PushString(L, texture ? texture : "");
+    ClientLua::PushString(L, (row.m_name_lang && *row.m_name_lang) ? row.m_name_lang : "");
+    ClientLua::PushBoolean(L, active ? 1 : 0);
     ClientLua::PushBoolean(L, true);
     return 4;
 }
@@ -7151,14 +7237,130 @@ int LiveStreamedShapeshift_CastForm(lua_State* L)
     static uint32_t logCount = 0;
     if (logCount < 80)
     {
-        LOG_INFO << "Sending streamed shapeshift cast packet"
+        LOG_INFO << "Handling streamed shapeshift click"
             << "index" << oneBasedIndex
             << "spell" << stance.spellId
             << "name" << (row.m_name_lang ? row.m_name_lang : "");
         ++logCount;
     }
 
+    void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
+        ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
+        STREAMED_TYPEMASK_PLAYER);
+    uint32_t activeSpellId = 0;
+    auto const& stances = GetCachedStreamedStances();
+    for (KnownSpellbookEntry const& candidate : stances)
+    {
+        ClientData::SpellRow candidateRow{};
+        if (SpellCacheStreaming::TryGetSpellRow(candidate.spellId, candidateRow)
+            && StreamedSpellCurrentOnUnit(&candidateRow, localPlayer))
+        {
+            activeSpellId = candidate.spellId;
+            break;
+        }
+    }
+
+    if (activeSpellId)
+    {
+        LOG_INFO << "Sending streamed shapeshift cancel aura"
+            << "activeSpell" << activeSpellId
+            << "clickedSpell" << stance.spellId;
+        SendStreamedCancelAuraPacket(activeSpellId);
+        if (activeSpellId == stance.spellId)
+        {
+            PendingShapeshiftSwapSpellId = 0;
+            PendingShapeshiftSwapCancelSpellId = 0;
+            PendingShapeshiftSwapQueuedMs = 0;
+            PendingShapeshiftSwapNextPumpMs = 0;
+            ClientLua::PushBoolean(L, true);
+            return 1;
+        }
+
+        PendingShapeshiftSwapSpellId = stance.spellId;
+        PendingShapeshiftSwapCancelSpellId = activeSpellId;
+        PendingShapeshiftSwapQueuedMs = GetTickCount();
+        PendingShapeshiftSwapNextPumpMs = PendingShapeshiftSwapQueuedMs + 100;
+        LOG_INFO << "Queued streamed shapeshift swap"
+            << "activeSpell" << activeSpellId
+            << "nextSpell" << PendingShapeshiftSwapSpellId;
+        ClientLua::PushBoolean(L, true);
+        return 1;
+    }
+
+    LOG_INFO << "Sending streamed shapeshift cast packet"
+        << "spell" << stance.spellId
+        << "afterCancel" << activeSpellId;
     SendStreamedCastSpellPacket(stance.spellId);
+    ClientLua::PushBoolean(L, true);
+    return 1;
+}
+
+int LiveStreamedShapeshift_PumpPendingCast(lua_State* L)
+{
+    uint32_t const pendingSpellId = PendingShapeshiftSwapSpellId;
+    if (!pendingSpellId)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    uint32_t const now = GetTickCount();
+    if (now < PendingShapeshiftSwapNextPumpMs)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    PendingShapeshiftSwapNextPumpMs = now + 50;
+    if (PendingShapeshiftSwapQueuedMs && now - PendingShapeshiftSwapQueuedMs > 2500)
+    {
+        LOG_ERROR << "Expired queued streamed shapeshift swap"
+            << "cancelSpell" << PendingShapeshiftSwapCancelSpellId
+            << "nextSpell" << pendingSpellId;
+        PendingShapeshiftSwapSpellId = 0;
+        PendingShapeshiftSwapCancelSpellId = 0;
+        PendingShapeshiftSwapQueuedMs = 0;
+        PendingShapeshiftSwapNextPumpMs = 0;
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    void* localPlayer = ClntObjMgrObjectPtr_ActionState_SpellCache(
+        ClntObjMgrGetActivePlayer_ActionState_SpellCache(),
+        STREAMED_TYPEMASK_PLAYER);
+    if (!localPlayer)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    bool anyActive = false;
+    auto const& stances = GetCachedStreamedStances();
+    for (KnownSpellbookEntry const& candidate : stances)
+    {
+        ClientData::SpellRow candidateRow{};
+        if (SpellCacheStreaming::TryGetSpellRow(candidate.spellId, candidateRow)
+            && StreamedSpellCurrentOnUnit(&candidateRow, localPlayer))
+        {
+            anyActive = true;
+            break;
+        }
+    }
+
+    if (anyActive)
+    {
+        ClientLua::PushBoolean(L, false);
+        return 1;
+    }
+
+    LOG_INFO << "Pumped queued streamed shapeshift cast"
+        << "spell" << pendingSpellId
+        << "afterCancel" << PendingShapeshiftSwapCancelSpellId;
+    PendingShapeshiftSwapSpellId = 0;
+    PendingShapeshiftSwapCancelSpellId = 0;
+    PendingShapeshiftSwapQueuedMs = 0;
+    PendingShapeshiftSwapNextPumpMs = 0;
+    SendStreamedCastSpellPacket(pendingSpellId);
     ClientLua::PushBoolean(L, true);
     return 1;
 }
@@ -7174,10 +7376,12 @@ void SpellCacheStreaming::Apply()
 {
     PatchKnownSpellMaxIdGate();
     ClientLua::AddFunction("StreamedShapeshift_GetNumForms", LiveStreamedShapeshift_GetNumForms, __FILE__, __LINE__);
+    ClientLua::AddFunction("StreamedShapeshift_GetForm", LiveStreamedShapeshift_GetForm, __FILE__, __LINE__);
     ClientLua::AddFunction("StreamedShapeshift_GetSpellId", LiveStreamedShapeshift_GetSpellId, __FILE__, __LINE__);
     ClientLua::AddFunction("StreamedShapeshift_GetFormInfo", LiveStreamedShapeshift_GetFormInfo, __FILE__, __LINE__);
     ClientLua::AddFunction("StreamedShapeshift_GetFormCooldown", LiveStreamedShapeshift_GetFormCooldown, __FILE__, __LINE__);
     ClientLua::AddFunction("StreamedShapeshift_CastForm", LiveStreamedShapeshift_CastForm, __FILE__, __LINE__);
+    ClientLua::AddFunction("StreamedShapeshift_PumpPendingCast", LiveStreamedShapeshift_PumpPendingCast, __FILE__, __LINE__);
     ClientLua::AddFunction("StreamedShapeshift_SyncNativeState", LiveStreamedShapeshift_SyncNativeState, __FILE__, __LINE__);
     ClientLua::RegisterLua(R"lua(
 local Native_CastShapeshiftForm = CastShapeshiftForm
@@ -7186,9 +7390,14 @@ local Native_ShapeshiftBar_UpdateState
 local DHStreamedShapeshiftRefreshFrame
 local DHStreamedShapeshiftUpdateGuardInstalled
 local DHStreamedShapeshiftUpdateStateGuardInstalled
+local DHStreamedShapeshiftPumpElapsed = 0
 
 GetNumShapeshiftForms = function()
     return StreamedShapeshift_GetNumForms()
+end
+
+GetShapeshiftForm = function()
+    return StreamedShapeshift_GetForm()
 end
 
 GetShapeshiftFormInfo = function(index)
@@ -7335,15 +7544,26 @@ if StreamedShapeshiftInstaller then
                 return
             end
         end
+        if StreamedShapeshift_PumpPendingCast and StreamedShapeshift_PumpPendingCast() then
+            DHStreamedShapeshiftPumpElapsed = 0
+        end
         if DHStreamedShapeshiftRefreshState then
             DHStreamedShapeshiftRefreshState()
         end
     end)
-    StreamedShapeshiftInstaller:SetScript("OnUpdate", function(self)
-        InstallStreamedShapeshiftBarGuards()
-        InstallStreamedShapeshiftTooltip()
-        if GameTooltip and GameTooltip.StreamedShapeshiftTooltipInstalled and Native_ShapeshiftBar_Update and Native_ShapeshiftBar_UpdateState then
-            self:SetScript("OnUpdate", nil)
+    StreamedShapeshiftInstaller:SetScript("OnUpdate", function(self, elapsed)
+        if not (GameTooltip and GameTooltip.StreamedShapeshiftTooltipInstalled and Native_ShapeshiftBar_Update and Native_ShapeshiftBar_UpdateState) then
+            InstallStreamedShapeshiftBarGuards()
+            InstallStreamedShapeshiftTooltip()
+        end
+        DHStreamedShapeshiftPumpElapsed = DHStreamedShapeshiftPumpElapsed + (elapsed or 0)
+        if DHStreamedShapeshiftPumpElapsed >= 0.05 then
+            DHStreamedShapeshiftPumpElapsed = 0
+            if StreamedShapeshift_PumpPendingCast and StreamedShapeshift_PumpPendingCast() then
+                if DHStreamedShapeshiftRefreshState then
+                    DHStreamedShapeshiftRefreshState()
+                end
+            end
         end
     end)
 end
