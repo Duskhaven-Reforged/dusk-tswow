@@ -1,5 +1,6 @@
 #include <CDBCMgr/CDBCMgr.h>
 #include <CDBCMgr/CDBCDefs/SpellAdditionalCostData.h>
+#include <CDBCMgr/CDBCDefs/SpellEffect.h>
 #include <CDBCMgr/CDBCDefs/SpellEffectScalars.h>
 #include <Character/CharacterExtensions.h>
 #include <Tooltip/SpellTooltipExtensions.h>
@@ -9,8 +10,42 @@
 #include <Windows.h>
 #include <algorithm>
 #include <any>
+#include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 using namespace ClientData;
+
+static constexpr int kSpellModDamage = 0;
+static constexpr int kSpellModRadius = 6;
+static constexpr int kSpellModAllEffects = 8;
+static constexpr int kSpellModActivationTime = 19;
+static constexpr int kSpellModBonusMultiplier = 24;
+static constexpr int kSpellModValueMultiplier = 27;
+static constexpr int kSpellModHeal = 29;
+
+static constexpr uint32_t kSpellEffectSchoolDamage = 2;
+static constexpr uint32_t kSpellEffectHealthLeech = 9;
+static constexpr uint32_t kSpellEffectHeal = 10;
+static constexpr uint32_t kSpellEffectHealMaxHealth = 67;
+static constexpr uint32_t kSpellEffectHealMechanical = 75;
+static constexpr uint32_t kSpellEffectHealPct = 136;
+
+static constexpr uint32_t kSpellEffectApplyAura = 6;
+static constexpr uint32_t kSpellAuraPeriodicDamage = 3;
+static constexpr uint32_t kSpellAuraPeriodicHeal = 8;
+static constexpr uint32_t kSpellAuraPeriodicEnergize = 24;
+static constexpr uint32_t kSpellAuraPeriodicLeech = 53;
+static constexpr uint32_t kSpellAuraPeriodicHealthFunnel = 62;
+static constexpr uint32_t kSpellAuraPeriodicManaLeech = 64;
+static constexpr uint32_t kSpellAuraPeriodicDamagePercent = 89;
+static constexpr uint32_t kSpellAuraPeriodicDummy = 226;
+static constexpr uint32_t kSpellAuraPeriodicTriggerSpellWithValue = 227;
 
 void TooltipExtensions::Apply() {
     SpellTooltipVariableExtension();
@@ -21,14 +56,16 @@ void TooltipExtensions::Apply() {
 }
 
 void TooltipExtensions::SpellTooltipVariableExtension() {
-    DWORD flOldProtect = 0;
+    size_t extendedVariableCount = 0;
+    TooltipVariableExtensions::GetExtendedSpellVariableNames(extendedVariableCount);
+    const uint32_t variableTableCount = SPELLVARIABLE_STOCK_COUNT + static_cast<uint32_t>(extendedVariableCount);
 
     // change pointer to table with variables
     Util::OverwriteUInt32AtAddress(0x576B63, reinterpret_cast<uint32_t>(&spellVariables));
     // update number of entries value
-    Util::OverwriteUInt32AtAddress(0x576B7C, (sizeof(spellVariables) / 4));
+    Util::OverwriteUInt32AtAddress(0x576B7C, variableTableCount);
     // copy table of pointers from address to spellVariables vector and add new entries
-    memcpy(&spellVariables, (const void*)0xACE8F8, sizeof(uint32_t) * 140);
+    memcpy(&spellVariables, (const void*)0xACE8F8, sizeof(uint32_t) * SPELLVARIABLE_STOCK_COUNT);
     SetNewVariablePointers();
     // change pointer of GetVariableTableValue to pointer to extended function
     Util::OverwriteUInt32AtAddress(0x578E8B, Util::CalculateAddress(reinterpret_cast<uint32_t>(&GetVariableValueEx), 0x578E8F));
@@ -63,16 +100,24 @@ float GetAttackPowerBonusForSpell(CGPlayer* activePlayer, SpellRow* spell)
     return static_cast<float>(CharacterDefines::GetTotalAttackPowerValue(attType, activePlayer));
 }
 
-float ApplyScalarRowForPlayer(CGPlayer* activePlayer, SpellRow* spell, const SpellEffectScalarsRow& row)
+float ApplyScalarValuesForPlayer(CGPlayer* activePlayer, SpellRow* spell, float sp, float ap, float bv, int mode)
 {
-    float apValue = row.ap * GetAttackPowerBonusForSpell(activePlayer, spell);
-    float spValue = row.sp * GetSpellPowerBonusForSpell(activePlayer, spell);
-    float bvValue = row.bv * static_cast<float>(activePlayer->PlayerData->shieldBlock);
+    if (!activePlayer || !spell)
+        return 0.0f;
 
-    if (row.mode == 1)
+    float apValue = ap * GetAttackPowerBonusForSpell(activePlayer, spell);
+    float spValue = sp * GetSpellPowerBonusForSpell(activePlayer, spell);
+    float bvValue = bv * static_cast<float>(activePlayer->PlayerData->shieldBlock);
+
+    if (mode == 1)
         return (std::max)(apValue, spValue) + bvValue;
 
     return apValue + spValue + bvValue;
+}
+
+float ApplyScalarRowForPlayer(CGPlayer* activePlayer, SpellRow* spell, const SpellEffectScalarsRow& row)
+{
+    return ApplyScalarValuesForPlayer(activePlayer, spell, row.sp, row.ap, row.bv, row.mode);
 }
 
 float GetSpellScalarsForEffect(CGPlayer* activePlayer, SpellRow* spell, int idx)
@@ -94,12 +139,522 @@ float GetSpellScalarsForEffect(CGPlayer* activePlayer, SpellRow* spell, int idx)
     return total;
 }
 
+std::string FormatScalarCoefficient(float value)
+{
+    char buffer[32] = {};
+    std::snprintf(buffer, sizeof(buffer), "%.2f", value);
+    return buffer;
+}
+
+std::string FormatFormulaNumber(float value, int decimals = 2)
+{
+    char format[16] = {};
+    std::snprintf(format, sizeof(format), "%%.%df", decimals);
+
+    char buffer[64] = {};
+    std::snprintf(buffer, sizeof(buffer), format, value);
+    size_t len = std::strlen(buffer);
+    while (len > 0 && buffer[len - 1] == '0')
+        buffer[--len] = '\0';
+    if (len > 0 && buffer[len - 1] == '.')
+        buffer[--len] = '\0';
+    return buffer;
+}
+
+std::string FormatScalarPercent(float value)
+{
+    return FormatFormulaNumber(value * 100.0f, 2) + "%";
+}
+
+const char* TooltipAttackPowerIcon()
+{
+    return "|TInterface\\Icons\\Ability_MeleeDamage:0|t";
+}
+
+const char* TooltipSpellPowerIcon()
+{
+    return "|TInterface\\Icons\\Spell_Holy_MagicalSentry:0|t";
+}
+
+const char* TooltipBlockValueIcon()
+{
+    return "|TInterface\\Icons\\INV_Shield_06:0|t";
+}
+
+void AppendFormulaTerm(std::string& formula, const std::string& term)
+{
+    if (term.empty())
+        return;
+
+    if (!formula.empty())
+        formula += " + ";
+    formula += term;
+}
+
+std::string BuildScalarFormula(float sp, float ap, float bv, int mode)
+{
+    std::string formula;
+    std::string apTerm = ap != 0.0f
+        ? FormatScalarPercent(ap) + " " + TooltipAttackPowerIcon()
+        : "";
+    std::string spTerm = sp != 0.0f
+        ? FormatScalarPercent(sp) + " " + TooltipSpellPowerIcon()
+        : "";
+
+    if (mode == 1 && !apTerm.empty() && !spTerm.empty())
+        AppendFormulaTerm(formula, "max(" + apTerm + ", " + spTerm + ")");
+    else
+    {
+        AppendFormulaTerm(formula, apTerm);
+        AppendFormulaTerm(formula, spTerm);
+    }
+
+    if (bv != 0.0f)
+        AppendFormulaTerm(formula, FormatScalarPercent(bv) + " " + TooltipBlockValueIcon());
+
+    return formula;
+}
+
+std::string BuildSpellScalarFormulaForEffect(SpellRow* spell, int idx)
+{
+    if (!spell)
+        return "";
+
+    std::string formula;
+    auto scalars = GlobalCDBCMap.getCDBC("SpellEffectScalars");
+    for (auto scalar : scalars)
+    {
+        if (SpellEffectScalarsRow* row = std::any_cast<SpellEffectScalarsRow>(&scalar.second))
+        {
+            if (row->spellID != spell->m_ID || row->effectIdx != idx)
+                continue;
+
+            AppendFormulaTerm(formula, BuildScalarFormula(row->sp, row->ap, row->bv, row->mode));
+        }
+    }
+
+    return formula;
+}
+
+std::string BuildStreamedEffectScalarFormula(const SpellEffectCacheRow& effect)
+{
+    return BuildScalarFormula(
+        effect.effectSpellPowerBonus,
+        effect.effectAttackPowerBonus,
+        effect.effectBlockValueBonus,
+        effect.effectScalingMode);
+}
+
+bool TryGetOwnedTooltipSpellMod(SpellRow* spell, int modOp, int& flat, int& pct)
+{
+    flat = 0;
+    pct = 100;
+    if (!spell)
+        return false;
+
+    return QuestTextParser::GetModifiedStats(spell, modOp, &flat, &pct) != 0;
+}
+
+void ApplyOwnedTooltipSpellMod(SpellRow* spell, int modOp, float& value)
+{
+    if (spell)
+        QuestTextParser::ModifySpellValue(spell, &value, modOp);
+}
+
+void ApplyOwnedTooltipSpellModWithFormula(SpellRow* spell, int modOp, float& value, std::string& formula)
+{
+    int flat = 0;
+    int pct = 100;
+    if (!TryGetOwnedTooltipSpellMod(spell, modOp, flat, pct))
+        return;
+
+    value = (static_cast<float>(flat) + value) * static_cast<float>(pct) * 0.01f;
+    if (formula.empty())
+        return;
+
+    if (flat)
+    {
+        char flatBuffer[32] = {};
+        std::snprintf(flatBuffer, sizeof(flatBuffer), "%+d", flat);
+        formula = "(" + formula + " " + flatBuffer + ")";
+    }
+
+    if (pct != 100)
+    {
+        char pctBuffer[32] = {};
+        std::snprintf(pctBuffer, sizeof(pctBuffer), "%.2f", static_cast<float>(pct) * 0.01f);
+        formula = std::string(pctBuffer) + "(" + formula + ")";
+    }
+}
+
+struct OwnedTooltipValueFormulaParts
+{
+    bool enabled = false;
+    float baseValue = 0.0f;
+    std::string scalarFormula;
+    int flatModTotal = 0;
+    float percentMultiplier = 1.0f;
+};
+
+void ApplyOwnedTooltipSpellModWithParts(SpellRow* spell, int modOp, float& value, OwnedTooltipValueFormulaParts& parts)
+{
+    int flat = 0;
+    int pct = 100;
+    if (!TryGetOwnedTooltipSpellMod(spell, modOp, flat, pct))
+        return;
+
+    parts.flatModTotal += flat;
+    parts.percentMultiplier *= static_cast<float>(pct) * 0.01f;
+    value = (value + static_cast<float>(flat)) * static_cast<float>(pct) * 0.01f;
+}
+
+std::string BuildOwnedTooltipValueFormula(const OwnedTooltipValueFormulaParts& parts)
+{
+    if (!parts.enabled)
+        return "";
+
+    if (parts.scalarFormula.empty() && parts.flatModTotal == 0 && parts.percentMultiplier == 1.0f)
+        return "";
+
+    std::string inner;
+    if (parts.baseValue != 0.0f)
+        AppendFormulaTerm(inner, FormatFormulaNumber(parts.baseValue, 0));
+    if (parts.flatModTotal != 0)
+        AppendFormulaTerm(inner, FormatFormulaNumber(static_cast<float>(parts.flatModTotal), 0));
+    AppendFormulaTerm(inner, parts.scalarFormula);
+    if (inner.empty())
+        inner = "0";
+
+    std::string formula;
+    if (parts.percentMultiplier != 1.0f)
+        formula = "(" + FormatFormulaNumber(parts.percentMultiplier, 3) + "(" + inner + "))";
+    else
+        formula = "(" + inner + ")";
+
+    return formula;
+}
+
+bool IsOwnedTooltipHealingEffect(uint32_t effectType)
+{
+    return effectType == kSpellEffectHeal
+        || effectType == kSpellEffectHealMaxHealth
+        || effectType == kSpellEffectHealMechanical
+        || effectType == kSpellEffectHealPct;
+}
+
+bool IsOwnedTooltipDamageEffect(uint32_t effectType)
+{
+    return effectType == kSpellEffectSchoolDamage || effectType == kSpellEffectHealthLeech;
+}
+
+bool IsTooltipFormulaExpanded()
+{
+    return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+}
+
+struct OwnedSpellTooltipRefreshState
+{
+    bool active = false;
+    bool shiftDown = false;
+    bool refreshing = false;
+    void* tooltip = nullptr;
+    int spellId = 0;
+    int a3 = 0;
+    int a4 = 0;
+    int a5 = 0;
+    int a6 = 0;
+    int a7 = 0;
+    int a8 = 0;
+    bool hasA9 = false;
+    uint32_t a9Value = 0;
+    int a10 = 0;
+    int a12 = 0;
+    int a13 = 0;
+    int a14 = 0;
+    int a15 = 0;
+    int a16 = 0;
+    bool cacheRefreshPending = false;
+    std::vector<uint32_t> awaitedSpellIds;
+};
+
+OwnedSpellTooltipRefreshState s_ownedSpellTooltipRefresh;
+
+void MarkOwnedSpellTooltipAwaitingSpell(uint32_t spellId)
+{
+    if (!spellId || !s_ownedSpellTooltipRefresh.active)
+        return;
+
+    if (std::find(
+        s_ownedSpellTooltipRefresh.awaitedSpellIds.begin(),
+        s_ownedSpellTooltipRefresh.awaitedSpellIds.end(),
+        spellId) == s_ownedSpellTooltipRefresh.awaitedSpellIds.end())
+    {
+        s_ownedSpellTooltipRefresh.awaitedSpellIds.push_back(spellId);
+    }
+}
+
+void MarkOwnedSpellTooltipCacheRefresh(uint32_t spellId)
+{
+    if (!spellId || !s_ownedSpellTooltipRefresh.active)
+        return;
+
+    if (std::find(
+        s_ownedSpellTooltipRefresh.awaitedSpellIds.begin(),
+        s_ownedSpellTooltipRefresh.awaitedSpellIds.end(),
+        spellId) != s_ownedSpellTooltipRefresh.awaitedSpellIds.end())
+    {
+        s_ownedSpellTooltipRefresh.cacheRefreshPending = true;
+    }
+}
+
 float GetNativeEffectMinPoints(SpellRow* spell, uint32_t effectIndex, uint32_t level, uint32_t a4, uint32_t a5, uint32_t a8)
 {
     float minPoints = 0.0f;
     float maxPoints = 0.0f;
     QuestTextParser::GetMinMaxPoints(spell, effectIndex, &minPoints, &maxPoints, level, a4, a5, a8);
     return minPoints;
+}
+
+void PushFormulaValue(uint32_t a3, float value)
+{
+    uint32_t* offset = reinterpret_cast<uint32_t*>(a3 + 128);
+    --*offset;
+    *reinterpret_cast<float*>(a3 + 4 * *offset) = value;
+}
+
+void ClearSpellEffectSlot(SpellRow& spell, uint32_t slot)
+{
+    spell.m_effect[slot] = 0;
+    spell.m_effectDieSides[slot] = 0;
+    spell.m_effectRealPointsPerLevel[slot] = 0.0f;
+    spell.m_effectBasePoints[slot] = 0;
+    spell.m_effectMechanic[slot] = 0;
+    spell.m_implicitTargetA[slot] = 0;
+    spell.m_implicitTargetB[slot] = 0;
+    spell.m_effectRadiusIndex[slot] = 0;
+    spell.m_effectAura[slot] = 0;
+    spell.m_effectAuraPeriod[slot] = 0;
+    spell.m_effectAmplitude[slot] = 0.0f;
+    spell.m_effectChainTargets[slot] = 0;
+    spell.m_effectItemType[slot] = 0;
+    spell.m_effectMiscValue[slot] = 0;
+    spell.m_effectMiscValueB[slot] = 0;
+    spell.m_effectTriggerSpell[slot] = 0;
+    spell.m_effectPointsPerCombo[slot] = 0.0f;
+    spell.m_effectSpellClassMask[slot][0] = 0;
+    spell.m_effectSpellClassMask[slot][1] = 0;
+    spell.m_effectSpellClassMask[slot][2] = 0;
+    spell.m_effectChainAmplitude[slot] = 0.0f;
+    spell.m_effectBonusCoefficient[slot] = 0.0f;
+}
+
+void ProjectEffectIntoFirstSlot(SpellRow* sourceSpell, const SpellEffectCacheRow& effect, SpellRow& projected)
+{
+    projected = *sourceSpell;
+
+    for (uint32_t slot = 0; slot < 3; ++slot)
+        ClearSpellEffectSlot(projected, slot);
+
+    projected.m_effect[0] = effect.effect;
+    projected.m_effectDieSides[0] = static_cast<uint32_t>(effect.effectDieSides);
+    projected.m_effectRealPointsPerLevel[0] = effect.effectRealPointsPerLevel;
+    projected.m_effectBasePoints[0] = static_cast<uint32_t>(effect.effectBasePoints);
+    projected.m_effectMechanic[0] = effect.effectMechanic;
+    projected.m_implicitTargetA[0] = effect.effectImplicitTargetA;
+    projected.m_implicitTargetB[0] = effect.effectImplicitTargetB;
+    projected.m_effectRadiusIndex[0] = effect.effectRadiusIndex;
+    projected.m_effectAura[0] = effect.effectApplyAuraName;
+    projected.m_effectAuraPeriod[0] = effect.effectAmplitude;
+    projected.m_effectAmplitude[0] = effect.effectMultipleValue;
+    projected.m_effectChainTargets[0] = effect.effectChainTargets;
+    projected.m_effectItemType[0] = static_cast<uint32_t>(effect.effectItemType);
+    projected.m_effectMiscValue[0] = static_cast<uint32_t>(effect.effectMiscValue);
+    projected.m_effectMiscValueB[0] = static_cast<uint32_t>(effect.effectMiscValueB);
+    projected.m_effectTriggerSpell[0] = effect.effectTriggerSpell;
+    projected.m_effectPointsPerCombo[0] = effect.effectPointsPerCombo;
+    projected.m_effectSpellClassMask[0][0] = effect.effectSpellClassMaskA;
+    projected.m_effectSpellClassMask[0][1] = effect.effectSpellClassMaskB;
+    projected.m_effectSpellClassMask[0][2] = effect.effectSpellClassMaskC;
+    projected.m_effectChainAmplitude[0] = effect.effectChainAmplitude;
+    projected.m_effectBonusCoefficient[0] = effect.effectBonusMultiplier;
+}
+
+float GetStreamedEffectMinPoints(SpellRow* spell, const SpellEffectCacheRow& effect, uint32_t level, uint32_t a4, uint32_t a5, uint32_t a8)
+{
+    SpellRow projected = {};
+    ProjectEffectIntoFirstSlot(spell, effect, projected);
+    return GetNativeEffectMinPoints(&projected, 0, level, a4, a5, a8);
+}
+
+struct EffectFormulaVariable
+{
+    uint32_t effectIndex = 0;
+    uint32_t nativeSlotOneVariable = 0;
+};
+
+bool TryMapStockEffectFormulaVariable(uint32_t spellVariable, EffectFormulaVariable& out)
+{
+    struct Range
+    {
+        uint32_t first;
+        uint32_t count;
+        uint32_t nativeSlotOneVariable;
+    };
+
+    static const Range ranges[] = {
+        { 32, 3, 32 },   // m
+        { 35, 3, 35 },   // M
+        { 38, 3, 38 },   // a
+        { 41, 3, 41 },   // A
+        { 50, 3, 50 },   // x
+        { 53, 3, 53 },   // X
+        { 56, 3, 56 },   // t
+        { 59, 3, 59 },   // T
+        { 66, 3, 66 },   // b
+        { 69, 3, 69 },   // B
+        { 76, 3, 76 },   // e
+        { 79, 3, 79 },   // E
+        { 84, 3, 84 },   // f
+        { 87, 3, 87 },   // F
+        { 90, 3, 90 },   // q
+        { 93, 3, 93 },   // Q
+        { 156, 3, 156 }, // bc
+        { 159, 3, 159 }, // BC
+    };
+
+    for (const Range& range : ranges) {
+        if (spellVariable >= range.first && spellVariable < range.first + range.count) {
+            out.effectIndex = spellVariable - range.first;
+            out.nativeSlotOneVariable = range.nativeSlotOneVariable;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool TryMapExtendedEffectFormulaVariable(uint32_t spellVariable, EffectFormulaVariable& out)
+{
+    if (spellVariable < SPELLVARIABLE_BASELINE_EFFECT_FIRST)
+        return false;
+
+    uint32_t offset = spellVariable - SPELLVARIABLE_BASELINE_EFFECT_FIRST;
+    uint32_t group = offset / SPELLVARIABLE_BASELINE_EFFECT_GROUP_SIZE;
+    if (group >= SPELLVARIABLE_BASELINE_EFFECT_GROUP_COUNT)
+        return false;
+
+    static const uint32_t nativeSlotOneVariables[] = {
+        32, 35, 38, 41, 50, 53, 56, 59, 66,
+        69, 76, 79, 84, 87, 90, 93, 156, 159
+    };
+
+    out.effectIndex = offset % SPELLVARIABLE_BASELINE_EFFECT_GROUP_SIZE;
+    out.nativeSlotOneVariable = nativeSlotOneVariables[group];
+    return true;
+}
+
+bool TryHandleStreamedEffectFormulaVariable(
+    void* _this,
+    uint32_t spellVariable,
+    uint32_t a3,
+    SpellRow* spell,
+    uint32_t a5,
+    uint32_t a6,
+    uint32_t a7,
+    uint32_t a8,
+    uint32_t a9)
+{
+    if (!spell || !SpellCacheStreaming::HasSpell(spell->m_ID))
+        return false;
+
+    EffectFormulaVariable mapped = {};
+    if (!TryMapStockEffectFormulaVariable(spellVariable, mapped) &&
+        !TryMapExtendedEffectFormulaVariable(spellVariable, mapped)) {
+        return false;
+    }
+
+    const SpellEffectCacheRow* effect = nullptr;
+    if (!SpellCacheStreaming::TryGetSpellEffect(spell->m_ID, mapped.effectIndex, effect) || !effect) {
+        PushFormulaValue(a3, 0.0f);
+        return true;
+    }
+
+    SpellRow projected = {};
+    ProjectEffectIntoFirstSlot(spell, *effect, projected);
+    CFormula::GetVariableValue(_this, mapped.nativeSlotOneVariable, a3, &projected, a5, a6, a7, a8, a9);
+    return true;
+}
+
+bool TryGetCustomEffectIndex(uint32_t spellVariable, uint32_t first1, uint32_t first4, uint32_t& effectIndex)
+{
+    if (spellVariable >= first1 && spellVariable < first1 + 3) {
+        effectIndex = spellVariable - first1;
+        return true;
+    }
+
+    if (spellVariable >= first4 && spellVariable < first4 + 29) {
+        effectIndex = 3 + (spellVariable - first4);
+        return true;
+    }
+
+    return false;
+}
+
+bool TryGetEffectRealPointsPerLevel(SpellRow* spell, uint32_t effectIndex, float& value)
+{
+    if (!spell || effectIndex >= SPELLVARIABLE_EFFECT_SLOT_COUNT)
+        return false;
+
+    if (SpellCacheStreaming::HasSpell(spell->m_ID)) {
+        const SpellEffectCacheRow* effect = nullptr;
+        if (!SpellCacheStreaming::TryGetSpellEffect(spell->m_ID, effectIndex, effect) || !effect) {
+            value = 0.0f;
+            return true;
+        }
+
+        value = effect->effectRealPointsPerLevel;
+        return true;
+    }
+
+    if (effectIndex < 3) {
+        value = spell->m_effectRealPointsPerLevel[effectIndex];
+        return true;
+    }
+
+    return false;
+}
+
+bool TryGetEffectBonusValue(CGPlayer* activePlayer, SpellRow* spell, uint32_t effectIndex, uint32_t level, uint32_t a4, uint32_t a5, uint32_t a8, float& value)
+{
+    if (!spell || effectIndex >= SPELLVARIABLE_EFFECT_SLOT_COUNT)
+        return false;
+
+    if (SpellCacheStreaming::HasSpell(spell->m_ID)) {
+        const SpellEffectCacheRow* effect = nullptr;
+        if (!SpellCacheStreaming::TryGetSpellEffect(spell->m_ID, effectIndex, effect) || !effect) {
+            value = 0.0f;
+            return true;
+        }
+
+        value = ApplyScalarValuesForPlayer(
+            activePlayer,
+            spell,
+            effect->effectSpellPowerBonus,
+            effect->effectAttackPowerBonus,
+            effect->effectBlockValueBonus,
+            effect->effectScalingMode);
+        value += GetStreamedEffectMinPoints(spell, *effect, level, a4, a5, a8);
+        return true;
+    }
+
+    value = GetSpellScalarsForEffect(activePlayer, spell, static_cast<int>(effectIndex));
+
+    if (effectIndex < 3) {
+        value += GetNativeEffectMinPoints(spell, effectIndex, level, a4, a5, a8);
+        return true;
+    }
+
+    return false;
 }
 
 // Client-side color pointers used by tooltip rendering helpers.
@@ -110,6 +665,1548 @@ static void* const sColorHexRed0       = reinterpret_cast<void*>(0xAD2D34);
 
 namespace
 {
+    static constexpr uint32_t kTSSpellIdStart = 80000;
+    int s_ownedTooltipExpressionEvaluationDepth = 0;
+
+    struct TooltipSpellRadiusRow
+    {
+        uint32_t id;
+        float radius;
+        float radiusPerLevel;
+        float radiusMax;
+    };
+
+    struct TooltipSpellDurationRow
+    {
+        uint32_t id;
+        int32_t duration;
+        int32_t durationPerLevel;
+        int32_t maxDuration;
+    };
+
+    std::unordered_map<uint32_t, TooltipSpellRadiusRow> s_tooltipSpellRadii;
+    std::unordered_map<uint32_t, TooltipSpellDurationRow> s_tooltipSpellDurations;
+    bool s_tooltipSpellRadiiLoaded = false;
+    bool s_tooltipSpellDurationsLoaded = false;
+
+    template <typename Row>
+    bool LoadSimpleDbcRows(const char* path, uint32_t expectedFields, uint32_t maxRecords, std::vector<Row>& rows)
+    {
+        HANDLE file = nullptr;
+        if (!SFile::OpenFile(path, &file) || !file)
+            return false;
+
+        uint32_t header[5] = {};
+        uint32_t bytesRead = 0;
+        if (!SFile::ReadFile(file, header, sizeof(header), &bytesRead, nullptr, 0) || bytesRead != sizeof(header))
+        {
+            SFile::CloseFile(file);
+            return false;
+        }
+
+        uint32_t const records = header[1];
+        uint32_t const fields = header[2];
+        uint32_t const recordSize = header[3];
+        if (fields != expectedFields || recordSize != sizeof(Row) || records > maxRecords)
+        {
+            SFile::CloseFile(file);
+            return false;
+        }
+
+        rows.resize(records);
+        bool ok = SFile::ReadFile(file, rows.data(), records * sizeof(Row), &bytesRead, nullptr, 0) &&
+            bytesRead == records * sizeof(Row);
+        SFile::CloseFile(file);
+        return ok;
+    }
+
+    void LoadTooltipSpellRadii()
+    {
+        if (s_tooltipSpellRadiiLoaded)
+            return;
+
+        s_tooltipSpellRadiiLoaded = true;
+        std::vector<TooltipSpellRadiusRow> rows;
+        if (!LoadSimpleDbcRows("DBFilesClient\\SpellRadius.dbc", 4, 4096, rows))
+            return;
+
+        for (TooltipSpellRadiusRow const& row : rows)
+            s_tooltipSpellRadii[row.id] = row;
+    }
+
+    void LoadTooltipSpellDurations()
+    {
+        if (s_tooltipSpellDurationsLoaded)
+            return;
+
+        s_tooltipSpellDurationsLoaded = true;
+        std::vector<TooltipSpellDurationRow> rows;
+        if (!LoadSimpleDbcRows("DBFilesClient\\SpellDuration.dbc", 4, 4096, rows))
+            return;
+
+        for (TooltipSpellDurationRow const& row : rows)
+            s_tooltipSpellDurations[row.id] = row;
+    }
+
+    bool MacroNameEquals(const std::string& actual, const char* expected)
+    {
+        size_t const expectedLen = std::strlen(expected);
+        if (actual.size() != expectedLen)
+            return false;
+
+        for (size_t i = 0; i < expectedLen; ++i)
+        {
+            if (std::tolower(static_cast<unsigned char>(actual[i])) !=
+                std::tolower(static_cast<unsigned char>(expected[i])))
+                return false;
+        }
+
+        return true;
+    }
+
+    void AppendOwnedTooltipNumber(std::string& out, float value, bool integerValue)
+    {
+        char buffer[64] = {};
+        if (integerValue)
+            std::snprintf(buffer, sizeof(buffer), "%d", static_cast<int32_t>(value));
+        else
+            std::snprintf(buffer, sizeof(buffer), "%.1f", value);
+        out.append(buffer);
+    }
+
+    void AppendOwnedTooltipDuration(std::string& out, uint32_t milliseconds)
+    {
+        if (!milliseconds)
+        {
+            out.push_back('0');
+            return;
+        }
+
+        char buffer[128] = {};
+        uint32_t value = milliseconds;
+        const char* unit = "ms";
+        if (milliseconds >= 3600000 && milliseconds % 3600000 == 0)
+        {
+            value = milliseconds / 3600000;
+            unit = value == 1 ? "hour" : "hours";
+        }
+        else if (milliseconds >= 60000 && milliseconds % 60000 == 0)
+        {
+            value = milliseconds / 60000;
+            unit = value == 1 ? "min" : "min";
+        }
+        else if (milliseconds >= 1000)
+        {
+            value = milliseconds / 1000;
+            unit = value == 1 ? "sec" : "sec";
+        }
+
+        std::snprintf(buffer, sizeof(buffer), "%u %s", value, unit);
+        out.append(buffer);
+    }
+
+    bool TryParseMacroIndex(const char* text, size_t textLen, size_t& pos, uint32_t& index)
+    {
+        index = 0;
+        while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+            ++pos;
+
+        if (pos >= textLen || text[pos] != '(')
+            return false;
+
+        ++pos;
+        while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+            ++pos;
+
+        if (pos >= textLen || !std::isdigit(static_cast<unsigned char>(text[pos])))
+            return false;
+
+        char* end = nullptr;
+        unsigned long ordinal = std::strtoul(text + pos, &end, 10);
+        if (!end || end == text + pos || ordinal < 1 || ordinal > SPELLVARIABLE_EFFECT_SLOT_COUNT)
+            return false;
+
+        pos = static_cast<size_t>(end - text);
+        while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+            ++pos;
+
+        if (pos >= textLen || text[pos] != ')')
+            return false;
+
+        ++pos;
+        index = static_cast<uint32_t>(ordinal - 1);
+        return true;
+    }
+
+    bool OwnedTooltipNeedsEffectIndex(const std::string& macro)
+    {
+        return MacroNameEquals(macro, "Value")
+            || MacroNameEquals(macro, "TickValue")
+            || MacroNameEquals(macro, "BasePoints")
+            || MacroNameEquals(macro, "Min")
+            || MacroNameEquals(macro, "Max")
+            || MacroNameEquals(macro, "MultipleValue")
+            || MacroNameEquals(macro, "Period")
+            || MacroNameEquals(macro, "Radius")
+            || MacroNameEquals(macro, "ChainTargets")
+            || MacroNameEquals(macro, "ChainAmplitude")
+            || MacroNameEquals(macro, "Misc")
+            || MacroNameEquals(macro, "MiscA")
+            || MacroNameEquals(macro, "MiscB")
+            || MacroNameEquals(macro, "TriggerSpell")
+            || MacroNameEquals(macro, "PointsPerCombo")
+            || MacroNameEquals(macro, "BonusCoefficient")
+            || MacroNameEquals(macro, "Coefficient")
+            || MacroNameEquals(macro, "PointsPerLevel");
+    }
+
+    float OwnedTooltipRadiusValue(uint32_t radiusIndex)
+    {
+        if (!radiusIndex)
+            return 0.0f;
+
+        LoadTooltipSpellRadii();
+        auto it = s_tooltipSpellRadii.find(radiusIndex);
+        if (it == s_tooltipSpellRadii.end())
+            return static_cast<float>(radiusIndex);
+
+        return it->second.radius;
+    }
+
+    uint32_t OwnedTooltipDurationMs(SpellRow* spell)
+    {
+        if (!spell || !spell->m_durationIndex)
+            return 0;
+
+        LoadTooltipSpellDurations();
+        auto it = s_tooltipSpellDurations.find(spell->m_durationIndex);
+        if (it == s_tooltipSpellDurations.end())
+            return 0;
+
+        return it->second.duration > 0 ? static_cast<uint32_t>(it->second.duration) : 0;
+    }
+
+    std::string NormalizeMacroName(const std::string& name)
+    {
+        std::string normalized;
+        normalized.reserve(name.size());
+        for (char ch : name)
+            normalized.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        return normalized;
+    }
+
+    bool ParseOwnedTooltipTextToString(SpellRow* spell, const char* source, size_t textLen, std::string& out);
+
+    bool TryParseMacroArguments(const char* text, size_t textLen, size_t& pos, std::vector<uint32_t>& args)
+    {
+        args.clear();
+        while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+            ++pos;
+
+        if (pos >= textLen || text[pos] != '(')
+            return true;
+
+        ++pos;
+        while (pos < textLen)
+        {
+            while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+                ++pos;
+
+            if (pos < textLen && text[pos] == ')')
+            {
+                ++pos;
+                return true;
+            }
+
+            if (pos >= textLen || !std::isdigit(static_cast<unsigned char>(text[pos])))
+                return false;
+
+            char* end = nullptr;
+            unsigned long value = std::strtoul(text + pos, &end, 10);
+            if (!end || end == text + pos || value > UINT32_MAX)
+                return false;
+
+            args.push_back(static_cast<uint32_t>(value));
+            pos = static_cast<size_t>(end - text);
+
+            while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+                ++pos;
+
+            if (pos < textLen && text[pos] == ',')
+            {
+                ++pos;
+                continue;
+            }
+
+            if (pos < textLen && text[pos] == ')')
+            {
+                ++pos;
+                return true;
+            }
+
+            return false;
+        }
+
+        return false;
+    }
+
+    struct OwnedTooltipMacroContext
+    {
+        SpellRow* currentSpell = nullptr;
+        SpellRow targetStorage = {};
+        SpellRow* targetSpell = nullptr;
+        const SpellEffectCacheRow* effect = nullptr;
+        std::vector<uint32_t> args;
+        uint32_t effectIndex = 0;
+        bool targetUsesStreamedEffects = false;
+    };
+
+    struct OwnedTooltipExpressionColorState
+    {
+        bool hasValue = false;
+        bool hasDamage = false;
+        bool conflict = false;
+        uint32_t schoolMask = 0;
+    };
+
+    OwnedTooltipExpressionColorState s_ownedTooltipExpressionColor;
+
+    uint32_t OwnedTooltipPrimarySchoolMask(uint32_t schoolMask)
+    {
+        static constexpr uint32_t kSchoolPhysical = 0x01;
+        static constexpr uint32_t kSchoolHoly = 0x02;
+        static constexpr uint32_t kSchoolFire = 0x04;
+        static constexpr uint32_t kSchoolNature = 0x08;
+        static constexpr uint32_t kSchoolFrost = 0x10;
+        static constexpr uint32_t kSchoolShadow = 0x20;
+        static constexpr uint32_t kSchoolArcane = 0x40;
+
+        if (schoolMask & kSchoolFire)
+            return kSchoolFire;
+        if (schoolMask & kSchoolFrost)
+            return kSchoolFrost;
+        if (schoolMask & kSchoolNature)
+            return kSchoolNature;
+        if (schoolMask & kSchoolShadow)
+            return kSchoolShadow;
+        if (schoolMask & kSchoolArcane)
+            return kSchoolArcane;
+        if (schoolMask & kSchoolHoly)
+            return kSchoolHoly;
+        if (schoolMask & kSchoolPhysical)
+            return kSchoolPhysical;
+
+        return 0;
+    }
+
+    const char* OwnedTooltipSchoolColor(uint32_t schoolMask)
+    {
+        static constexpr uint32_t kSchoolPhysical = 0x01;
+        static constexpr uint32_t kSchoolHoly = 0x02;
+        static constexpr uint32_t kSchoolFire = 0x04;
+        static constexpr uint32_t kSchoolNature = 0x08;
+        static constexpr uint32_t kSchoolFrost = 0x10;
+        static constexpr uint32_t kSchoolShadow = 0x20;
+        static constexpr uint32_t kSchoolArcane = 0x40;
+
+        schoolMask = OwnedTooltipPrimarySchoolMask(schoolMask);
+        if (schoolMask == kSchoolFire)
+            return "|cffff7d0a";
+        if (schoolMask == kSchoolFrost)
+            return "|cff69ccf0";
+        if (schoolMask == kSchoolNature)
+            return "|cff9dff9d";
+        if (schoolMask == kSchoolShadow)
+            return "|cff7b4fb3";
+        if (schoolMask == kSchoolArcane)
+            return "|cffd17bff";
+        if (schoolMask == kSchoolHoly)
+            return "|cfffff569";
+        if (schoolMask == kSchoolPhysical)
+            return "|cffc79c6e";
+
+        return nullptr;
+    }
+
+    uint32_t OwnedTooltipSpellSchoolMask(SpellRow* spell)
+    {
+        static constexpr uint32_t kSchoolPhysical = 0x01;
+
+        if (!spell)
+            return 0;
+
+        uint32_t schoolMask = OwnedTooltipPrimarySchoolMask(spell->m_schoolMask);
+        if (schoolMask)
+            return schoolMask;
+
+        return kSchoolPhysical;
+    }
+
+    const char* OwnedTooltipSchoolName(uint32_t schoolMask)
+    {
+        static constexpr uint32_t kSchoolPhysical = 0x01;
+        static constexpr uint32_t kSchoolHoly = 0x02;
+        static constexpr uint32_t kSchoolFire = 0x04;
+        static constexpr uint32_t kSchoolNature = 0x08;
+        static constexpr uint32_t kSchoolFrost = 0x10;
+        static constexpr uint32_t kSchoolShadow = 0x20;
+        static constexpr uint32_t kSchoolArcane = 0x40;
+
+        schoolMask = OwnedTooltipPrimarySchoolMask(schoolMask);
+        if (schoolMask == kSchoolFire)
+            return "Fire";
+        if (schoolMask == kSchoolFrost)
+            return "Frost";
+        if (schoolMask == kSchoolNature)
+            return "Nature";
+        if (schoolMask == kSchoolShadow)
+            return "Shadow";
+        if (schoolMask == kSchoolArcane)
+            return "Arcane";
+        if (schoolMask == kSchoolHoly)
+            return "Holy";
+        if (schoolMask == kSchoolPhysical)
+            return "Physical";
+
+        return nullptr;
+    }
+
+    const char* OwnedTooltipValueColor(OwnedTooltipMacroContext& ctx, uint32_t effectType)
+    {
+        if (s_ownedTooltipExpressionEvaluationDepth != 0)
+            return nullptr;
+
+        if (effectType == kSpellEffectHeal || effectType == kSpellEffectHealPct)
+            return "|cff9dff9d";
+
+        if (effectType == kSpellEffectSchoolDamage && ctx.targetSpell)
+            return OwnedTooltipSchoolColor(OwnedTooltipSpellSchoolMask(ctx.targetSpell));
+
+        return nullptr;
+    }
+
+    void RecordOwnedTooltipExpressionValue(OwnedTooltipMacroContext& ctx, uint32_t effectType)
+    {
+        if (s_ownedTooltipExpressionEvaluationDepth == 0)
+            return;
+
+        s_ownedTooltipExpressionColor.hasValue = true;
+        if (effectType != kSpellEffectSchoolDamage || !ctx.targetSpell)
+        {
+            s_ownedTooltipExpressionColor.conflict = true;
+            return;
+        }
+
+        uint32_t const schoolMask = OwnedTooltipSpellSchoolMask(ctx.targetSpell);
+        if (!schoolMask)
+        {
+            s_ownedTooltipExpressionColor.conflict = true;
+            return;
+        }
+
+        if (!s_ownedTooltipExpressionColor.hasDamage)
+        {
+            s_ownedTooltipExpressionColor.hasDamage = true;
+            s_ownedTooltipExpressionColor.schoolMask = schoolMask;
+            return;
+        }
+
+        if (s_ownedTooltipExpressionColor.schoolMask != schoolMask)
+            s_ownedTooltipExpressionColor.conflict = true;
+    }
+
+    bool ResolveOwnedTooltipMacroSpell(OwnedTooltipMacroContext& ctx, uint32_t spellId)
+    {
+        if (ctx.currentSpell && ctx.currentSpell->m_ID == spellId)
+        {
+            ctx.targetSpell = ctx.currentSpell;
+            ctx.targetUsesStreamedEffects = spellId >= kTSSpellIdStart || SpellCacheStreaming::HasSpell(spellId);
+            return true;
+        }
+
+        if (SpellCacheStreaming::TryGetSpellRow(spellId, ctx.targetStorage, true))
+        {
+            ctx.targetSpell = &ctx.targetStorage;
+            ctx.targetUsesStreamedEffects = spellId >= kTSSpellIdStart || SpellCacheStreaming::HasSpell(spellId);
+            return true;
+        }
+
+        ctx.targetSpell = nullptr;
+        ctx.targetUsesStreamedEffects = spellId >= kTSSpellIdStart;
+        return false;
+    }
+
+    bool ResolveOwnedTooltipSpellMacro(OwnedTooltipMacroContext& ctx)
+    {
+        if (ctx.args.empty())
+        {
+            ctx.targetSpell = ctx.currentSpell;
+            return ctx.targetSpell != nullptr;
+        }
+
+        if (ctx.args.size() != 1)
+            return false;
+
+        return ResolveOwnedTooltipMacroSpell(ctx, ctx.args[0]);
+    }
+
+    bool ResolveOwnedTooltipEffectMacro(OwnedTooltipMacroContext& ctx)
+    {
+        uint32_t spellId = 0;
+        uint32_t ordinal = 0;
+
+        if (ctx.args.size() == 1)
+        {
+            if (!ctx.currentSpell)
+                return false;
+            spellId = ctx.currentSpell->m_ID;
+            ordinal = ctx.args[0];
+        }
+        else if (ctx.args.size() == 2)
+        {
+            spellId = ctx.args[0];
+            ordinal = ctx.args[1];
+        }
+        else
+            return false;
+
+        if (ordinal < 1 || ordinal > SPELLVARIABLE_EFFECT_SLOT_COUNT)
+            return false;
+
+        ctx.effectIndex = ordinal - 1;
+        ResolveOwnedTooltipMacroSpell(ctx, spellId);
+        ctx.effect = nullptr;
+        if (!SpellCacheStreaming::TryGetSpellEffect(spellId, ctx.effectIndex, ctx.effect))
+        {
+            ctx.effect = nullptr;
+            if (ctx.targetUsesStreamedEffects || spellId >= kTSSpellIdStart || ctx.effectIndex >= 3)
+            {
+                MarkOwnedSpellTooltipAwaitingSpell(spellId);
+                SpellCacheStreaming::RequestSpell(spellId, UINT32_MAX);
+            }
+        }
+
+        return true;
+    }
+
+    bool AppendMacroString(std::string& out, const char* value)
+    {
+        if (value)
+            out.append(value);
+        return true;
+    }
+
+    bool AppendMacroNumber(std::string& out, float value, bool integerValue)
+    {
+        AppendOwnedTooltipNumber(out, value, integerValue);
+        return true;
+    }
+
+    bool AppendMacroRadius(std::string& out, float value)
+    {
+        AppendOwnedTooltipNumber(out, value, true);
+        out.append(" yards");
+        return true;
+    }
+
+    void AppendOwnedTooltipError(std::string& out)
+    {
+        out.append("|cffff0000ERROR|r");
+    }
+
+    void AppendOwnedTooltipExpressionNumber(std::string& out, double value)
+    {
+        char buffer[64] = {};
+        std::snprintf(buffer, sizeof(buffer), "%.3f", value);
+        size_t len = std::strlen(buffer);
+        while (len > 0 && buffer[len - 1] == '0')
+            buffer[--len] = '\0';
+        if (len > 0 && buffer[len - 1] == '.')
+            buffer[--len] = '\0';
+        out.append(buffer);
+    }
+
+    struct OwnedTooltipExpressionParser
+    {
+        const char* text = nullptr;
+        size_t textLen = 0;
+        size_t pos = 0;
+
+        void SkipSpaces()
+        {
+            while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+                ++pos;
+        }
+
+        bool ParseNumber(double& out)
+        {
+            SkipSpaces();
+            if (pos >= textLen)
+                return false;
+
+            char* end = nullptr;
+            out = std::strtod(text + pos, &end);
+            if (!end || end == text + pos)
+                return false;
+
+            pos = static_cast<size_t>(end - text);
+            return pos <= textLen;
+        }
+
+        bool ParseFactor(double& out)
+        {
+            SkipSpaces();
+            if (pos >= textLen)
+                return false;
+
+            if (text[pos] == '+')
+            {
+                ++pos;
+                return ParseFactor(out);
+            }
+
+            if (text[pos] == '-')
+            {
+                ++pos;
+                if (!ParseFactor(out))
+                    return false;
+                out = -out;
+                return true;
+            }
+
+            if (text[pos] == '(')
+            {
+                ++pos;
+                if (!ParseExpression(out))
+                    return false;
+                SkipSpaces();
+                if (pos >= textLen || text[pos] != ')')
+                    return false;
+                ++pos;
+                return true;
+            }
+
+            return ParseNumber(out);
+        }
+
+        bool ParseTerm(double& out)
+        {
+            if (!ParseFactor(out))
+                return false;
+
+            while (true)
+            {
+                SkipSpaces();
+                if (pos >= textLen || (text[pos] != '*' && text[pos] != '/'))
+                    return true;
+
+                char const op = text[pos++];
+                double rhs = 0.0;
+                if (!ParseFactor(rhs))
+                    return false;
+
+                if (op == '*')
+                    out *= rhs;
+                else
+                {
+                    if (rhs == 0.0)
+                        return false;
+                    out /= rhs;
+                }
+            }
+        }
+
+        bool ParseExpression(double& out)
+        {
+            if (!ParseTerm(out))
+                return false;
+
+            while (true)
+            {
+                SkipSpaces();
+                if (pos >= textLen || (text[pos] != '+' && text[pos] != '-'))
+                    return true;
+
+                char const op = text[pos++];
+                double rhs = 0.0;
+                if (!ParseTerm(rhs))
+                    return false;
+
+                if (op == '+')
+                    out += rhs;
+                else
+                    out -= rhs;
+            }
+        }
+    };
+
+    bool TryEvaluateOwnedTooltipExpression(const std::string& expression, double& value)
+    {
+        OwnedTooltipExpressionParser parser;
+        parser.text = expression.c_str();
+        parser.textLen = expression.size();
+        if (!parser.ParseExpression(value))
+            return false;
+
+        parser.SkipSpaces();
+        return parser.pos == parser.textLen;
+    }
+
+    void AppendOwnedTooltipTimeValue(std::string& out, float milliseconds)
+    {
+        if (milliseconds <= 0.0f)
+        {
+            out.append("0 sec");
+            return;
+        }
+
+        float divisor = 1000.0f;
+        const char* unit = "sec";
+        if (milliseconds >= 3600000.0f)
+        {
+            divisor = 3600000.0f;
+            unit = "hour";
+        }
+        else if (milliseconds >= 60000.0f)
+        {
+            divisor = 60000.0f;
+            unit = "min";
+        }
+
+        double scaled = static_cast<double>(milliseconds) / static_cast<double>(divisor);
+        scaled = static_cast<double>(static_cast<int64_t>(scaled * 1000.0)) / 1000.0;
+
+        char buffer[64] = {};
+        std::snprintf(buffer, sizeof(buffer), "%.3f", scaled);
+        size_t len = std::strlen(buffer);
+        while (len > 0 && buffer[len - 1] == '0')
+            buffer[--len] = '\0';
+        if (len > 0 && buffer[len - 1] == '.')
+            buffer[--len] = '\0';
+
+        out.append(buffer);
+        out.push_back(' ');
+        out.append(unit);
+        if (std::strcmp(unit, "hour") == 0 && std::strcmp(buffer, "1") != 0)
+            out.push_back('s');
+    }
+
+    bool MacroDuration(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx))
+            return AppendMacroString(out, "");
+        AppendOwnedTooltipDuration(out, OwnedTooltipDurationMs(ctx.targetSpell));
+        return true;
+    }
+
+    bool MacroCooldown(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx) || !ctx.targetSpell)
+            return AppendMacroNumber(out, 0.0f, true);
+        AppendOwnedTooltipDuration(out, (std::max)(ctx.targetSpell->m_recoveryTime, ctx.targetSpell->m_categoryRecoveryTime));
+        return true;
+    }
+
+    bool MacroName(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx) || !ctx.targetSpell)
+            return AppendMacroString(out, "");
+        return AppendMacroString(out, ctx.targetSpell->m_name_lang);
+    }
+
+    bool MacroIcon(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx) || !ctx.targetSpell)
+            return AppendMacroString(out, "");
+
+        SpellIconRow* iconRow = reinterpret_cast<SpellIconRow*>(
+            ClientDB::GetRow(reinterpret_cast<void*>(0xAD48A4), ctx.targetSpell->m_spellIconID));
+        return AppendMacroString(out, iconRow ? iconRow->m_textureFilename : "");
+    }
+
+    bool MacroStacks(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx) || !ctx.targetSpell)
+            return AppendMacroNumber(out, 0.0f, true);
+        return AppendMacroNumber(out, static_cast<float>(ctx.targetSpell->m_cumulativeAura), true);
+    }
+
+    bool TryAppendOwnedTooltipAsTimeMacro(SpellRow* spell, const char* text, size_t textLen, size_t& pos, std::string& out)
+    {
+        while (pos < textLen && std::isspace(static_cast<unsigned char>(text[pos])))
+            ++pos;
+
+        if (pos >= textLen || text[pos] != '(')
+            return false;
+
+        size_t const innerStart = ++pos;
+        uint32_t depth = 1;
+        while (pos < textLen)
+        {
+            char const ch = text[pos++];
+            if (ch == '(')
+                ++depth;
+            else if (ch == ')')
+            {
+                if (--depth == 0)
+                {
+                    size_t const innerLen = (pos - 1) - innerStart;
+                    std::string expanded;
+                    if (!ParseOwnedTooltipTextToString(spell, text + innerStart, innerLen, expanded))
+                        return false;
+
+                    char* end = nullptr;
+                    float milliseconds = std::strtof(expanded.c_str(), &end);
+                    if (!end || end == expanded.c_str())
+                        milliseconds = 0.0f;
+
+                    AppendOwnedTooltipTimeValue(out, milliseconds);
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool TryFindOwnedTooltipMathBlockEnd(const char* text, size_t textLen, size_t start, bool doubleBrace, size_t& innerStart, size_t& innerLen, size_t& endPos)
+    {
+        if (doubleBrace)
+        {
+            innerStart = start + 2;
+            size_t depth = 1;
+            for (size_t pos = innerStart; pos + 1 < textLen; ++pos)
+            {
+                if (text[pos] == '{' && text[pos + 1] == '{')
+                {
+                    ++depth;
+                    ++pos;
+                    continue;
+                }
+
+                if (text[pos] == '}' && text[pos + 1] == '}')
+                {
+                    if (--depth == 0)
+                    {
+                        innerLen = pos - innerStart;
+                        endPos = pos + 2;
+                        return true;
+                    }
+                    ++pos;
+                }
+            }
+            return false;
+        }
+
+        innerStart = start + 2;
+        size_t depth = 1;
+        for (size_t pos = innerStart; pos < textLen; ++pos)
+        {
+            if (text[pos] == '{')
+                ++depth;
+            else if (text[pos] == '}')
+            {
+                if (--depth == 0)
+                {
+                    innerLen = pos - innerStart;
+                    endPos = pos + 1;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    bool TryAppendOwnedTooltipMathBlock(SpellRow* spell, const char* text, size_t textLen, size_t& pos, std::string& out)
+    {
+        bool const atBrace = pos + 1 < textLen && text[pos] == '@' && text[pos + 1] == '{';
+        bool const doubleBrace = pos + 1 < textLen && text[pos] == '{' && text[pos + 1] == '{';
+        if (!atBrace && !doubleBrace)
+            return false;
+
+        size_t innerStart = 0;
+        size_t innerLen = 0;
+        size_t endPos = pos;
+        if (!TryFindOwnedTooltipMathBlockEnd(text, textLen, pos, doubleBrace, innerStart, innerLen, endPos))
+        {
+            AppendOwnedTooltipError(out);
+            pos = textLen;
+            return true;
+        }
+
+        std::string expanded;
+        OwnedTooltipExpressionColorState const previousColorState = s_ownedTooltipExpressionColor;
+        s_ownedTooltipExpressionColor = {};
+        ++s_ownedTooltipExpressionEvaluationDepth;
+        bool const expandedOk = ParseOwnedTooltipTextToString(spell, text + innerStart, innerLen, expanded);
+        --s_ownedTooltipExpressionEvaluationDepth;
+        OwnedTooltipExpressionColorState const mathColorState = s_ownedTooltipExpressionColor;
+        s_ownedTooltipExpressionColor = previousColorState;
+        if (!expandedOk)
+        {
+            AppendOwnedTooltipError(out);
+            pos = endPos;
+            return true;
+        }
+
+        double value = 0.0;
+        if (!TryEvaluateOwnedTooltipExpression(expanded, value))
+            AppendOwnedTooltipError(out);
+        else
+        {
+            const char* color = (mathColorState.hasDamage && !mathColorState.conflict)
+                ? OwnedTooltipSchoolColor(mathColorState.schoolMask)
+                : nullptr;
+            if (color)
+                out.append(color);
+            AppendOwnedTooltipExpressionNumber(out, value);
+            if (color)
+                out.append("|r");
+        }
+
+        pos = endPos;
+        return true;
+    }
+
+    float NativeEffectField(OwnedTooltipMacroContext& ctx, const char* field, bool& integerValue)
+    {
+        integerValue = true;
+        if (!ctx.targetSpell || ctx.effectIndex >= 3)
+            return 0.0f;
+
+        uint32_t i = ctx.effectIndex;
+        if (std::strcmp(field, "value") == 0 || std::strcmp(field, "min") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectBasePoints[i] + 1);
+        if (std::strcmp(field, "basepoints") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectBasePoints[i]);
+        if (std::strcmp(field, "max") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectBasePoints[i] + ctx.targetSpell->m_effectDieSides[i]);
+        if (std::strcmp(field, "multiplevalue") == 0)
+        {
+            integerValue = false;
+            float value = ctx.targetSpell->m_effectAmplitude[i];
+            ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModValueMultiplier, value);
+            return value;
+        }
+        if (std::strcmp(field, "period") == 0 || std::strcmp(field, "periodms") == 0)
+        {
+            float value = static_cast<float>((ctx.targetSpell->m_procTypeMask & 1) ? 5000 : ctx.targetSpell->m_effectAuraPeriod[i]);
+            if (!(ctx.targetSpell->m_procTypeMask & 1))
+                ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModActivationTime, value);
+            return value;
+        }
+        if (std::strcmp(field, "radius") == 0)
+        {
+            integerValue = false;
+            float value = OwnedTooltipRadiusValue(ctx.targetSpell->m_effectRadiusIndex[i]);
+            ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModRadius, value);
+            return value;
+        }
+        if (std::strcmp(field, "chaintargets") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectChainTargets[i]);
+        if (std::strcmp(field, "chainamplitude") == 0)
+        {
+            integerValue = false;
+            return ctx.targetSpell->m_effectChainAmplitude[i];
+        }
+        if (std::strcmp(field, "misc") == 0 || std::strcmp(field, "misca") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectMiscValue[i]);
+        if (std::strcmp(field, "miscb") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectMiscValueB[i]);
+        if (std::strcmp(field, "triggerspell") == 0)
+            return static_cast<float>(ctx.targetSpell->m_effectTriggerSpell[i]);
+        if (std::strcmp(field, "pointspercombo") == 0)
+        {
+            integerValue = false;
+            return ctx.targetSpell->m_effectPointsPerCombo[i];
+        }
+        if (std::strcmp(field, "bonuscoefficient") == 0 || std::strcmp(field, "coefficient") == 0)
+        {
+            integerValue = false;
+            float value = ctx.targetSpell->m_effectBonusCoefficient[i];
+            ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModBonusMultiplier, value);
+            return value;
+        }
+        if (std::strcmp(field, "pointsperlevel") == 0)
+        {
+            integerValue = false;
+            return ctx.targetSpell->m_effectRealPointsPerLevel[i];
+        }
+
+        return 0.0f;
+    }
+
+    uint32_t OwnedTooltipEffectType(OwnedTooltipMacroContext& ctx)
+    {
+        if (ctx.effect)
+            return ctx.effect->effect;
+
+        if (ctx.targetUsesStreamedEffects)
+            return 0;
+
+        if (ctx.targetSpell && ctx.effectIndex < 3)
+            return ctx.targetSpell->m_effect[ctx.effectIndex];
+
+        return 0;
+    }
+
+    uint32_t OwnedTooltipEffectAuraType(OwnedTooltipMacroContext& ctx)
+    {
+        if (ctx.effect)
+            return ctx.effect->effectApplyAuraName;
+
+        if (ctx.targetUsesStreamedEffects)
+            return 0;
+
+        if (ctx.targetSpell && ctx.effectIndex < 3)
+            return ctx.targetSpell->m_effectAura[ctx.effectIndex];
+
+        return 0;
+    }
+
+    bool IsOwnedTooltipPeriodicAura(uint32_t auraType)
+    {
+        return auraType == kSpellAuraPeriodicDamage
+            || auraType == kSpellAuraPeriodicHeal
+            || auraType == kSpellAuraPeriodicEnergize
+            || auraType == kSpellAuraPeriodicLeech
+            || auraType == kSpellAuraPeriodicHealthFunnel
+            || auraType == kSpellAuraPeriodicManaLeech
+            || auraType == kSpellAuraPeriodicDamagePercent
+            || auraType == kSpellAuraPeriodicDummy
+            || auraType == kSpellAuraPeriodicTriggerSpellWithValue;
+    }
+
+    bool OwnedTooltipEffectIsPeriodic(OwnedTooltipMacroContext& ctx)
+    {
+        return OwnedTooltipEffectType(ctx) == kSpellEffectApplyAura
+            && IsOwnedTooltipPeriodicAura(OwnedTooltipEffectAuraType(ctx));
+    }
+
+    uint32_t OwnedTooltipEffectPeriodMs(OwnedTooltipMacroContext& ctx)
+    {
+        float period = 0.0f;
+        if (ctx.targetSpell && (ctx.targetSpell->m_procTypeMask & 1))
+            period = 5000.0f;
+        else if (ctx.effect)
+            period = static_cast<float>(ctx.effect->effectAmplitude);
+        else if (ctx.targetUsesStreamedEffects)
+            period = 0.0f;
+        else if (ctx.targetSpell && ctx.effectIndex < 3)
+            period = static_cast<float>(ctx.targetSpell->m_effectAuraPeriod[ctx.effectIndex]);
+
+        if (period <= 0.0f)
+            return 0;
+
+        if (!(ctx.targetSpell && (ctx.targetSpell->m_procTypeMask & 1)))
+            ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModActivationTime, period);
+
+        return period > 0.0f ? static_cast<uint32_t>(period) : 0;
+    }
+
+    uint32_t OwnedTooltipEffectTickCount(OwnedTooltipMacroContext& ctx)
+    {
+        if (!ctx.targetSpell || !OwnedTooltipEffectIsPeriodic(ctx))
+            return 1;
+
+        uint32_t const duration = OwnedTooltipDurationMs(ctx.targetSpell);
+        uint32_t const period = OwnedTooltipEffectPeriodMs(ctx);
+        if (!duration || !period)
+            return 1;
+
+        return (std::max)(1u, duration / period);
+    }
+
+    uint32_t OwnedTooltipActivePlayerLevel()
+    {
+        CGPlayer* activePlayer = reinterpret_cast<CGPlayer*>(ClntObjMgr::ObjectPtr(ClntObjMgr::GetActivePlayer(), TYPEMASK_PLAYER));
+        return activePlayer && activePlayer->unitBase.unitData ? activePlayer->unitBase.unitData->level : 0;
+    }
+
+    float OwnedTooltipEffectMinPoints(OwnedTooltipMacroContext& ctx)
+    {
+        if (ctx.effect)
+            return GetStreamedEffectMinPoints(ctx.targetSpell, *ctx.effect, OwnedTooltipActivePlayerLevel(), 0, 0, 0);
+
+        if (ctx.targetUsesStreamedEffects)
+            return 0.0f;
+
+        if (ctx.targetSpell && ctx.effectIndex < 3)
+            return GetNativeEffectMinPoints(ctx.targetSpell, ctx.effectIndex, OwnedTooltipActivePlayerLevel(), 0, 0, 0);
+
+        return 0.0f;
+    }
+
+    float OwnedTooltipEffectScalarValue(OwnedTooltipMacroContext& ctx)
+    {
+        CGPlayer* activePlayer = reinterpret_cast<CGPlayer*>(ClntObjMgr::ObjectPtr(ClntObjMgr::GetActivePlayer(), TYPEMASK_PLAYER));
+        if (ctx.effect)
+            return ApplyScalarValuesForPlayer(
+                activePlayer,
+                ctx.targetSpell,
+                ctx.effect->effectSpellPowerBonus,
+                ctx.effect->effectAttackPowerBonus,
+                ctx.effect->effectBlockValueBonus,
+                ctx.effect->effectScalingMode);
+
+        if (ctx.targetUsesStreamedEffects)
+            return 0.0f;
+
+        return GetSpellScalarsForEffect(activePlayer, ctx.targetSpell, static_cast<int>(ctx.effectIndex));
+    }
+
+    void AppendOwnedTooltipValueMacro(OwnedTooltipMacroContext& ctx, std::string& out, bool totalPeriodic)
+    {
+        float const baseValue = OwnedTooltipEffectMinPoints(ctx);
+        float value = baseValue + OwnedTooltipEffectScalarValue(ctx);
+        uint32_t const effectType = OwnedTooltipEffectType(ctx);
+        RecordOwnedTooltipExpressionValue(ctx, effectType);
+        OwnedTooltipValueFormulaParts formulaParts;
+
+        if (IsTooltipFormulaExpanded() && s_ownedTooltipExpressionEvaluationDepth == 0)
+        {
+            formulaParts.enabled = true;
+            formulaParts.baseValue = baseValue;
+            formulaParts.scalarFormula = ctx.effect
+                ? BuildStreamedEffectScalarFormula(*ctx.effect)
+                : BuildSpellScalarFormulaForEffect(ctx.targetSpell, static_cast<int>(ctx.effectIndex));
+        }
+
+        ApplyOwnedTooltipSpellModWithParts(ctx.targetSpell, kSpellModAllEffects, value, formulaParts);
+        if (IsOwnedTooltipHealingEffect(effectType))
+            ApplyOwnedTooltipSpellModWithParts(ctx.targetSpell, kSpellModHeal, value, formulaParts);
+        else if (IsOwnedTooltipDamageEffect(effectType))
+            ApplyOwnedTooltipSpellModWithParts(ctx.targetSpell, kSpellModDamage, value, formulaParts);
+
+        uint32_t const tickCount = totalPeriodic ? OwnedTooltipEffectTickCount(ctx) : 1;
+        if (tickCount > 1)
+        {
+            value *= static_cast<float>(tickCount);
+            if (formulaParts.enabled)
+                formulaParts.percentMultiplier *= static_cast<float>(tickCount);
+        }
+
+        value = std::fabs(value);
+        const char* valueColor = OwnedTooltipValueColor(ctx, effectType);
+        std::string formula = BuildOwnedTooltipValueFormula(formulaParts);
+        if (valueColor)
+            out.append(valueColor);
+        AppendOwnedTooltipNumber(out, value, true);
+        if (valueColor)
+            out.append("|r");
+        if (!formula.empty())
+        {
+            out.append(" = ");
+            out.append(formula);
+        }
+    }
+
+    bool MacroEffectNumber(OwnedTooltipMacroContext& ctx, std::string& out, const char* field)
+    {
+        if (!ResolveOwnedTooltipEffectMacro(ctx))
+            return false;
+
+        bool integerValue = true;
+        float value = 0.0f;
+        if (std::strcmp(field, "value") == 0 || std::strcmp(field, "min") == 0)
+        {
+            AppendOwnedTooltipValueMacro(ctx, out, true);
+            return true;
+        }
+        if (std::strcmp(field, "tickvalue") == 0)
+        {
+            AppendOwnedTooltipValueMacro(ctx, out, false);
+            return true;
+        }
+
+        if (ctx.effect)
+        {
+            if (std::strcmp(field, "basepoints") == 0)
+                value = static_cast<float>(ctx.effect->effectBasePoints);
+            else if (std::strcmp(field, "max") == 0)
+                value = static_cast<float>(ctx.effect->effectBasePoints + ctx.effect->effectDieSides);
+            else if (std::strcmp(field, "multiplevalue") == 0)
+            {
+                value = ctx.effect->effectMultipleValue;
+                ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModValueMultiplier, value);
+                integerValue = false;
+            }
+            else if (std::strcmp(field, "period") == 0 || std::strcmp(field, "periodms") == 0)
+            {
+                value = static_cast<float>((ctx.targetSpell && (ctx.targetSpell->m_procTypeMask & 1)) ? 5000 : ctx.effect->effectAmplitude);
+                if (!(ctx.targetSpell && (ctx.targetSpell->m_procTypeMask & 1)))
+                    ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModActivationTime, value);
+            }
+            else if (std::strcmp(field, "radius") == 0)
+            {
+                value = OwnedTooltipRadiusValue(ctx.effect->effectRadiusIndex);
+                ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModRadius, value);
+                integerValue = false;
+            }
+            else if (std::strcmp(field, "chaintargets") == 0)
+                value = static_cast<float>(ctx.effect->effectChainTargets);
+            else if (std::strcmp(field, "chainamplitude") == 0)
+            {
+                value = ctx.effect->effectChainAmplitude;
+                integerValue = false;
+            }
+            else if (std::strcmp(field, "misc") == 0 || std::strcmp(field, "misca") == 0)
+                value = static_cast<float>(ctx.effect->effectMiscValue);
+            else if (std::strcmp(field, "miscb") == 0)
+                value = static_cast<float>(ctx.effect->effectMiscValueB);
+            else if (std::strcmp(field, "triggerspell") == 0)
+                value = static_cast<float>(ctx.effect->effectTriggerSpell);
+            else if (std::strcmp(field, "pointspercombo") == 0)
+            {
+                value = ctx.effect->effectPointsPerCombo;
+                integerValue = false;
+            }
+            else if (std::strcmp(field, "bonuscoefficient") == 0 || std::strcmp(field, "coefficient") == 0)
+            {
+                value = ctx.effect->effectBonusMultiplier;
+                ApplyOwnedTooltipSpellMod(ctx.targetSpell, kSpellModBonusMultiplier, value);
+                integerValue = false;
+            }
+            else if (std::strcmp(field, "pointsperlevel") == 0)
+            {
+                value = ctx.effect->effectRealPointsPerLevel;
+                integerValue = false;
+            }
+            else
+                return false;
+        }
+        else if (ctx.targetUsesStreamedEffects)
+            value = 0.0f;
+        else
+            value = NativeEffectField(ctx, field, integerValue);
+
+        if (std::strcmp(field, "period") == 0)
+        {
+            AppendOwnedTooltipTimeValue(out, value);
+            return true;
+        }
+
+        if (std::strcmp(field, "radius") == 0)
+            return AppendMacroRadius(out, value);
+
+        return AppendMacroNumber(out, value, integerValue);
+    }
+
+    bool MacroSchoolDamage(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx))
+        {
+            if (ctx.args.size() == 1)
+            {
+                uint32_t const spellId = ctx.args[0];
+                MarkOwnedSpellTooltipAwaitingSpell(spellId);
+                SpellCacheStreaming::RequestSpell(spellId, UINT32_MAX);
+                return true;
+            }
+
+            return false;
+        }
+
+        if (!ctx.targetSpell)
+            return true;
+
+        uint32_t const schoolMask = OwnedTooltipSpellSchoolMask(ctx.targetSpell);
+        const char* schoolName = OwnedTooltipSchoolName(schoolMask);
+        if (!schoolName)
+            return true;
+
+        const char* schoolColor = s_ownedTooltipExpressionEvaluationDepth == 0
+            ? OwnedTooltipSchoolColor(schoolMask)
+            : nullptr;
+        if (schoolColor)
+            out.append(schoolColor);
+        out.append(schoolName);
+        out.append(" damage");
+        if (schoolColor)
+            out.append("|r");
+        return true;
+    }
+
+    bool MacroMastery(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (ctx.args.size() > 1)
+            return false;
+
+        uint32_t specIndex = ctx.args.empty() ? 0 : ctx.args[0];
+        if (specIndex < 1 || specIndex > 4)
+            return false;
+
+        return AppendMacroNumber(out, CharacterDefines::getMasteryForSpec(specIndex - 1), false);
+    }
+
+    bool MacroAttackPower(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx))
+            return false;
+
+        CGPlayer* activePlayer = reinterpret_cast<CGPlayer*>(ClntObjMgr::ObjectPtr(ClntObjMgr::GetActivePlayer(), TYPEMASK_PLAYER));
+        return AppendMacroNumber(out, GetAttackPowerBonusForSpell(activePlayer, ctx.targetSpell), true);
+    }
+
+    bool MacroProcChance(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx))
+            return false;
+
+        return AppendMacroNumber(out, ctx.targetSpell ? static_cast<float>(ctx.targetSpell->m_procChance) : 0.0f, true);
+    }
+
+    bool MacroProcCharges(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx))
+            return false;
+
+        return AppendMacroNumber(out, ctx.targetSpell ? static_cast<float>(ctx.targetSpell->m_procCharges) : 0.0f, true);
+    }
+
+    bool MacroMaxTargets(OwnedTooltipMacroContext& ctx, std::string& out)
+    {
+        if (!ResolveOwnedTooltipSpellMacro(ctx))
+            return false;
+
+        return AppendMacroNumber(out, ctx.targetSpell ? static_cast<float>(ctx.targetSpell->m_maxTargets) : 0.0f, true);
+    }
+
+    using OwnedTooltipMacroHandler = bool (*)(OwnedTooltipMacroContext&, std::string&);
+
+    bool MacroValue(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "value"); }
+    bool MacroTickValue(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "tickvalue"); }
+    bool MacroBasePoints(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "basepoints"); }
+    bool MacroMin(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "min"); }
+    bool MacroMax(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "max"); }
+    bool MacroMultipleValue(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "multiplevalue"); }
+    bool MacroPeriod(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "period"); }
+    bool MacroPeriodMs(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "periodms"); }
+    bool MacroRadius(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "radius"); }
+    bool MacroChainTargets(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "chaintargets"); }
+    bool MacroChainAmplitude(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "chainamplitude"); }
+    bool MacroMisc(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "misc"); }
+    bool MacroMiscA(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "misca"); }
+    bool MacroMiscB(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "miscb"); }
+    bool MacroTriggerSpell(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "triggerspell"); }
+    bool MacroPointsPerCombo(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "pointspercombo"); }
+    bool MacroBonusCoefficient(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "bonuscoefficient"); }
+    bool MacroCoefficient(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "coefficient"); }
+    bool MacroPointsPerLevel(OwnedTooltipMacroContext& ctx, std::string& out) { return MacroEffectNumber(ctx, out, "pointsperlevel"); }
+
+    const std::unordered_map<std::string, OwnedTooltipMacroHandler>& OwnedTooltipMacroDefinitions()
+    {
+        static const std::unordered_map<std::string, OwnedTooltipMacroHandler> definitions = {
+            { "duration", MacroDuration },
+            { "cooldown", MacroCooldown },
+            { "name", MacroName },
+            { "icon", MacroIcon },
+            { "stacks", MacroStacks },
+            { "schooldamage", MacroSchoolDamage },
+            { "mastery", MacroMastery },
+            { "attackpower", MacroAttackPower },
+            { "procchance", MacroProcChance },
+            { "proccharges", MacroProcCharges },
+            { "maxtargets", MacroMaxTargets },
+            { "value", MacroValue },
+            { "tickvalue", MacroTickValue },
+            { "basepoints", MacroBasePoints },
+            { "min", MacroMin },
+            { "max", MacroMax },
+            { "multiplevalue", MacroMultipleValue },
+            { "period", MacroPeriod },
+            { "periodms", MacroPeriodMs },
+            { "radius", MacroRadius },
+            { "radious", MacroRadius },
+            { "chaintargets", MacroChainTargets },
+            { "chainamplitude", MacroChainAmplitude },
+            { "misc", MacroMisc },
+            { "misca", MacroMiscA },
+            { "miscb", MacroMiscB },
+            { "triggerspell", MacroTriggerSpell },
+            { "pointspercombo", MacroPointsPerCombo },
+            { "bonuscoefficient", MacroBonusCoefficient },
+            { "coefficient", MacroCoefficient },
+            { "pointsperlevel", MacroPointsPerLevel },
+        };
+
+        return definitions;
+    }
+
+    bool TryAppendOwnedTooltipMacro(SpellRow* spell, const char* text, size_t textLen, size_t& pos, std::string& out)
+    {
+        if (pos >= textLen || text[pos] != '@')
+            return false;
+
+        size_t const macroStart = pos;
+        size_t nameStart = pos + 1;
+        if (nameStart >= textLen || !std::isalpha(static_cast<unsigned char>(text[nameStart])))
+            return false;
+
+        size_t nameEnd = nameStart + 1;
+        while (nameEnd < textLen && std::isalpha(static_cast<unsigned char>(text[nameEnd])))
+            ++nameEnd;
+
+        std::string macro(text + nameStart, nameEnd - nameStart);
+        size_t afterName = nameEnd;
+        if (NormalizeMacroName(macro) == "astime")
+        {
+            if (!TryAppendOwnedTooltipAsTimeMacro(spell, text, textLen, afterName, out))
+                return false;
+            pos = afterName;
+            return true;
+        }
+
+        std::vector<uint32_t> args;
+        if (!TryParseMacroArguments(text, textLen, afterName, args))
+            return false;
+
+        std::string normalizedMacro = NormalizeMacroName(macro);
+        auto const& definitions = OwnedTooltipMacroDefinitions();
+        auto it = definitions.find(normalizedMacro);
+        if (it == definitions.end())
+            return false;
+
+        OwnedTooltipMacroContext ctx;
+        ctx.currentSpell = spell;
+        ctx.args = args;
+        if (!it->second(ctx, out))
+            return false;
+
+        if (normalizedMacro == "schooldamage" && afterName < textLen && std::isspace(static_cast<unsigned char>(text[afterName])))
+        {
+            static constexpr const char* kColorEnd = "|r";
+            static constexpr size_t kColorEndLen = 2;
+            if (out.size() >= kColorEndLen && out.compare(out.size() - kColorEndLen, kColorEndLen, kColorEnd) == 0)
+            {
+                out.resize(out.size() - kColorEndLen);
+                out.push_back(text[afterName++]);
+                out.append(kColorEnd);
+            }
+        }
+
+        pos = afterName;
+        return true;
+    }
+
+    bool ParseOwnedTooltipTextToString(SpellRow* spell, const char* source, size_t textLen, std::string& out)
+    {
+        out.clear();
+        if (!spell || !source)
+            return false;
+
+        out.reserve(textLen);
+        for (size_t pos = 0; pos < textLen;)
+        {
+            if (TryAppendOwnedTooltipMathBlock(spell, source, textLen, pos, out))
+                continue;
+
+            if (TryAppendOwnedTooltipMacro(spell, source, textLen, pos, out))
+                continue;
+
+            out.push_back(source[pos++]);
+        }
+
+        return true;
+    }
+
+    bool ShouldUseOwnedSpellTooltipParser(SpellRow* spell)
+    {
+        if (!spell)
+            return false;
+
+        if (spell->m_ID >= kTSSpellIdStart)
+            return true;
+
+        return SpellCacheStreaming::GetSpellEffectCount(spell->m_ID) > 3;
+    }
+
+    bool OwnedTooltipDescriptionHasValueMacro(const char* description)
+    {
+        if (!description)
+            return false;
+
+        for (const char* pos = description; *pos; ++pos)
+        {
+            if (pos[0] != '@')
+                continue;
+
+            if (pos[1] == '{' || std::isalpha(static_cast<unsigned char>(pos[1])))
+                return true;
+        }
+
+        return false;
+    }
+
+    void RecordOwnedSpellTooltipRefreshState(
+        void* tooltip,
+        int spellId,
+        int a3,
+        int a4,
+        int a5,
+        int a6,
+        int a7,
+        int a8,
+        uint32_t* a9,
+        int a10,
+        int a11,
+        int a12,
+        int a13,
+        int a14,
+        int a15,
+        int a16,
+        SpellRow* spell)
+    {
+        if (s_ownedSpellTooltipRefresh.refreshing)
+            return;
+
+        if (a11 || !ShouldUseOwnedSpellTooltipParser(spell) || !OwnedTooltipDescriptionHasValueMacro(spell ? spell->m_description_lang : nullptr))
+        {
+            s_ownedSpellTooltipRefresh.active = false;
+            return;
+        }
+
+        s_ownedSpellTooltipRefresh.active = true;
+        s_ownedSpellTooltipRefresh.shiftDown = IsTooltipFormulaExpanded();
+        s_ownedSpellTooltipRefresh.tooltip = tooltip;
+        s_ownedSpellTooltipRefresh.spellId = spellId;
+        s_ownedSpellTooltipRefresh.a3 = a3;
+        s_ownedSpellTooltipRefresh.a4 = a4;
+        s_ownedSpellTooltipRefresh.a5 = a5;
+        s_ownedSpellTooltipRefresh.a6 = a6;
+        s_ownedSpellTooltipRefresh.a7 = a7;
+        s_ownedSpellTooltipRefresh.a8 = a8;
+        s_ownedSpellTooltipRefresh.hasA9 = a9 != nullptr;
+        s_ownedSpellTooltipRefresh.a9Value = a9 ? *a9 : 0;
+        s_ownedSpellTooltipRefresh.a10 = a10;
+        s_ownedSpellTooltipRefresh.a12 = a12;
+        s_ownedSpellTooltipRefresh.a13 = a13;
+        s_ownedSpellTooltipRefresh.a14 = a14;
+        s_ownedSpellTooltipRefresh.a15 = a15;
+        s_ownedSpellTooltipRefresh.a16 = a16;
+        s_ownedSpellTooltipRefresh.cacheRefreshPending = false;
+        s_ownedSpellTooltipRefresh.awaitedSpellIds.clear();
+    }
+
+    bool ParseOwnedSpellTooltipText(SpellRow* spell, const char* source, char* dest, size_t destSize)
+    {
+        if (!spell || !source || !dest || destSize == 0)
+            return false;
+
+        size_t const textLen = std::strlen(source);
+        std::string out;
+        if (!ParseOwnedTooltipTextToString(spell, source, textLen, out))
+            return false;
+
+        if (out.size() >= destSize)
+            out.resize(destSize - 1);
+
+        std::memcpy(dest, out.data(), out.size());
+        dest[out.size()] = '\0';
+        return dest[0] != '\0';
+    }
+
     bool SafeParseSpellTooltipDescription(SpellRow* spell, char* dest, size_t destSize, int a5, int a7)
     {
         if (!spell || !dest || destSize == 0) {
@@ -117,6 +2214,9 @@ namespace
         }
 
         dest[0] = '\0';
+        if (ShouldUseOwnedSpellTooltipParser(spell))
+            return ParseOwnedSpellTooltipText(spell, spell->m_description_lang, dest, destSize);
+
 #ifdef _MSC_VER
         __try {
             TooltipVariableExtensions::ParseText(spell, dest, static_cast<uint32_t>(destSize), a5, a7, 0, 0, 1, 0);
@@ -182,6 +2282,9 @@ namespace
 int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t spellVariable, uint32_t a3, SpellRow* spell, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t a8, uint32_t a9) {
     uint32_t result = 0;
 
+    if (TryHandleStreamedEffectFormulaVariable(_this, spellVariable, a3, spell, a5, a6, a7, a8, a9))
+        return a3;
+
     if (spellVariable < SPELLVARIABLE_hp)
         result = CFormula::GetVariableValue(_this, spellVariable, a3, spell, a5, a6, a7, a8, a9);
     else {
@@ -189,8 +2292,23 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
         CGPlayer* activePlayer = reinterpret_cast<CGPlayer*>(ClntObjMgr::ObjectPtr(ClntObjMgr::GetActivePlayer(), TYPEMASK_PLAYER));
 
         if (activePlayer) {
+            uint32_t effectIndex = 0;
             // Arrays for current and max power fields
-            if (spellVariable >= SPELLVARIABLE_power1 && spellVariable <= SPELLVARIABLE_power7) {
+            if (TryGetCustomEffectIndex(spellVariable, SPELLVARIABLE_ppl1, SPELLVARIABLE_ppl4, effectIndex)) {
+                if (!TryGetEffectRealPointsPerLevel(spell, effectIndex, value))
+                    *reinterpret_cast<uint32_t*>(_this) = 1;
+            }
+            else if (TryGetCustomEffectIndex(spellVariable, SPELLVARIABLE_PPL1, SPELLVARIABLE_PPL4, effectIndex)) {
+                if (TryGetEffectRealPointsPerLevel(spell, effectIndex, value))
+                    value *= activePlayer->unitBase.unitData->level;
+                else
+                    *reinterpret_cast<uint32_t*>(_this) = 1;
+            }
+            else if (TryGetCustomEffectIndex(spellVariable, SPELLVARIABLE_bon1, SPELLVARIABLE_bon4, effectIndex)) {
+                if (!TryGetEffectBonusValue(activePlayer, spell, effectIndex, a5, a8, a7, a9, value))
+                    *reinterpret_cast<uint32_t*>(_this) = 1;
+            }
+            else if (spellVariable >= SPELLVARIABLE_power1 && spellVariable <= SPELLVARIABLE_power7) {
                 uint32_t var = spellVariable - SPELLVARIABLE_power1;
                 value = static_cast<float>(activePlayer->unitBase.unitData->unitCurrPowers[var]);
             }
@@ -205,24 +2323,6 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
                         break;
                     case SPELLVARIABLE_HP:
                         value = static_cast<float>(activePlayer->unitBase.unitData->unitMaxHealth);
-                        break;
-                    case SPELLVARIABLE_ppl1:
-                        value = spell->m_effectRealPointsPerLevel[0];
-                        break;
-                    case SPELLVARIABLE_ppl2:
-                        value = spell->m_effectRealPointsPerLevel[1];
-                        break;
-                    case SPELLVARIABLE_ppl3:
-                        value = spell->m_effectRealPointsPerLevel[2];
-                        break;
-                    case SPELLVARIABLE_PPL1:
-                        value = spell->m_effectRealPointsPerLevel[0] * activePlayer->unitBase.unitData->level;
-                        break;
-                    case SPELLVARIABLE_PPL2:
-                        value = spell->m_effectRealPointsPerLevel[1] * activePlayer->unitBase.unitData->level;
-                        break;
-                    case SPELLVARIABLE_PPL3:
-                        value = spell->m_effectRealPointsPerLevel[2] * activePlayer->unitBase.unitData->level;
                         break;
                     case SPELLVARIABLE_mastery1:
                         value = CharacterDefines::getMasteryForSpec(0);
@@ -245,20 +2345,6 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
                     case SPELLVARIABLE_ppct:
                         value = activePlayer->PlayerData->parryPct;
                         break;
-                    case SPELLVARIABLE_bon1: {
-                        value = GetSpellScalarsForEffect(activePlayer, spell, 0);
-                        value += GetNativeEffectMinPoints(spell, 0, a5, a8, a7, a9);
-                    } break;
-                    case SPELLVARIABLE_bon2: {
-                        value = GetSpellScalarsForEffect(activePlayer, spell, 1);
-                        value += GetNativeEffectMinPoints(spell, 1, a5, a8, a7, a9);
-                    }
-                    break;
-                    case SPELLVARIABLE_bon3: {
-                        value = GetSpellScalarsForEffect(activePlayer, spell, 2);
-                        value += GetNativeEffectMinPoints(spell, 2, a5, a8, a7, a9);
-                    }
-                    break;
                     default:
                         *reinterpret_cast<uint32_t*>(_this) = 1;
                         break;
@@ -267,9 +2353,7 @@ int TooltipExtensions::GetVariableValueEx(void* _this, uint32_t edx, uint32_t sp
         }
 
         result = a3;
-        uint32_t* offset = reinterpret_cast<uint32_t*>(a3 + 128);
-        --*offset;
-        *reinterpret_cast<float*>(a3 + 4 * *offset) = value;
+        PushFormulaValue(a3, value);
     }
 
     return result;
@@ -281,7 +2365,7 @@ void TooltipExtensions::SetNewVariablePointers() {
         TooltipVariableExtensions::GetExtendedSpellVariableNames(variableCount);
 
     for (size_t i = 0; i < variableCount; i++)
-        spellVariables[140 + i] = reinterpret_cast<uint32_t>(tooltipSpellVariablesExtensions[i]);
+        spellVariables[SPELLVARIABLE_STOCK_COUNT + i] = reinterpret_cast<uint32_t>(tooltipSpellVariablesExtensions[i]);
 }
 
 void TooltipExtensions::SpellTooltipPowerCostExtension() {
@@ -456,6 +2540,62 @@ int __fastcall TooltipExtensions::SetSpellTooltipHook(void* thisPtr, void* edx, 
     return SetSpellTooltipImpl(thisPtr, spellId, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16);
 }
 
+void TooltipExtensions::PumpShiftTooltipRefresh()
+{
+    if (!s_ownedSpellTooltipRefresh.active
+        || s_ownedSpellTooltipRefresh.refreshing
+        || !s_ownedSpellTooltipRefresh.tooltip)
+        return;
+
+    bool const shiftDown = IsTooltipFormulaExpanded();
+    bool const cacheRefreshPending = s_ownedSpellTooltipRefresh.cacheRefreshPending;
+    if (shiftDown == s_ownedSpellTooltipRefresh.shiftDown && !cacheRefreshPending)
+        return;
+
+    s_ownedSpellTooltipRefresh.shiftDown = shiftDown;
+    s_ownedSpellTooltipRefresh.cacheRefreshPending = false;
+    s_ownedSpellTooltipRefresh.awaitedSpellIds.clear();
+    s_ownedSpellTooltipRefresh.refreshing = true;
+    uint32_t a9Storage = s_ownedSpellTooltipRefresh.a9Value;
+    uint32_t* a9 = s_ownedSpellTooltipRefresh.hasA9 ? &a9Storage : nullptr;
+#ifdef _MSC_VER
+    __try {
+#endif
+    SetSpellTooltipImpl(
+        s_ownedSpellTooltipRefresh.tooltip,
+        s_ownedSpellTooltipRefresh.spellId,
+        s_ownedSpellTooltipRefresh.a3,
+        s_ownedSpellTooltipRefresh.a4,
+        s_ownedSpellTooltipRefresh.a5,
+        s_ownedSpellTooltipRefresh.a6,
+        s_ownedSpellTooltipRefresh.a7,
+        s_ownedSpellTooltipRefresh.a8,
+        a9,
+        s_ownedSpellTooltipRefresh.a10,
+        0,
+        s_ownedSpellTooltipRefresh.a12,
+        s_ownedSpellTooltipRefresh.a13,
+        s_ownedSpellTooltipRefresh.a14,
+        s_ownedSpellTooltipRefresh.a15,
+        s_ownedSpellTooltipRefresh.a16);
+#ifdef _MSC_VER
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        s_ownedSpellTooltipRefresh.active = false;
+    }
+#endif
+    s_ownedSpellTooltipRefresh.refreshing = false;
+}
+
+void PumpSpellTooltipShiftRefresh()
+{
+    TooltipExtensions::PumpShiftTooltipRefresh();
+}
+
+void NotifySpellTooltipSpellCached(uint32_t spellId)
+{
+    MarkOwnedSpellTooltipCacheRefresh(spellId);
+}
+
 int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, int a4, int a5, int a6, int a7, int a8, uint32_t* a9, int a10, int a11, int a12, int a13, int a14, int a15, int a16)
 {
     // Early out if we do not have a tooltip object.
@@ -525,6 +2665,7 @@ int TooltipExtensions::SetSpellTooltipImpl(void* tooltip, int spellId, int a3, i
         return 0;
     }
     SpellRow* spell = &spellRow;
+    RecordOwnedSpellTooltipRefreshState(tooltip, spellId, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, spell);
 
     // Basic line buffers.
     char lineLeft[128] = {};

@@ -40,6 +40,10 @@ type SpellEffectCacheValues = {
     EffectSpellClassMaskC: int
     EffectChainAmplitude: float
     EffectBonusMultiplier: float
+    EffectSpellPowerBonus: float
+    EffectAttackPowerBonus: float
+    EffectBlockValueBonus: float
+    EffectScalingMode: int
 }
 
 const int32Fields: (keyof SpellEffectCacheValues)[] = [
@@ -60,6 +64,7 @@ const int32Fields: (keyof SpellEffectCacheValues)[] = [
     'EffectSpellClassMaskA',
     'EffectSpellClassMaskB',
     'EffectSpellClassMaskC',
+    'EffectScalingMode',
 ]
 
 export class SpellEffectCacheRow extends DBCRow<SpellEffectCacheCreator, SpellEffectCacheQuery> {
@@ -89,6 +94,10 @@ export class SpellEffectCacheRow extends DBCRow<SpellEffectCacheCreator, SpellEf
     get EffectSpellClassMaskC() { return new DBCIntCell(this, this.buffer, this.offset + 84) }
     get EffectChainAmplitude() { return new DBCFloatCell(this, this.buffer, this.offset + 88) }
     get EffectBonusMultiplier() { return new DBCFloatCell(this, this.buffer, this.offset + 92) }
+    get EffectSpellPowerBonus() { return new DBCFloatCell(this, this.buffer, this.offset + 96) }
+    get EffectAttackPowerBonus() { return new DBCFloatCell(this, this.buffer, this.offset + 100) }
+    get EffectBlockValueBonus() { return new DBCFloatCell(this, this.buffer, this.offset + 104) }
+    get EffectScalingMode() { return new DBCIntCell(this, this.buffer, this.offset + 108) }
 
     clone(SpellID: int, EffectIndex: int, c?: SpellEffectCacheCreator): this {
         return this.cloneInternal([SpellID, EffectIndex], c)
@@ -103,6 +112,7 @@ export type SpellEffectCacheQuery = {
 }
 
 function legacyEffectValues(spell: any, effectIndex: number): SpellEffectCacheValues {
+    const bonusData = SQL.spell_bonus_data.query({ entry: spell.ID.get(), effect: effectIndex });
     return {
         Effect: spell.Effect.getIndex(effectIndex),
         EffectDieSides: spell.EffectDieSides.getIndex(effectIndex),
@@ -126,6 +136,10 @@ function legacyEffectValues(spell: any, effectIndex: number): SpellEffectCacheVa
         EffectSpellClassMaskC: toInt32(spell.EffectSpellClassMaskC.getIndex(effectIndex)),
         EffectChainAmplitude: spell.EffectChainAmplitude.getIndex(effectIndex),
         EffectBonusMultiplier: spell.EffectBonusMultiplier.getIndex(effectIndex),
+        EffectSpellPowerBonus: bonusData ? bonusData.sp.get() : 0,
+        EffectAttackPowerBonus: bonusData ? bonusData.ap.get() : 0,
+        EffectBlockValueBonus: bonusData ? bonusData.bv.get() : 0,
+        EffectScalingMode: bonusData ? bonusData.scaling_mode.get() : 0,
     }
 }
 
@@ -163,13 +177,17 @@ function isDefaultEffect(values: SpellEffectCacheValues) {
         && values.EffectSpellClassMaskC === 0
         && values.EffectChainAmplitude === 1
         && values.EffectBonusMultiplier === 0
+        && values.EffectSpellPowerBonus === 0
+        && values.EffectAttackPowerBonus === 0
+        && values.EffectBlockValueBonus === 0
+        && values.EffectScalingMode === 0
 }
 
 export class SpellEffectCacheCDBCFile extends CDBCFile<
     SpellEffectCacheCreator,
     SpellEffectCacheQuery,
     SpellEffectCacheRow> {
-    protected defaultRow = [1, 0, 0, 0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 1.0, 0.0]
+    protected defaultRow = [1, 0, 0, 0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 1.0, 0.0, 0.0, 0.0, 0.0, 0]
 
     constructor() {
         super('SpellEffect', (t, b, o) => new SpellEffectCacheRow(t, b, o))

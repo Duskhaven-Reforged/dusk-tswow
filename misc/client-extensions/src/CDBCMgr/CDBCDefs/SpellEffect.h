@@ -32,6 +32,10 @@ struct SpellEffectCacheRow {
     uint32_t effectSpellClassMaskC;
     float effectChainAmplitude;
     float effectBonusMultiplier;
+    float effectSpellPowerBonus;
+    float effectAttackPowerBonus;
+    float effectBlockValueBonus;
+    int32_t effectScalingMode;
 
     int handleLuaPush(lua_State* L) {
         ClientLua::PushNumber(L, spellID);

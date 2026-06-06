@@ -33,11 +33,14 @@
 #include <vector>
 #include <Windows.h>
 
+void PumpSpellTooltipShiftRefresh();
+void NotifySpellTooltipSpellCached(uint32_t spellId);
+
 namespace
 {
     constexpr opcode_t SPELL_CACHE_QUERY_OPCODE = 0x7A40;
     constexpr opcode_t SPELL_CACHE_RESPONSE_OPCODE = 0x7A41;
-    constexpr uint32_t SPELL_CACHE_STREAM_VERSION = 3;
+    constexpr uint32_t SPELL_CACHE_STREAM_VERSION = 4;
     constexpr uintptr_t SPELL_DB_ADDRESS = 0x00AD49D0;
     constexpr uintptr_t SPELL_ICON_DB_RECORDS_ADDRESS = 0x00AD48A4;
     constexpr uintptr_t SPELL_MISSILE_DB_RECORDS_ADDRESS = 0x00AD4934;
@@ -232,6 +235,7 @@ namespace
     bool NativeSpellDbLoadPatched = false;
     bool PendingSpellCastSpellRecLookupPatched = false;
     bool KnownSpellMaxIdGatePatched = false;
+    bool StreamedSpellOverlayLoaded = false;
     bool NativeActionBarRefreshPending = false;
     int32_t ActionBarUpdateCooldownEventId = -2;
     int32_t ActionBarUpdateStateEventId = -2;
@@ -556,6 +560,15 @@ namespace
     char* ReadStableString(CustomPacketRead* packet, uint32_t spellId, uint32_t fieldIndex)
     {
         std::string value = packet->ReadString("");
+        auto stableValue = std::make_unique<char[]>(value.size() + 1);
+        std::memcpy(stableValue.get(), value.c_str(), value.size() + 1);
+        char* raw = stableValue.get();
+        SpellStringStorage[SpellStringKey(spellId, fieldIndex)] = std::move(stableValue);
+        return raw;
+    }
+
+    char* StoreStableString(uint32_t spellId, uint32_t fieldIndex, std::string const& value)
+    {
         auto stableValue = std::make_unique<char[]>(value.size() + 1);
         std::memcpy(stableValue.get(), value.c_str(), value.size() + 1);
         char* raw = stableValue.get();
@@ -2299,6 +2312,7 @@ namespace
             if (callback)
                 callback(spellId);
         }
+        NotifySpellTooltipSpellCached(spellId);
     }
 
     void QueueNativeActionBarRefresh(uint32_t spellId, char const* reason)
@@ -2841,6 +2855,285 @@ namespace
                 << "spell" << spellId
                 << "hash" << spellDataHash
                 << "skillLine" << skillLineId;
+            ++logCount;
+        }
+    }
+
+    constexpr uint32_t STREAMED_SPELL_OVERLAY_MAGIC = 0x43534844; // DHSC
+    constexpr uint32_t STREAMED_SPELL_OVERLAY_VERSION = 1;
+
+    std::string StreamedSpellOverlayPersistencePath()
+    {
+        return "Cache\\SpellCacheOverlay.bin";
+    }
+
+    bool ReadBytes(std::ifstream& in, void* dst, size_t size)
+    {
+        return static_cast<bool>(in.read(reinterpret_cast<char*>(dst), static_cast<std::streamsize>(size)));
+    }
+
+    bool WriteBytes(std::ofstream& out, void const* src, size_t size)
+    {
+        return static_cast<bool>(out.write(reinterpret_cast<char const*>(src), static_cast<std::streamsize>(size)));
+    }
+
+    bool ReadStringBlock(std::ifstream& in, std::string& out)
+    {
+        uint32_t length = 0;
+        if (!ReadBytes(in, &length, sizeof(length)))
+            return false;
+        if (length > 1u << 20)
+            return false;
+
+        out.assign(length, '\0');
+        if (!length)
+            return true;
+
+        return ReadBytes(in, &out[0], length);
+    }
+
+    bool WriteStringBlock(std::ofstream& out, char const* value)
+    {
+        uint32_t const length = value ? static_cast<uint32_t>(std::strlen(value)) : 0;
+        if (!WriteBytes(out, &length, sizeof(length)))
+            return false;
+        if (!length)
+            return true;
+
+        return WriteBytes(out, value, length);
+    }
+
+    void AddLoadedStreamedSpellRow(SpellCacheRow& spell)
+    {
+        GlobalCDBCMap.addRow("Spell", spell.id, spell);
+        auto const spellRange = GlobalCDBCMap.getIndexRange("Spell");
+        GlobalCDBCMap.setIndexRange(
+            "Spell",
+            spellRange.first ? (std::min)(spellRange.first, static_cast<int>(spell.id)) : spell.id,
+            (std::max)(spellRange.second, static_cast<int>(spell.id)));
+        StreamedSpellRows.insert(spell.id);
+        MissingSpellRows.erase(spell.id);
+    }
+
+    void EnsureStreamedSpellOverlayLoaded()
+    {
+        if (StreamedSpellOverlayLoaded)
+            return;
+
+        StreamedSpellOverlayLoaded = true;
+
+        std::ifstream in(StreamedSpellOverlayPersistencePath(), std::ios::binary);
+        if (!in)
+            return;
+
+        uint32_t magic = 0;
+        uint32_t version = 0;
+        uint32_t streamVersion = 0;
+        uint32_t spellCount = 0;
+        if (!ReadBytes(in, &magic, sizeof(magic))
+            || !ReadBytes(in, &version, sizeof(version))
+            || !ReadBytes(in, &streamVersion, sizeof(streamVersion))
+            || !ReadBytes(in, &spellCount, sizeof(spellCount))
+            || magic != STREAMED_SPELL_OVERLAY_MAGIC
+            || version != STREAMED_SPELL_OVERLAY_VERSION
+            || streamVersion != SPELL_CACHE_STREAM_VERSION
+            || spellCount > 200000)
+        {
+            LOG_ERROR << "Ignored invalid streamed spell overlay cache";
+            return;
+        }
+
+        uint32_t loadedSpells = 0;
+        uint32_t loadedEffects = 0;
+        for (uint32_t i = 0; i < spellCount; ++i)
+        {
+            SpellCacheRow spell{};
+            uint32_t effectCount = 0;
+            std::string name;
+            std::string rank;
+            std::string description;
+            std::string auraDescription;
+
+            if (!ReadBytes(in, &spell, sizeof(spell))
+                || !ReadBytes(in, &effectCount, sizeof(effectCount))
+                || effectCount > 32
+                || !ReadStringBlock(in, name)
+                || !ReadStringBlock(in, rank)
+                || !ReadStringBlock(in, description)
+                || !ReadStringBlock(in, auraDescription))
+            {
+                LOG_ERROR << "Stopped loading truncated streamed spell overlay"
+                    << "loaded" << loadedSpells;
+                return;
+            }
+
+            if (!HasReasonableSpellId(spell.id)
+                || spell.cacheVersion != SPELL_CACHE_STREAM_VERSION
+                || !spell.spellDataHash
+                || !HasValidPowerType(spell.powerType))
+            {
+                for (uint32_t skipped = 0; skipped < effectCount; ++skipped)
+                {
+                    SpellEffectCacheRow ignored{};
+                    if (!ReadBytes(in, &ignored, sizeof(ignored)))
+                        return;
+                }
+                continue;
+            }
+
+            spell.spellName = StoreStableString(spell.id, 0, name);
+            spell.spellRank = StoreStableString(spell.id, 1, rank);
+            spell.description = StoreStableString(spell.id, 2, description);
+            spell.auraDescription = StoreStableString(spell.id, 3, auraDescription);
+            AddLoadedStreamedSpellRow(spell);
+
+            for (uint32_t effectIndex = 0; effectIndex < 32; ++effectIndex)
+                GlobalCDBCMap.allCDBCs["SpellEffect"].erase(SpellEffectCacheKey(spell.id, effectIndex));
+
+            for (uint32_t effectOrdinal = 0; effectOrdinal < effectCount; ++effectOrdinal)
+            {
+                SpellEffectCacheRow effect{};
+                if (!ReadBytes(in, &effect, sizeof(effect)))
+                {
+                    LOG_ERROR << "Stopped loading truncated streamed spell effects overlay"
+                        << "spell" << spell.id
+                        << "loaded" << loadedEffects;
+                    return;
+                }
+
+                if (effect.spellID != spell.id || effect.effectIndex >= 32)
+                    continue;
+
+                GlobalCDBCMap.addRow("SpellEffect", SpellEffectCacheKey(effect.spellID, effect.effectIndex), effect);
+                ++loadedEffects;
+            }
+
+            ++loadedSpells;
+        }
+
+        LOG_INFO << "Loaded streamed spell overlay cache"
+            << "spells" << loadedSpells
+            << "effects" << loadedEffects;
+    }
+
+    void SaveStreamedSpellOverlay()
+    {
+        EnsureStreamedSpellOverlayLoaded();
+        CreateDirectoryA("Cache", nullptr);
+
+        std::string const path = StreamedSpellOverlayPersistencePath();
+        std::string const tmpPath = path + ".tmp";
+        std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            LOG_ERROR << "Failed to open streamed spell overlay cache for write";
+            return;
+        }
+
+        auto spellIt = GlobalCDBCMap.allCDBCs.find("Spell");
+        uint32_t spellCount = 0;
+        if (spellIt != GlobalCDBCMap.allCDBCs.end())
+        {
+            for (auto const& entry : spellIt->second)
+            {
+                SpellCacheRow const* spell = std::any_cast<SpellCacheRow>(&entry.second);
+                if (spell
+                    && HasReasonableSpellId(spell->id)
+                    && spell->cacheVersion == SPELL_CACHE_STREAM_VERSION
+                    && spell->spellDataHash
+                    && StreamedSpellRows.find(spell->id) != StreamedSpellRows.end())
+                {
+                    ++spellCount;
+                }
+            }
+        }
+
+        uint32_t const magic = STREAMED_SPELL_OVERLAY_MAGIC;
+        uint32_t const version = STREAMED_SPELL_OVERLAY_VERSION;
+        uint32_t const streamVersion = SPELL_CACHE_STREAM_VERSION;
+        if (!WriteBytes(out, &magic, sizeof(magic))
+            || !WriteBytes(out, &version, sizeof(version))
+            || !WriteBytes(out, &streamVersion, sizeof(streamVersion))
+            || !WriteBytes(out, &spellCount, sizeof(spellCount)))
+        {
+            LOG_ERROR << "Failed to write streamed spell overlay header";
+            return;
+        }
+
+        uint32_t writtenSpells = 0;
+        uint32_t writtenEffects = 0;
+        if (spellIt != GlobalCDBCMap.allCDBCs.end())
+        {
+            for (auto const& entry : spellIt->second)
+            {
+                SpellCacheRow const* spell = std::any_cast<SpellCacheRow>(&entry.second);
+                if (!spell
+                    || !HasReasonableSpellId(spell->id)
+                    || spell->cacheVersion != SPELL_CACHE_STREAM_VERSION
+                    || !spell->spellDataHash
+                    || StreamedSpellRows.find(spell->id) == StreamedSpellRows.end())
+                {
+                    continue;
+                }
+
+                std::vector<SpellEffectCacheRow> effects;
+                effects.reserve(32);
+                for (uint32_t effectIndex = 0; effectIndex < 32; ++effectIndex)
+                {
+                    SpellEffectCacheRow* effect = GlobalCDBCMap.getRow<SpellEffectCacheRow>(
+                        "SpellEffect", SpellEffectCacheKey(spell->id, effectIndex));
+                    if (effect)
+                        effects.push_back(*effect);
+                }
+
+                uint32_t const effectCount = static_cast<uint32_t>(effects.size());
+                if (!WriteBytes(out, spell, sizeof(*spell))
+                    || !WriteBytes(out, &effectCount, sizeof(effectCount))
+                    || !WriteStringBlock(out, spell->spellName)
+                    || !WriteStringBlock(out, spell->spellRank)
+                    || !WriteStringBlock(out, spell->description)
+                    || !WriteStringBlock(out, spell->auraDescription))
+                {
+                    LOG_ERROR << "Failed to write streamed spell overlay row"
+                        << "spell" << spell->id;
+                    return;
+                }
+
+                for (SpellEffectCacheRow const& effect : effects)
+                {
+                    if (!WriteBytes(out, &effect, sizeof(effect)))
+                    {
+                        LOG_ERROR << "Failed to write streamed spell overlay effect"
+                            << "spell" << spell->id
+                            << "effectIndex" << effect.effectIndex;
+                        return;
+                    }
+                    ++writtenEffects;
+                }
+
+                ++writtenSpells;
+            }
+        }
+
+        out.close();
+        if (!out)
+        {
+            LOG_ERROR << "Failed to flush streamed spell overlay cache";
+            return;
+        }
+
+        if (!MoveFileExA(tmpPath.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        {
+            LOG_ERROR << "Failed to replace streamed spell overlay cache";
+            return;
+        }
+
+        static uint32_t logCount = 0;
+        if (logCount < 120)
+        {
+            LOG_INFO << "Saved streamed spell overlay cache"
+                << "spells" << writtenSpells
+                << "effects" << writtenEffects;
             ++logCount;
         }
     }
@@ -4127,11 +4420,16 @@ namespace
             effect.effectSpellClassMaskC = ReadU32(packet);
             effect.effectChainAmplitude = ReadF32(packet);
             effect.effectBonusMultiplier = ReadF32(packet);
+            effect.effectSpellPowerBonus = ReadF32(packet);
+            effect.effectAttackPowerBonus = ReadF32(packet);
+            effect.effectBlockValueBonus = ReadF32(packet);
+            effect.effectScalingMode = ReadI32(packet);
 
             GlobalCDBCMap.addRow("SpellEffect", SpellEffectCacheKey(effect.spellID, effect.effectIndex), effect);
         }
 
         LOG_INFO << "Cached streamed spell" << spellId << "hash" << spell.spellDataHash << "skillLine" << skillLineId << "effects" << effectCount;
+        SaveStreamedSpellOverlay();
         NotifySpellCached(spellId);
     }
 }
@@ -6822,6 +7120,8 @@ CLIENT_DETOUR(CGActionBar__UseAction_ActionbarFoundation, 0x005ABBC0, __cdecl, v
 
 bool SpellCacheStreaming::HasSpell(uint32_t spellId)
 {
+    EnsureStreamedSpellOverlayLoaded();
+
     SpellCacheRow* spell = GlobalCDBCMap.getRow<SpellCacheRow>("Spell", int(spellId));
     bool const result = spell
         && spell->cacheVersion == SPELL_CACHE_STREAM_VERSION
@@ -6850,6 +7150,8 @@ bool SpellCacheStreaming::HasSpell(uint32_t spellId)
 
 bool SpellCacheStreaming::HasSpell(uint32_t spellId, uint32_t spellDataHash)
 {
+    EnsureStreamedSpellOverlayLoaded();
+
     SpellCacheRow* spell = GlobalCDBCMap.getRow<SpellCacheRow>("Spell", int(spellId));
     bool const result = spell && spell->cacheVersion == SPELL_CACHE_STREAM_VERSION && spell->spellDataHash == spellDataHash;
 
@@ -6876,6 +7178,7 @@ bool SpellCacheStreaming::HasSpell(uint32_t spellId, uint32_t spellDataHash)
 
 bool SpellCacheStreaming::IsRequestPending(uint32_t spellId)
 {
+    EnsureStreamedSpellOverlayLoaded();
     return PendingSpellRequests.find(spellId) != PendingSpellRequests.end();
 }
 
@@ -6885,6 +7188,8 @@ uint32_t SpellCacheStreaming::ForEachSpellEffect(
 {
     if (!spellId)
         return 0;
+
+    EnsureStreamedSpellOverlayLoaded();
 
     uint32_t visited = 0;
     for (uint32_t effectIndex = 0; effectIndex < 32; ++effectIndex)
@@ -6917,6 +7222,8 @@ bool SpellCacheStreaming::TryGetSpellEffect(
     out = nullptr;
     if (!spellId || effectIndex >= 32)
         return false;
+
+    EnsureStreamedSpellOverlayLoaded();
 
     out = GlobalCDBCMap.getRow<SpellEffectCacheRow>(
         "SpellEffect", SpellEffectCacheKey(spellId, effectIndex));
@@ -7000,6 +7307,8 @@ bool SpellCacheStreaming::TryFindSpellEffectByAura(
 
 bool SpellCacheStreaming::TryBuildSpellRow(uint32_t spellId, ClientData::SpellRow& out)
 {
+    EnsureStreamedSpellOverlayLoaded();
+
     if (!HasSpell(spellId))
         return false;
 
@@ -7186,6 +7495,8 @@ bool SpellCacheStreaming::TryResolveKnownSpellbookSlot(uint32_t oneBasedSlot, ui
 
 void SpellCacheStreaming::RequestSpell(uint32_t spellId, uint32_t spellDataHash)
 {
+    EnsureStreamedSpellOverlayLoaded();
+
     if (!HasReasonableSpellId(spellId))
     {
         static uint32_t logCount = 0;
@@ -7248,6 +7559,7 @@ void SpellCacheStreaming::RequestSpell(uint32_t spellId, uint32_t spellDataHash)
 CLIENT_DETOUR(FrameScript_FireOnUpdate_SpellCache, 0x00495810, __cdecl, int, (int a1, int a2, int a3, int a4))
 {
     PumpSpellCacheRequests();
+    PumpSpellTooltipShiftRefresh();
 
     return FrameScript_FireOnUpdate_SpellCache(a1, a2, a3, a4);
 }

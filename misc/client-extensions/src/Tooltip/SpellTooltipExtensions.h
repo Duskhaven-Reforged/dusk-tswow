@@ -9,6 +9,8 @@ namespace CFormula {
 
 namespace QuestTextParser {
     CLIENT_FUNCTION(GetMinMaxPoints, 0x7FF770, __cdecl, float*, (SpellRow*, uint32_t, float*, float*, uint32_t, uint32_t, uint32_t, uint32_t))
+    CLIENT_FUNCTION(GetModifiedStats, 0x7FD970, __cdecl, char, (SpellRow*, int, int*, int*))
+    CLIENT_FUNCTION(ModifySpellValue, 0x7FDBA0, __cdecl, char, (SpellRow*, float*, int))
 }
 
 namespace CGTooltip {
@@ -17,6 +19,9 @@ namespace CGTooltip {
 }
 
 class TooltipExtensions {
+public:
+    static void PumpShiftTooltipRefresh();
+
 private:
     static void Apply();
     static void SetNewVariablePointers();
