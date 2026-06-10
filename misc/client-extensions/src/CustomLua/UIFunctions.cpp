@@ -6,6 +6,7 @@
 #include <array>
 #include <cctype>
 #include <cstring>
+#include <intrin.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -407,7 +408,19 @@ LUA_FUNCTION(FireActionBarSlotUpdateEvent, (lua_State* L)) {
 }
 
 LUA_FUNCTION(FireTalentUpdateEvent, (lua_State* L)) {
+    static uint32_t logCount = 0;
+    bool const logProbe = logCount < 80;
+    if (logProbe)
+    {
+        LOG_INFO << "SpecChange FireTalentUpdateEvent begin"
+            << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        ++logCount;
+    }
+
     FrameScript::SignalEvent(EVENT_PLAYER_TALENT_UPDATE, 0);
+
+    if (logProbe)
+        LOG_INFO << "SpecChange FireTalentUpdateEvent end";
 
     return 0;
 }

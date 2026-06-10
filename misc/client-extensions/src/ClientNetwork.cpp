@@ -385,6 +385,84 @@ namespace
         clientBuffer.ReceivePacket(packet->m_size - 2, reinterpret_cast<char*>(packet->m_buffer) + 2);
         return true;
     }
+
+    std::map<uint32_t, ClientPacketHandler> CombatProbeHandlers;
+    uint32_t CombatProbeLogCount = 0;
+
+    bool IsCombatProbeOpcode(uint32_t opcode)
+    {
+        switch (opcode)
+        {
+            case 0x131: // SMSG_SPELL_START
+            case 0x132: // SMSG_SPELL_GO
+            case 0x143: // SMSG_ATTACK_START
+            case 0x144: // SMSG_ATTACK_STOP
+            case 0x145: // SMSG_ATTACK_SWING_NOT_IN_RANGE
+            case 0x146: // SMSG_ATTACK_SWING_BAD_FACING
+            case 0x148: // SMSG_ATTACK_SWING_DEAD_TARGET
+            case 0x149: // SMSG_ATTACK_SWING_CANT_ATTACK
+            case 0x14A: // SMSG_ATTACKERSTATEUPDATE
+            case 0x14E: // SMSG_CANCEL_COMBAT
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    char const* CombatProbeOpcodeName(uint32_t opcode)
+    {
+        switch (opcode)
+        {
+            case 0x131: return "SMSG_SPELL_START";
+            case 0x132: return "SMSG_SPELL_GO";
+            case 0x143: return "SMSG_ATTACK_START";
+            case 0x144: return "SMSG_ATTACK_STOP";
+            case 0x145: return "SMSG_ATTACK_SWING_NOT_IN_RANGE";
+            case 0x146: return "SMSG_ATTACK_SWING_BAD_FACING";
+            case 0x148: return "SMSG_ATTACK_SWING_DEAD_TARGET";
+            case 0x149: return "SMSG_ATTACK_SWING_CANT_ATTACK";
+            case 0x14A: return "SMSG_ATTACKERSTATEUPDATE";
+            case 0x14E: return "SMSG_CANCEL_COMBAT";
+            default: return "unknown";
+        }
+    }
+
+    bool HandleCombatProbePacket(void* unk, uint32_t opcode, int time, ClientPacket* packet)
+    {
+        ClientPacketHandler handler = nullptr;
+        auto const itr = CombatProbeHandlers.find(opcode);
+        if (itr != CombatProbeHandlers.end())
+            handler = itr->second;
+
+        bool const logPacket = CombatProbeLogCount < 240;
+        if (logPacket)
+        {
+            LOG_INFO << "Combat packet handler begin"
+                << "opcode" << opcode
+                << "name" << CombatProbeOpcodeName(opcode)
+                << "size" << (packet ? packet->m_size : 0)
+                << "read" << (packet ? packet->m_read : 0)
+                << "handler" << reinterpret_cast<uintptr_t>(handler)
+                << "unk" << reinterpret_cast<uintptr_t>(unk)
+                << "time" << time;
+            ++CombatProbeLogCount;
+        }
+
+        bool result = true;
+        if (handler)
+            result = handler(unk, opcode, time, packet);
+
+        if (logPacket)
+        {
+            LOG_INFO << "Combat packet handler end"
+                << "opcode" << opcode
+                << "name" << CombatProbeOpcodeName(opcode)
+                << "result" << result
+                << "read" << (packet ? packet->m_read : 0);
+        }
+
+        return result;
+    }
 }
 
 CLIENT_DETOUR(
@@ -400,5 +478,16 @@ CLIENT_DETOUR(
         LOG_INFO << "Intercepted opcode registration batch marker " << opcode << ", hooking SERVER_TO_CLIENT custom packet handler";
         OnSetMessageHandler(SERVER_TO_CLIENT_OPCODE, HandleServerToClientPacket, nullptr);
     }
+
+    if (IsCombatProbeOpcode(opcode) && handler && handler != HandleCombatProbePacket)
+    {
+        CombatProbeHandlers[opcode] = handler;
+        LOG_INFO << "Wrapped combat opcode handler"
+            << "opcode" << opcode
+            << "name" << CombatProbeOpcodeName(opcode)
+            << "handler" << reinterpret_cast<uintptr_t>(handler);
+        return OnSetMessageHandler(opcode, HandleCombatProbePacket, param);
+    }
+
     return OnSetMessageHandler(opcode, handler, param);
 }

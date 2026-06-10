@@ -39,8 +39,6 @@ int FrameXMLExtensions::GetEventIdByName(const char* eventName)
 
     for (size_t i = 0; i < eventList->size; i++) {
         Event* event = eventList->buf[i];
-        if(event && event->name)
-            LOG_DEBUG << event->name;
         if (event && strcmp(event->name, eventName) == 0)
             return i;
     }

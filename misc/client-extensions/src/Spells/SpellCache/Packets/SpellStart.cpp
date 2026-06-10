@@ -338,9 +338,28 @@ void SpellCachePacketExtensions::HandleSpellCastPacket(uint32_t opcode, void* pa
     uint32_t hitGuidCount = 0;
     if (!TryReadSpellCastInfo(static_cast<SpellStartClientPacket*>(packet), opcode, casterGuid, hitGuids, hitGuidCount, spellId, spellDataHash))
         return;
-    (void)casterGuid;
-    (void)hitGuids;
-    (void)hitGuidCount;
+
+    bool cached = false;
+    if (spellDataHash)
+        cached = SpellCacheStreaming::HasSpell(spellId, spellDataHash);
+    else
+        cached = SpellCacheStreaming::HasSpell(spellId);
+
+    static uint32_t packetLogCount = 0;
+    if (packetLogCount < 240)
+    {
+        LOG_INFO << "Spell cache cast packet"
+            << "opcode" << opcode
+            << "spell" << spellId
+            << "hash" << spellDataHash
+            << "cached" << cached
+            << "casterLow" << static_cast<uint32_t>(casterGuid & 0xFFFFFFFFu)
+            << "casterHigh" << static_cast<uint32_t>(casterGuid >> 32)
+            << "hitCount" << hitGuidCount
+            << "firstHitLow" << (hitGuidCount ? static_cast<uint32_t>(hitGuids[0] & 0xFFFFFFFFu) : 0)
+            << "firstHitHigh" << (hitGuidCount ? static_cast<uint32_t>(hitGuids[0] >> 32) : 0);
+        ++packetLogCount;
+    }
 
     if (!spellDataHash)
     {
@@ -349,7 +368,7 @@ void SpellCachePacketExtensions::HandleSpellCastPacket(uint32_t opcode, void* pa
             return;
     }
 
-    if (spellDataHash ? SpellCacheStreaming::HasSpell(spellId, spellDataHash) : SpellCacheStreaming::HasSpell(spellId))
+    if (cached)
         return;
 
     LOG_INFO << "Spell cache stale from spell cast packet" << opcode << spellId << spellDataHash;

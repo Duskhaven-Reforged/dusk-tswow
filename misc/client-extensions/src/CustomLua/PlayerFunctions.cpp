@@ -2,6 +2,8 @@
 #include <ClientLua.h>
 #include <Logger.h>
 
+#include <intrin.h>
+
 using namespace ClientData;
 
 LUA_FUNCTION(GetShapeshiftFormID, (lua_State* L)) {
@@ -24,7 +26,30 @@ LUA_FUNCTION(GetActiveSpec, (lua_State* L)) {
 
 LUA_FUNCTION(SetActiveSpec, (lua_State* L)) {
     if (ClientLua::IsNumber(L, 1))
-        CharacterDefines::setCharActiveSpec(ClientLua::GetNumber(L, 1));
+    {
+        uint32_t const oldSpec = CharacterDefines::getCharActiveSpec();
+        uint32_t const newSpec = static_cast<uint32_t>(ClientLua::GetNumber(L, 1));
+        static uint32_t logCount = 0;
+        bool const logProbe = logCount < 80;
+        if (logProbe)
+        {
+            LOG_INFO << "SpecChange SetActiveSpec begin"
+                << "old" << oldSpec
+                << "new" << newSpec
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+            ++logCount;
+        }
+
+        CharacterDefines::setCharActiveSpec(newSpec);
+
+        if (logProbe)
+        {
+            LOG_INFO << "SpecChange SetActiveSpec end"
+                << "old" << oldSpec
+                << "new" << newSpec
+                << "current" << CharacterDefines::getCharActiveSpec();
+        }
+    }
 
     return 0;
 }

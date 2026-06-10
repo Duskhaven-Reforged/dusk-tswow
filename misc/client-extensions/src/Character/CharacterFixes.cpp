@@ -7,6 +7,7 @@
 
 
 #include <cstring>
+#include <intrin.h>
 #include <vector>
 #include <ClientData/Spell.h>
 #include <ClientData/ObjectFields.h>
@@ -593,6 +594,24 @@ namespace
         return true;
     }
 
+    bool ShouldLogAutoAttackPathDebug(int& logCount, int limit)
+    {
+        if (logCount >= limit)
+            return false;
+
+        ++logCount;
+        return true;
+    }
+
+    bool IsActivePlayerObject(void* unit)
+    {
+        uint64_t const activePlayerGuid = ClntObjMgr::GetActivePlayer();
+        if (!activePlayerGuid)
+            return false;
+
+        return unit == ClntObjMgr::ObjectPtr(activePlayerGuid, TYPEMASK_PLAYER);
+    }
+
     uint32_t& UnitSheatheState(uintptr_t unit, uintptr_t offset)
     {
         return *reinterpret_cast<uint32_t*>(unit + offset);
@@ -620,13 +639,50 @@ namespace
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__SetSheatheState_MonkUnarmed, 0x736D30, uintptr_t, (uintptr_t sheatheState, int animate, int force))
     {
+        const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        static int logCount = 0;
+        const bool logAutoAttackPath = sheatheState == SHEATH_STATE_MELEE
+            && IsActivePlayerObject(self)
+            && ShouldLogAutoAttackPathDebug(logCount, 80);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath SetSheatheState begin"
+                << "unit" << unit
+                << "requested" << sheatheState
+                << "animate" << animate
+                << "force" << force
+                << "previous" << UnitSheatheState(unit, UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(unit, UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(unit)
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         if (sheatheState == SHEATH_STATE_MELEE && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
         {
-            ForceUnitUnarmedSheatheState(reinterpret_cast<uintptr_t>(self));
+            ForceUnitUnarmedSheatheState(unit);
+            if (logAutoAttackPath)
+            {
+                LOG_INFO << "AutoAttackPath SetSheatheState monk-block"
+                    << "unit" << unit
+                    << "previous" << UnitSheatheState(unit, UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                    << "current" << UnitSheatheState(unit, UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                    << "handFlags" << UnitHandItemFlags(unit);
+            }
             return 0;
         }
 
-        return CGUnit_C__SetSheatheState_MonkUnarmed(self, sheatheState, animate, force);
+        uintptr_t const result = CGUnit_C__SetSheatheState_MonkUnarmed(self, sheatheState, animate, force);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath SetSheatheState end"
+                << "unit" << unit
+                << "result" << result
+                << "previous" << UnitSheatheState(unit, UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(unit, UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(unit);
+        }
+
+        return result;
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__AnimationData_MonkUnarmed, 0x7385C0, void, (int animationId, char flags))
@@ -681,11 +737,36 @@ namespace
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__HandleModelSequenceCallback_MonkUnarmed, 0x73BBD0, void, (void* model, int boneSeqSlot, int animationId, int a5, int a6))
     {
+        static int logCount = 0;
+        const bool logAutoAttackPath = IsActivePlayerObject(self)
+            && (animationId == ANIMATION_ATTACK_1H || animationId == ANIMATION_ATTACK_2H || animationId == ANIMATION_ATTACK_UNARMED
+                || animationId == ANIMATION_ATTACK_OFFHAND || animationId == ANIMATION_ATTACK_UNARMED_OFFHAND)
+            && ShouldLogAutoAttackPathDebug(logCount, 80);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath HandleModelSequenceCallback begin"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "model" << reinterpret_cast<uintptr_t>(model)
+                << "slot" << boneSeqSlot
+                << "animationId" << animationId
+                << "a5" << a5
+                << "a6" << a6
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         const int monkUnarmedAnimationId = GetMonkUnarmedAttackAnimation(animationId);
         if (monkUnarmedAnimationId != -1 && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
             animationId = monkUnarmedAnimationId;
 
         CGUnit_C__HandleModelSequenceCallback_MonkUnarmed(self, model, boneSeqSlot, animationId, a5, a6);
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath HandleModelSequenceCallback end"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "slot" << boneSeqSlot
+                << "animationId" << animationId;
+        }
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__ResolveModelAnimationId_MonkUnarmed, 0x7176F0, int, (int animationId, void* model))
@@ -709,11 +790,38 @@ namespace
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__ApplyModelAnimationSequence_MonkUnarmed, 0x737BD0, void, (void* model, int boneSeqSlot, unsigned int sequence))
     {
+        static int logCount = 0;
+        const bool logAutoAttackPath = IsActivePlayerObject(self)
+            && (sequence == HAND_ITEM_SEQUENCE_READY || sequence == HAND_ITEM_SEQUENCE_READY_SPECIAL
+                || sequence == ANIMATION_ATTACK_1H || sequence == ANIMATION_ATTACK_2H || sequence == ANIMATION_ATTACK_UNARMED
+                || sequence == ANIMATION_ATTACK_OFFHAND || sequence == ANIMATION_ATTACK_UNARMED_OFFHAND)
+            && ShouldLogAutoAttackPathDebug(logCount, 120);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath ApplyModelAnimationSequence begin"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "model" << reinterpret_cast<uintptr_t>(model)
+                << "slot" << boneSeqSlot
+                << "sequence" << sequence
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self))
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         if (ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
         {
             if (IsHandItemAttachSequence(boneSeqSlot, sequence))
             {
                 ClearHandItemActiveFlag(reinterpret_cast<uintptr_t>(self), boneSeqSlot);
+                if (logAutoAttackPath)
+                {
+                    LOG_INFO << "AutoAttackPath ApplyModelAnimationSequence monk-block"
+                        << "unit" << reinterpret_cast<uintptr_t>(self)
+                        << "slot" << boneSeqSlot
+                        << "sequence" << sequence
+                        << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+                }
                 return;
             }
 
@@ -723,18 +831,75 @@ namespace
         }
 
         CGUnit_C__ApplyModelAnimationSequence_MonkUnarmed(self, model, boneSeqSlot, sequence);
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath ApplyModelAnimationSequence end"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "slot" << boneSeqSlot
+                << "sequence" << sequence
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+        }
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__UpdateSheatheForAnimation_MonkUnarmed, 0x738180, void, (char a2))
     {
+        static int logCount = 0;
+        const bool logAutoAttackPath = IsActivePlayerObject(self) && ShouldLogAutoAttackPathDebug(logCount, 120);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateSheatheForAnimation begin"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "a2" << static_cast<int>(a2)
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self))
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         CGUnit_C__UpdateSheatheForAnimation_MonkUnarmed(self, a2);
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateSheatheForAnimation native-end"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+        }
 
         if (ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
             ForceUnitUnarmedSheatheState(reinterpret_cast<uintptr_t>(self));
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateSheatheForAnimation end"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+        }
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__UpdateHandItemVisual_MonkUnarmed, 0x72DBC0, void, (int slot))
     {
+        static int logCount = 0;
+        const bool logAutoAttackPath = IsActivePlayerObject(self)
+            && (slot == VISIBLE_ITEM_MAINHAND || slot == VISIBLE_ITEM_OFFHAND || slot == HAND_ITEM_BONE_SEQUENCE_MAINHAND || slot == HAND_ITEM_BONE_SEQUENCE_OFFHAND)
+            && ShouldLogAutoAttackPathDebug(logCount, 120);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateHandItemVisual begin"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "slot" << slot
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self))
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         if ((slot == VISIBLE_ITEM_MAINHAND || slot == VISIBLE_ITEM_OFFHAND)
             && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
         {
@@ -751,36 +916,123 @@ namespace
 
             previousSheatheState = savedPreviousSheatheState;
             currentSheatheState = savedCurrentSheatheState;
+            if (logAutoAttackPath)
+            {
+                LOG_INFO << "AutoAttackPath UpdateHandItemVisual monk-end"
+                    << "unit" << reinterpret_cast<uintptr_t>(self)
+                    << "slot" << slot
+                    << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                    << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                    << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+            }
             return;
         }
 
         CGUnit_C__UpdateHandItemVisual_MonkUnarmed(self, slot);
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateHandItemVisual end"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "slot" << slot
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+        }
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__HandleHandItemAnimEvent_MonkUnarmed, 0x732500, void, (int position, int slot, int slotFlag))
     {
+        static int logCount = 0;
+        const bool logAutoAttackPath = IsActivePlayerObject(self)
+            && (slot == VISIBLE_ITEM_MAINHAND || slot == VISIBLE_ITEM_OFFHAND || slot == HAND_ITEM_BONE_SEQUENCE_MAINHAND || slot == HAND_ITEM_BONE_SEQUENCE_OFFHAND)
+            && ShouldLogAutoAttackPathDebug(logCount, 120);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath HandleHandItemAnimEvent begin"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "position" << position
+                << "slot" << slot
+                << "slotFlag" << slotFlag
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self))
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         if ((slot == VISIBLE_ITEM_MAINHAND || slot == VISIBLE_ITEM_OFFHAND)
             && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
         {
             ClearHandItemActiveFlag(reinterpret_cast<uintptr_t>(self), slot);
             ForceUnitUnarmedSheatheState(reinterpret_cast<uintptr_t>(self));
+            if (logAutoAttackPath)
+            {
+                LOG_INFO << "AutoAttackPath HandleHandItemAnimEvent monk-block"
+                    << "unit" << reinterpret_cast<uintptr_t>(self)
+                    << "slot" << slot
+                    << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+            }
             return;
         }
 
         CGUnit_C__HandleHandItemAnimEvent_MonkUnarmed(self, position, slot, slotFlag);
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath HandleHandItemAnimEvent end"
+                << "unit" << reinterpret_cast<uintptr_t>(self)
+                << "slot" << slot
+                << "previous" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(reinterpret_cast<uintptr_t>(self), UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(reinterpret_cast<uintptr_t>(self));
+        }
     }
 
     CLIENT_DETOUR_THISCALL(CGUnit_C__MoveHandItemAttachment_MonkUnarmed, 0x7310A0, int, (int slot, int moveToSheath))
     {
+        const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        static int logCount = 0;
+        const bool logAutoAttackPath = moveToSheath == MOVE_HAND_ITEM_TO_HAND
+            && IsActivePlayerObject(self)
+            && ShouldLogAutoAttackPathDebug(logCount, 80);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath MoveHandItemAttachment begin"
+                << "unit" << unit
+                << "slot" << slot
+                << "moveToSheath" << moveToSheath
+                << "previous" << UnitSheatheState(unit, UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(unit, UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(unit)
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         if ((slot == VISIBLE_ITEM_MAINHAND || slot == VISIBLE_ITEM_OFFHAND)
             && moveToSheath == MOVE_HAND_ITEM_TO_HAND
             && ShouldPreventMeleeUnsheath(reinterpret_cast<CGUnit*>(self)))
         {
-            ClearHandItemActiveFlag(reinterpret_cast<uintptr_t>(self), slot);
+            ClearHandItemActiveFlag(unit, slot);
+            if (logAutoAttackPath)
+            {
+                LOG_INFO << "AutoAttackPath MoveHandItemAttachment monk-block"
+                    << "unit" << unit
+                    << "slot" << slot
+                    << "handFlags" << UnitHandItemFlags(unit);
+            }
             return 0;
         }
 
-        return CGUnit_C__MoveHandItemAttachment_MonkUnarmed(self, slot, moveToSheath);
+        int const result = CGUnit_C__MoveHandItemAttachment_MonkUnarmed(self, slot, moveToSheath);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath MoveHandItemAttachment end"
+                << "unit" << unit
+                << "slot" << slot
+                << "result" << result
+                << "handFlags" << UnitHandItemFlags(unit);
+        }
+
+        return result;
     }
 
     CLIENT_DETOUR_THISCALL_NOARGS(CGUnit_C__AttachMainHandItem_MonkUnarmed, 0x7367B0, int)
@@ -809,6 +1061,12 @@ namespace
     {
         const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
         const bool logExtendedSequence = sequence > ANIMATION_CURRENT_OR_NONE && ShouldLogExtendedAnimationDebug();
+        static int autoAttackLogCount = 0;
+        const bool logAutoAttackPath = (sequence == HAND_ITEM_SEQUENCE_READY || sequence == HAND_ITEM_SEQUENCE_READY_SPECIAL
+            || sequence == ANIMATION_ATTACK_1H || sequence == ANIMATION_ATTACK_2H || sequence == ANIMATION_ATTACK_UNARMED
+            || sequence == ANIMATION_ATTACK_OFFHAND || sequence == ANIMATION_ATTACK_UNARMED_OFFHAND)
+            && IsActivePlayerObject(self)
+            && ShouldLogAutoAttackPathDebug(autoAttackLogCount, 120);
         if (logExtendedSequence)
         {
             LOG_INFO << "ExtendedAnim: set-bone begin unit=" << unit
@@ -823,6 +1081,17 @@ namespace
                 << " a9=" << a9
                 << " a10=" << a10
                 << " direct=" << CM2ModelHasDirectSequence(reinterpret_cast<void*>(model), static_cast<unsigned int>(sequence));
+        }
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath SetHandItemBoneSequence begin"
+                << "unit" << unit
+                << "model" << model
+                << "slot" << boneSeqSlot
+                << "sequence" << sequence
+                << "sequenceTime" << sequenceTime
+                << "speed" << speed
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
         }
 
         if (boneSeqSlot == -1 && ShouldRouteMovingChannelToUpperSlot(unit, sequence))
@@ -849,6 +1118,14 @@ namespace
 
         CGUnit_C__SetHandItemBoneSequence_MonkUnarmed(self, model, boneSeqSlot, sequence, sequenceTime, a6, speed, a8, a9, a10);
 
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath SetHandItemBoneSequence end"
+                << "unit" << unit
+                << "slot" << boneSeqSlot
+                << "sequence" << sequence;
+        }
+
         if (logExtendedSequence && model
             && (boneSeqSlot == -1 || CM2Model__HasBoneSequenceSlot_ExtendedAnimDebug(reinterpret_cast<void*>(model), static_cast<uint32_t>(boneSeqSlot))))
         {
@@ -870,11 +1147,39 @@ namespace
     CLIENT_DETOUR_THISCALL(CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody, 0x73AC30, void, (char flags, int animationId))
     {
         const uintptr_t unit = reinterpret_cast<uintptr_t>(self);
+        static int logCount = 0;
+        const bool logAutoAttackPath = (flags == 64 || animationId == -1
+            || animationId == ANIMATION_ATTACK_1H || animationId == ANIMATION_ATTACK_2H || animationId == ANIMATION_ATTACK_UNARMED
+            || animationId == ANIMATION_ATTACK_OFFHAND || animationId == ANIMATION_ATTACK_UNARMED_OFFHAND)
+            && IsActivePlayerObject(self)
+            && ShouldLogAutoAttackPathDebug(logCount, 80);
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateCurrentAnimation begin"
+                << "unit" << unit
+                << "flags" << static_cast<int>(flags)
+                << "animationId" << animationId
+                << "previous" << UnitSheatheState(unit, UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(unit, UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(unit)
+                << "caller" << reinterpret_cast<uintptr_t>(_ReturnAddress());
+        }
+
         const bool wasChanneling = IsUnitChanneling(unit);
         void* model = wasChanneling ? *reinterpret_cast<void**>(unit + UNIT_MODEL_OFFSET) : nullptr;
         const int rootChannelBeforeUpdate = model ? GetUnitRootChannelAnimation(model) : 0;
 
         CGUnit_C__UpdateCurrentAnimation_ChannelLowerBody(self, flags, animationId);
+
+        if (logAutoAttackPath)
+        {
+            LOG_INFO << "AutoAttackPath UpdateCurrentAnimation native-end"
+                << "unit" << unit
+                << "wasChanneling" << wasChanneling
+                << "previous" << UnitSheatheState(unit, UNIT_PREVIOUS_SHEATH_STATE_OFFSET)
+                << "current" << UnitSheatheState(unit, UNIT_CURRENT_SHEATH_STATE_OFFSET)
+                << "handFlags" << UnitHandItemFlags(unit);
+        }
 
         if (!IsUnitChanneling(unit))
             return;

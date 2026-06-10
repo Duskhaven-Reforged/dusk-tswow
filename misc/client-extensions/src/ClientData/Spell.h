@@ -181,6 +181,11 @@ namespace ClientData
         SPELL_ATTR3_REQ_OFFHAND = 0x01000000,
     };
 
+    enum Spellattr5 : uint32_t
+    {
+        StartPeriodicAtApply = 0x200,
+    };
+
     enum SpellAttr0Cu : uint32_t
     {
         SPELL_ATTR0_CU_ENCHANT_PROC = 0x00000001,

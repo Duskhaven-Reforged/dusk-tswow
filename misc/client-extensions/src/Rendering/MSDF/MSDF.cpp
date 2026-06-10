@@ -11,6 +11,7 @@
 
 namespace {
     uint32_t g_runtimeVBSize = 0;
+    constexpr uint32_t kNativeFontVertexCount = 0x800;
 
     IDirect3DPixelShader9* s_cachedPS = nullptr;
     IDirect3DVertexShader9* s_cachedVS = nullptr;
@@ -23,12 +24,6 @@ namespace {
 
     CLIENT_FUNCTION(CGxString__GetGlyphYMetrics_BaselineSite, 0x006C8C71, __cdecl, void, ())
     constexpr uintptr_t CGxString__GetGlyphYMetrics_BaselineSite_jmpback = 0x006C8C77;
-
-    CLIENT_FUNCTION(CGxDevice__AllocateFontIndexBuffer_SizeSite, 0x006C480C, __cdecl, void, ())
-    constexpr uintptr_t CGxDevice__AllocateFontIndexBuffer_SizeSite_jmpback = 0x006C4811;
-
-    CLIENT_FUNCTION(CGxDevice__InitFontIndexBuffer_PoolCreateSite, 0x006C47BD, __cdecl, void, ())
-    constexpr uintptr_t CGxDevice__InitFontIndexBuffer_PoolCreateSite_jmpback = 0x006C47D8;
 
     CLIENT_FUNCTION(IGxuFontProcessBatch_ReturnSite, 0x006C4CC4, __cdecl, void, ())
     constexpr uintptr_t IGxuFontProcessBatch_ReturnSite_jmpback = 0x006C4CC9;
@@ -348,28 +343,6 @@ namespace {
         }
     }
 
-    // allocate as much as needed for every cgxstring in a batch to perform exactly one draw at max
-    // makes sure the overlap from having a single piece of text rendered with multiple draws isn't happening
-    // this is probably overkill and irrelevant for 99.99% of the actual draw cases where text vertCount is naturally < hardcoded 2004-era 2048 buffer
-    // but...
-    __declspec(naked) void CGxDevice__AllocateFontIndexBuffer_SizeSiteHk() {
-        __asm {
-            mov ebx, 3FFFh;
-            jmp CGxDevice__AllocateFontIndexBuffer_SizeSite_jmpback;
-        }
-    }
-    __declspec(naked) void CGxDevice__InitFontIndexBuffer_PoolCreateSiteHk() {
-        __asm {
-            push 30000h;
-            push 0;
-            push 1;
-            call MSDFClient::CGxDevice__PoolCreate;
-            mov ecx, dword ptr ds : [0C5DF88h] ; // g_theGxDevicePtr
-            push 0;
-            push 1801Ah;
-            jmp CGxDevice__InitFontIndexBuffer_PoolCreateSite_jmpback;
-        }
-    }
     __declspec(naked) void IGxuFontProcessBatch_ReturnSiteHk() {
         __asm {
             mov g_runtimeVBSize, 0;
@@ -380,17 +353,17 @@ namespace {
             jmp IGxuFontProcessBatch_ReturnSite_jmpback;
         }
     }
-    __declspec(naked) void CGxDevice__BufStream_FontVertexCountSiteHk() { // clamp to [2048-65532]
+    __declspec(naked) void CGxDevice__BufStream_FontVertexCountSiteHk() {
         __asm {
             mov eax, g_runtimeVBSize;
-            cmp eax, 800h;
+            cmp eax, kNativeFontVertexCount;
             jge check_upper;
-            mov eax, 800h;
+            mov eax, kNativeFontVertexCount;
             jmp do_push;
         check_upper:
-            cmp eax, 0FFFCh;
+            cmp eax, kNativeFontVertexCount;
             jle do_push;
-            mov eax, 0FFFCh;
+            mov eax, kNativeFontVertexCount;
         do_push:
             mov g_runtimeVBSize, eax;
             push eax;
@@ -513,9 +486,6 @@ namespace {
             Hooks::Detour(&MSDFClient::CGxuFont__RenderGlyph, GxuFontGlyphRenderGlyphHk);
             Hooks::Detour(&MSDFClient::CGxFont__GetOrCreateGlyphEntry, CGxString__GetOrCreateGlyphEntryHk);
 
-            Hooks::Detour(&CGxDevice__AllocateFontIndexBuffer_SizeSite, CGxDevice__AllocateFontIndexBuffer_SizeSiteHk);
-            Hooks::Detour(&CGxDevice__InitFontIndexBuffer_PoolCreateSite, CGxDevice__InitFontIndexBuffer_PoolCreateSiteHk);
-
             Hooks::Detour(&CGxString__GetGlyphYMetrics_BaselineSite, CGxString__GetGlyphYMetrics_BaselineSiteHk);
             Hooks::Detour(&CGxString__CheckGeometry_PrefetchLoopSite, CGxString__CheckGeometry_PrefetchLoopSiteHk);
             Hooks::Detour(&CGxString__CheckGeometry_ProcessGeometryCallSite, CGxString__CheckGeometry_ProcessGeometryCallSiteHk);
@@ -547,6 +517,7 @@ namespace {
                 }
                 if (s_cachedPS) {
                     if (shaderData->pixel_shader) shaderData->pixel_shader->Release();
+                    s_cachedPS->AddRef();
                     shaderData->pixel_shader = s_cachedPS;
                     shaderData->compilation_flags = 1;
                 }
@@ -555,9 +526,10 @@ namespace {
             s_cachedPS = D3D::CompilePixelShader({
                 .shaderCode = pixelShaderHLSL,
                 .target = "ps_3_0"
-                });
+            });
             if (s_cachedPS) {
                 if (MSDF::g_FontPixelShader->pixel_shader) MSDF::g_FontPixelShader->pixel_shader->Release();
+                s_cachedPS->AddRef();
                 MSDF::g_FontPixelShader->pixel_shader = s_cachedPS;
                 MSDF::g_FontPixelShader->compilation_flags = 1;
             }
@@ -572,6 +544,7 @@ namespace {
                 }
                 if (s_cachedVS) {
                     if (shaderData->vertex_shader) shaderData->vertex_shader->Release();
+                    s_cachedVS->AddRef();
                     shaderData->vertex_shader = s_cachedVS;
                     shaderData->compilation_flags = 1;
                 }
@@ -580,16 +553,19 @@ namespace {
             s_cachedVS = D3D::CompileVertexShader({
                 .shaderCode = vertexShaderHLSL,
                 .target = "vs_3_0"
-                });
+            });
             if (s_cachedVS) {
                 if (MSDF::g_FontVertexShader->vertex_shader) MSDF::g_FontVertexShader->vertex_shader->Release();
+                s_cachedVS->AddRef();
                 MSDF::g_FontVertexShader->vertex_shader = s_cachedVS;
                 MSDF::g_FontVertexShader->compilation_flags = 1;
             }
 
             s_prefetchPayload.reserve(16383);
 
-            MSDFClient::CGxDevice__InitFontIndexBuffer(); // engine has already run it at this point
+            // GxuFont__InitializeUiShaders owns startup resource registration.
+            // Do not invoke CGxDevice__InitFontIndexBuffer here; running it before
+            // the native shader registry is stable corrupts that registry.
         }
         else if (MSDF::IS_CJK) {
             return MSDFClient::FreeType__Init(memory, alibrary);
@@ -618,6 +594,7 @@ namespace {
         }
         return 1;
     }
+
 }
 
 void MSDF::initialize() {
